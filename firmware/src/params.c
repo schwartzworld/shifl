@@ -3,7 +3,8 @@
 /* Parameter descriptors, formatting and the page table. */
 static const char *const N_LWAVE[] = {"SIN", "TRI", "SAW", "SQR", "S&H"};
 static const char *const N_AMODE[] = {"OFF", "UP", "DN", "UPDN", "RND", "ORD"};
-static const char *const N_DIV[] = {"1/4", "1/8", "1/16", "1/32", "8T", "16T"};
+static const char *const N_DIV[]   = {"1/4", "1/8", "1/16", "1/32", "8T", "16T"};
+static const char *const N_DTIME[] = {"1/4", "1/8", "1/16", "1/32", "8T", "16T", "D.8", "D.4"};
 static const char *const N_SCALE[] = {"CHR", "MAJ", "MIN", "DOR", "MIX", "PEN", "MPEN", "HARM",
                                     "PHRY", "LYD", "LOC", "MEL", "BLUES", "WHOLE", "DIMHW", "DIMWH"};
 static const char *const N_ONOFF[] = {"OFF", "ON"};
@@ -100,7 +101,7 @@ static const param_desc_t GP[G_COUNT] = {
     [G_SWING] = PD("SWING", F_SWING, 0, 100, 0),
     [G_CLOCK] = PE("CLICK", N_CLICK, 0),            /* (the old CLK slot: projects keep their format) */
     [G_TUNE] = PD("TUNE", F_INT, -50, 50, 0),
-    [G_DTIME] = PE("TIME", N_DIV, 1),
+    [G_DTIME] = PE("TIME", N_DTIME, 1),
     [G_DFDBK] = PD("FDBK", F_PCT, 0, 120, 60),
     [G_DCOLOR] = PD("COLR", F_PCT, 0, 127, 70),
     [G_DMIX] = PD("MIX", F_PCT, 0, 127, 90),
