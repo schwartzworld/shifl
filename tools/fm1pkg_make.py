@@ -193,7 +193,7 @@ def main():
     ap.add_argument("app", type=Path)
     ap.add_argument("ota", type=Path)
     ap.add_argument("out", type=Path)
-    ap.add_argument("--product", default="FM-1_900")
+    ap.add_argument("--product", default="FM-1_901")
     ap.add_argument("--key", type=lambda s: int(s, 0), default=KEY)
     ap.add_argument("--sdk", type=Path, help="JieLi AC79 SDK checkout (default: $AC79_SDK)")
     a = ap.parse_args()
