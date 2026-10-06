@@ -72,7 +72,7 @@ typedef struct {                               /* format 1 (until 0.5 beta), rea
 } project_v1_t;
 _Static_assert(sizeof(project_v2_t) == 2552u && sizeof(project_v1_t) == 688u && sizeof(project_v3_t) == 2584u,
                "formats 1 / 2 / 3 as they were stored");
-project_t proj_slot[4] __attribute__((section(".noinit")));
+project_t proj_slot[6];
 
 static uint32_t proj_hash(const void *p, uint32_t n)   /* FNV-1a over n bytes */
 {
@@ -299,8 +299,8 @@ static union {
 } proj_tmp;
 static void proj_fetch(uint32_t slot)
 {
-    project_t *q = &proj_slot[slot & 3u];
-    int n = st_load(OBJ_PROJECT0 + (slot & 3u), &proj_tmp, sizeof proj_tmp);
+    project_t *q = &proj_slot[slot & 7u];
+    int n = st_load(OBJ_PROJECT0 + (slot & 7u), &proj_tmp, sizeof proj_tmp);
     if (!proj_import(q, &proj_tmp, n))
         q->magic = 0;
 }
@@ -308,7 +308,7 @@ static void proj_fetch(uint32_t slot)
 
 static void project_save(uint32_t slot)
 {
-    project_t *p = &proj_slot[slot & 3u];
+    project_t *p = &proj_slot[slot & 7u];
 #if FELUCCA_ARRANGER
     if (song.playing || transport_req) { ui_message("STOP BEFORE SAVE"); return; }
 #endif
@@ -343,7 +343,7 @@ static void project_apply(const project_t *p)
 
 static void project_load(uint32_t slot)
 {
-    project_t *p = &proj_slot[slot & 3u];
+    project_t *p = &proj_slot[slot & 7u];
 #if FELUCCA_ARRANGER
     if (song.playing || transport_req) { ui_message("STOP BEFORE LOAD"); return; }
 #endif
@@ -499,7 +499,7 @@ static void persist_boot(void)                    /* before settings_init / pane
          * still valid in RAM (a warm reset: an update, UPDATE MODE, a crash) may never have reached
          * flash (a live section stored while playing): marked to be written when quiet */
         uint32_t i;
-        for (i = 0; i < 4u; i++)
+        for (i = 0; i < ARR_SCENES; i++)
             if (!proj_ok(&proj_slot[i])) {
                 proj_fetch(i);
             } else {
@@ -512,7 +512,7 @@ static void persist_boot(void)                    /* before settings_init / pane
 #endif
 }
 
-static int project_used(uint32_t slot) { return proj_ok(&proj_slot[slot & 3u]); }
+static int project_used(uint32_t slot) { return proj_ok(&proj_slot[slot & 7u]); }
 
 static void persist_fill(persist_t *p)              /* the settings as they are now */
 {
@@ -601,7 +601,7 @@ static uint32_t project_restore(uint32_t slot, const void *raw, uint32_t n)
 {
     if (song.playing || transport_req)
         return 3;
-    if (slot < 4u && !n) {
+    if (slot < ARR_SCENES && !n) {
         if (!flash_ok || st_save(OBJ_PROJECT0 + slot, raw, 0))
             return 4;
         memset(&proj_slot[slot], 0, sizeof proj_slot[slot]);
@@ -640,7 +640,7 @@ static void arrangement_save(void)
  * stops the audio for ~50 ms); a song recorded with SONG REC is saved the same way. */
 static void section_store(uint32_t s)
 {
-    s &= 3u;
+    s &= 7u;
     fm1_irq_off();                                      /* (the audio ISR may be applying a section) */
     proj_capture(&proj_slot[s]);
     live_sec = (int8_t)s;
@@ -649,7 +649,7 @@ static void section_store(uint32_t s)
 }
 static void section_load(uint32_t s)                    /* stopped: the section is the loop now */
 {
-    s &= 3u;
+    s &= 7u;
     project_apply(&proj_slot[s]);
     live_sec = (int8_t)s;
 }
@@ -658,7 +658,7 @@ static void sections_write(void)                        /* the dirty sections an
     uint32_t i;
 #if FELUCCA_FLASH
     if (flash_ok)
-        for (i = 0; i < 4u; i++)
+        for (i = 0; i < ARR_SCENES; i++)
             if (((sec_dirty >> i) & 1u) && st_save(OBJ_PROJECT0 + i, &proj_slot[i], sizeof proj_slot[i]) == 0)
                 sec_dirty &= (uint8_t)~(1u << i);       /* (a failed write stays dirty: tried again later) */
     if (!flash_ok)

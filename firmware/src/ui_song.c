@@ -37,7 +37,8 @@ static void song_screen_draw(void)
 {
     song_sane();
     static uint32_t previous;
-    static const uint16_t SC[4] = {RGB(40, 124, 255), RGB(30, 204, 112), RGB(255, 198, 24), RGB(255, 98, 26)};
+    static const uint16_t SC[ARR_SCENES] = {RGB(40, 124, 255), RGB(30, 204, 112), RGB(255, 198, 24), RGB(255, 98, 26),
+                                            RGB(180, 80, 220), RGB(0, 200, 220)};
     uint32_t i, k;
     uint32_t sig = (uint32_t)song_cursor + 17u * arrangement_enabled + 37u * song.playing +
                    71u * arrangement_clock.index + 127u * arrangement_clock.bar +

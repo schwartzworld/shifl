@@ -1,0 +1,90 @@
+SAVE SLOT EXPANSION (4 → 8 SCENES) — RESEARCH NOTES
+=====================================================
+Date: 2026-10-06
+
+GOAL
+----
+Expand the song-mode save slots from 4 (A/B/C/D) to 8 (A–H), matching the
+unused rows visible in the SONG screen UI (the bottom two rows of the 4×5 grid
+are mostly empty and could naturally hold E/F/G/H slots and their save buttons).
+
+CURRENT ARCHITECTURE
+--------------------
+The slot count flows through several layers:
+
+  firmware/src/arranger.h  line 9:   #define ARR_SCENES 4u
+  firmware/src/project.c   line 75:  project_t proj_slot[4]  (in .noinit)
+  firmware/src/storage.c   line 23:  enum { ..., OBJ_PROJECT0, OBJ_UPRESET0 = OBJ_PROJECT0 + 4, ... }
+  firmware/src/ui_song.c   line 113: generates labels "A"/"B"/"C"/"D" from index
+
+  arranger.h line 11:  #define ARR_MUTE 4u  — sentinel value meaning "this
+  track plays silence on this step"; currently one past the last valid scene
+  index (0–3). Must be bumped to 8 if scenes go to 0–7.
+
+  arranger.h line 16 (arr_entry_t): each step stores a uint8_t scene index per
+  track — the type can hold 8 fine; only ARR_MUTE needs updating.
+
+THE MEMORY PROBLEM
+------------------
+All 4 project_t slots live in the .noinit RAM region so they survive warm
+resets without a flash read. The linker script is at:
+
+  firmware/app.ld  line 17:
+    NOINIT (rw) : ORIGIN = 0x01C7C000, LENGTH = 0x3D50   (~15,696 bytes)
+
+Contents of NOINIT (approximate):
+  proj_slot[4]    ≈ 4 × ~2584 bytes  ≈ 10,336 bytes
+  panel_t, settings, bootguard, felucca_dbg  ≈ remaining ~5,360 bytes
+
+Current project_t size is asserted to fit within ST_PAYLOAD_MAX (one 4 KB flash
+sector minus the flash header). Historical size was 2584 bytes (project_v3_t,
+per the static_assert in project.c line 73). The live format is likely similar
+or slightly larger.
+
+  8 slots × ~2584 bytes ≈ 20,672 bytes  →  OVERFLOWS 15,696-byte NOINIT
+
+FLASH IS FINE
+-------------
+8 flash project objects × 4 KB sector = 32 KB, well within the ~580 KB XIP
+flash. The OBJ_UPRESET0 offset would just shift right by 4 more objects.
+
+POSSIBLE SOLUTIONS
+------------------
+Option A — Expand NOINIT in the linker script
+  Check if the memory map has headroom after 0x01C7C000 + 0x3D50 = 0x01C7FD50.
+  The address space ends at 0x01C80000 (a common SRAM boundary), leaving only
+  ~0x2B0 = 688 bytes. Not enough.
+
+Option B — Lazy load from flash (recommended starting point)
+  Stop keeping all 8 slots in NOINIT simultaneously. Keep only the *active*
+  slot in NOINIT (or in regular RAM) and read other slots from flash when the
+  user switches to them. Cost: one flash sector read (~4 KB) on slot switch,
+  which is imperceptible. Requires:
+  - Removing the excess proj_slot entries from NOINIT
+  - Adding a storage_load_project(slot_index, project_t*) call path
+  - Updating project_switch() / song-mode slot-select logic
+  - Ensuring autosave still works for the active slot
+
+Option C — Reduce project_t size first
+  If project_t could be shrunk (e.g. by compressing step data), 8 slots might
+  fit. Less architectural change than Option B but risky/hard to reclaim enough.
+
+FLASH SECTOR ENUM UPDATE (storage.c line 23)
+--------------------------------------------
+  Current:  OBJ_UPRESET0 = OBJ_PROJECT0 + 4
+  New:      OBJ_UPRESET0 = OBJ_PROJECT0 + 8
+
+UI CHANGES NEEDED (ui_song.c)
+------------------------------
+  - Label generation loop needs to go 0–7 instead of 0–3
+  - The SONG screen grid has 4 columns × 5 rows; adding E–H would require
+    either a second page/scroll, a smaller grid, or a layout redesign
+  - The scene picker in the arranger step editor also needs to show 8 options
+
+KEY FILES TO TOUCH
+------------------
+  firmware/src/arranger.h   — ARR_SCENES, ARR_MUTE
+  firmware/src/project.c    — proj_slot array, load/save/switch logic
+  firmware/src/storage.c    — OBJ_UPRESET0 offset, possibly new load helper
+  firmware/src/ui_song.c    — scene labels, grid layout
+  firmware/app.ld           — only if attempting Option A (not recommended)

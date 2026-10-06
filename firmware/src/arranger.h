@@ -6,13 +6,13 @@
 #define FM1_ARRANGER_H
 #include <stdint.h>
 #define ARR_STEPS  16u
-#define ARR_SCENES 4u
+#define ARR_SCENES 6u
 #define ARR_TRACKS 4u
-#define ARR_MUTE   4u   /* track[k] == ARR_MUTE: this track is silent in the section */
+#define ARR_MUTE   6u   /* track[k] == ARR_MUTE: this track is silent in the section */
 #define ARR_NONE    (-1)
 #define ARR_DONE    (-2)
 #define ARR_INVALID (-3)
-/* Each entry independently selects a scene (A-D = 0-3) or ARR_MUTE per track. */
+/* Each entry independently selects a scene (A-F = 0-5) or ARR_MUTE per track. */
 typedef struct { uint8_t track[ARR_TRACKS]; uint8_t bars; uint8_t rsv[3]; } arr_entry_t;
 typedef struct {
     uint8_t count, loop, reserved[2];
