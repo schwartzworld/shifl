@@ -22,7 +22,8 @@ static struct {uint8_t home,page,force,msg_t;char msg[24];} ui;
 static int32_t enc[NE];
 static uint32_t ready, scene_saves, order_saves, loads;
 static uint32_t arrangement_ready(void) {return ready;}
-static void arrangement_apply(uint32_t scene) {(void)scene;}
+static void arrangement_apply(uint32_t ei) {(void)ei;}
+static void arrangement_apply_scene(uint32_t scene) {(void)scene;}
 static const page_t *cur_page(void) {return &PAGES[ui.page];}
 static int project_used(uint32_t i) {return (ready>>i)&1u;}
 static void project_save(uint32_t i) {ready|=1u<<i;scene_saves++;}
@@ -40,7 +41,7 @@ static void press(uint32_t b) {song_screen_input(1u<<panel.btn[b],0);}
 
 int main(int argc,char **argv)
 {
-    uint32_t i;
+    uint32_t i, k;
     arr_defaults(&arrangement);
     for(i=0;i<NB;i++) panel.btn[i]=(uint8_t)i;
     for(i=0;i<NPAGES;i++) if(PAGES[i].scope==SC_SONG) ui.page=(uint8_t)i;
@@ -50,8 +51,10 @@ int main(int argc,char **argv)
     press(B_REC); assert(scene_saves==1);           /* replacement needs confirmation */
     press(B_REC); assert(scene_saves==2);
     press(B_REC); fm1_ms+=3001; press(B_REC); assert(scene_saves==2);
-    enc[EN_K2]=1;song_screen_input(0,0);             /* different section cancels confirmation */
-    assert(arrangement.entry[0].scene==1);
+    enc[EN_K2]=1;song_screen_input(0,0);             /* navigating sub-field cancels confirmation */
+    assert(song_sub==1);                             /* sub moved to track 1 field */
+    enc[EN_K3]=1;song_screen_input(0,0);             /* change pattern for track 1: A -> B */
+    assert(arrangement.entry[0].track[0]==1);
     press(B_REC);assert(scene_saves==3 && ready==3);
     song.playing=1;
     press(B_REC);press(B_SAVE);press(B_OCTUP);
@@ -66,11 +69,53 @@ int main(int argc,char **argv)
     enc[EN_K4]=99;song_screen_input(0,0);assert(arrangement.count==16);
     enc[EN_K1]=99;song_screen_input(0,0);assert(song_cursor==15);
     enc[EN_K4]=-99;song_screen_input(0,0);assert(arrangement.count==1 && song_cursor==0);
+
+    /* Per-track: ENC1 navigates fields, ENC2 (EN_K3) edits pattern or bars */
+    {
+        uint32_t sv;
+        arr_defaults(&arrangement); ready=15; ui.msg_t=0; song_cursor=0; song_sub=0;
+        song.playing=0; transport_req=0;
+        /* ENC2 (EN_K3) on bars row (sub=0) changes bars */
+        enc[EN_K3]=3; song_screen_input(0,0);
+        assert(arrangement.entry[0].bars==7);          /* default 4 + 3 */
+        /* ENC1 (EN_K2) navigates to track 1 sub-field */
+        enc[EN_K2]=1; song_screen_input(0,0);
+        assert(song_sub==1);
+        /* ENC2 changes pattern for track 1: A(0) -> B(1) */
+        enc[EN_K3]=1; song_screen_input(0,0);
+        assert(arrangement.entry[0].track[0]==1);
+        /* ENC2 large positive: clamps at MUTE */
+        enc[EN_K3]=99; song_screen_input(0,0);
+        assert(arrangement.entry[0].track[0]==ARR_MUTE);
+        /* ENC2 large negative: clamps at A(0) */
+        enc[EN_K3]=-99; song_screen_input(0,0);
+        assert(arrangement.entry[0].track[0]==0);
+        /* Navigate to track 2 */
+        enc[EN_K2]=1; song_screen_input(0,0);
+        assert(song_sub==2);
+        enc[EN_K3]=2; song_screen_input(0,0);          /* track 2: A -> C */
+        assert(arrangement.entry[0].track[1]==2);
+        /* REC on a muted track shows an error and does not save */
+        enc[EN_K2]=-1; song_screen_input(0,0);         /* back to track 1 sub */
+        assert(song_sub==1);
+        enc[EN_K3]=99; song_screen_input(0,0);          /* set track 1 to MUTE */
+        assert(arrangement.entry[0].track[0]==ARR_MUTE);
+        sv=scene_saves; ui.msg_t=0;
+        press(B_REC); assert(ui.msg_t>0 && scene_saves==sv);
+        /* ENC1 clamps at 0 (bars row) when going below */
+        enc[EN_K2]=-99; song_screen_input(0,0);
+        assert(song_sub==0);
+        /* ENC1 clamps at ARR_TRACKS (=4) when going above */
+        enc[EN_K2]=99; song_screen_input(0,0);
+        assert(song_sub==ARR_TRACKS);
+    }
+    puts("song UI: per-track pattern editing, mute, field navigation PASS");
+
     arr_defaults(&arrangement);ready=15;ui.msg_t=0;ui.force=1;
-    arrangement.entry[0]=(arr_entry_t){0,4};
-    arrangement.entry[1]=(arr_entry_t){1,8};
-    arrangement.entry[2]=(arr_entry_t){2,8};
-    arrangement.entry[3]=(arr_entry_t){3,4};
+    for(k=0;k<ARR_TRACKS;k++) arrangement.entry[0].track[k]=0; arrangement.entry[0].bars=4;
+    for(k=0;k<ARR_TRACKS;k++) arrangement.entry[1].track[k]=1; arrangement.entry[1].bars=8;
+    for(k=0;k<ARR_TRACKS;k++) arrangement.entry[2].track[k]=2; arrangement.entry[2].bars=8;
+    for(k=0;k<ARR_TRACKS;k++) arrangement.entry[3].track[k]=3; arrangement.entry[3].bars=4;
     palette_set(2);song_screen_draw();
     if(argc>1) {
         FILE *f=fopen(argv[1],"wb");assert(f);

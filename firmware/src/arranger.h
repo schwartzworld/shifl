@@ -5,12 +5,15 @@
 #ifndef FM1_ARRANGER_H
 #define FM1_ARRANGER_H
 #include <stdint.h>
-#define ARR_STEPS 16u
+#define ARR_STEPS  16u
 #define ARR_SCENES 4u
-#define ARR_NONE (-1)
-#define ARR_DONE (-2)
+#define ARR_TRACKS 4u
+#define ARR_MUTE   4u   /* track[k] == ARR_MUTE: this track is silent in the section */
+#define ARR_NONE    (-1)
+#define ARR_DONE    (-2)
 #define ARR_INVALID (-3)
-typedef struct { uint8_t scene, bars; } arr_entry_t;
+/* Each entry independently selects a scene (A-D = 0-3) or ARR_MUTE per track. */
+typedef struct { uint8_t track[ARR_TRACKS]; uint8_t bars; uint8_t rsv[3]; } arr_entry_t;
 typedef struct {
     uint8_t count, loop, reserved[2];
     arr_entry_t entry[ARR_STEPS];
@@ -22,32 +25,39 @@ typedef struct {
 
 static void arr_defaults(arr_config_t *c)
 {
-    uint32_t i;
+    uint32_t i, k;
     c->count = 4; c->loop = 0; c->reserved[0] = c->reserved[1] = 0;
     for (i = 0; i < ARR_STEPS; i++) {
-        c->entry[i].scene = (uint8_t)(i % ARR_SCENES);
+        for (k = 0; k < ARR_TRACKS; k++)
+            c->entry[i].track[k] = (uint8_t)(i % ARR_SCENES);
         c->entry[i].bars = 4;
+        c->entry[i].rsv[0] = c->entry[i].rsv[1] = c->entry[i].rsv[2] = 0;
     }
 }
 static int arr_valid(const arr_config_t *c, uint32_t ready)
 {
-    uint32_t i;
+    uint32_t i, k;
     if (!c->count || c->count > ARR_STEPS || c->loop > 1u) return 0;
     for (i = 0; i < c->count; i++) {
         const arr_entry_t *e = &c->entry[i];
-        if (e->scene >= ARR_SCENES || !e->bars || e->bars > 64u ||
-            !(ready & (1u << e->scene))) return 0;
+        if (!e->bars || e->bars > 64u) return 0;
+        for (k = 0; k < ARR_TRACKS; k++) {
+            if (e->track[k] == ARR_MUTE) continue;
+            if (e->track[k] >= ARR_SCENES || !(ready & (1u << e->track[k]))) return 0;
+        }
     }
     return 1;
 }
+/* Returns the entry index (>= 0) when playback begins, ARR_INVALID if invalid. */
 static int arr_begin(arr_clock_t *r, const arr_config_t *c, uint32_t ready)
 {
     r->phase = 0; r->index = 0; r->bar = 0; r->running = 0;
     r->error = (uint8_t)!arr_valid(c, ready);
     if (r->error) return ARR_INVALID;
     r->running = 1;
-    return c->entry[0].scene;
+    return 0;
 }
+/* Returns the new entry index (>= 0) when crossing a section boundary, else ARR_NONE/ARR_DONE. */
 static int arr_next(arr_clock_t *r, const arr_config_t *c, uint32_t sample_rate)
 {
     int result = ARR_NONE;
@@ -61,7 +71,7 @@ static int arr_next(arr_clock_t *r, const arr_config_t *c, uint32_t sample_rate)
             if (!c->loop) { r->running = 0; return ARR_DONE; }
             r->index = 0;
         }
-        result = c->entry[r->index].scene;
+        result = (int)r->index;
     }
     return result;
 }

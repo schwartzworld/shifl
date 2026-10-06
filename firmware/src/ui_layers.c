@@ -687,7 +687,7 @@ static void layer_screen_draw(void)
         if (srec == 2u) {
             char b[8];
             str_cpy(sub, "rec ", sizeof sub);
-            str_cpy(sub + 4, SL[srec_e[srec_n ? srec_n - 1u : 0u].scene & 3u], 2);
+            str_cpy(sub + 4, SL[srec_e[srec_n ? srec_n - 1u : 0u].track[0] & 3u], 2);
             str_cpy(sub + str_len(sub), " bar ", 6);
             fmt_int(b, srec_n ? srec_e[srec_n - 1u].bars + 1 : 1);
             str_cpy(sub + str_len(sub), b, 6);

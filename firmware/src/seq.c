@@ -1189,11 +1189,13 @@ static void srec_finish(void)                      /* (audio ISR, or the UI with
 }
 static void srec_add(uint32_t s)
 {
+    uint32_t k;
     if (srec_n >= ARR_STEPS) {
         srec_finish();                              /* the chain is full: what was played so far */
         return;
     }
-    srec_e[srec_n].scene = (uint8_t)s;
+    for (k = 0; k < ARR_TRACKS; k++)
+        srec_e[srec_n].track[k] = (uint8_t)s;
     srec_e[srec_n].bars = 0;
     srec_n++;
 }
@@ -1218,7 +1220,7 @@ static void live_block(void)                       /* once a block while playing
         if (e->bars < 64u) {
             e->bars++;
         } else {                                    /* (64 bars of one section: it goes on in the next entry) */
-            srec_add(e->scene);
+            srec_add(e->track[0]);   /* live sections are whole-scene; track[0] is representative */
             if (srec == 2u)
                 srec_e[srec_n - 1u].bars = 1;
         }
@@ -1227,7 +1229,7 @@ static void live_block(void)                       /* once a block while playing
         uint32_t s = (uint32_t)live_req;
         live_req = -1;
         {                                           /* (the UI asked for a section it checked: no hash here) */
-            arrangement_apply(s);
+            arrangement_apply_scene(s);
             song.rec = 0;                           /* (a take does not run on into another section) */
             live_sec = (int8_t)s;
             seq_reset_tracks(clk_pos);              /* on the bar: every track from its step 0 */

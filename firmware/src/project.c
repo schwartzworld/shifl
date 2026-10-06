@@ -430,7 +430,7 @@ typedef struct {
 #define PERSIST_SIZE_V22 __builtin_offsetof(persist_t, lights)   /* the settings as 2.2 wrote them (no lights) */
 _Static_assert(sizeof(persist_t) == PERSIST_SIZE_V22 + 4u, "lights: the last word, no padding before it");
 #if FELUCCA_ARRANGER
-#define PERSIST_MAGIC 0x50455233u                  /* "PER3": includes the song order */
+#define PERSIST_MAGIC 0x50455234u                  /* "PER4": per-track song sections */
 #else
 #define PERSIST_MAGIC 0x50455232u
 #endif

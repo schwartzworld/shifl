@@ -8,19 +8,65 @@ static uint32_t arrangement_ready(void)
     return ready;
 }
 
-/* Called only at an audio-block boundary, after validation of all slots at
- * start. The song keeps one tempo and global FX across every section (only the drum
- * level and reverb come from it). */
-static void arrangement_apply(uint32_t scene)
+/* Apply one track from a project slot into the live track, clamping all values. */
+static void proj_apply_track(const project_t *p, uint32_t k)
+{
+    uint32_t i;
+    track_t *t = &trk[k];
+    const proj_trk_t *s = &p->t[k];
+    uint32_t e = k < NPART ? s->engine % NENGINES : 0u;
+    t->eng_req = (uint8_t)e;
+    t->user = 0;
+    for (i = 0; i < P_COUNT; i++) {
+        const param_desc_t *d = k == TRK_DRUM && i == P_E0 ? &DRUM_KIT_DESC :
+                                i >= P_E0 && i <= P_E7 ? &ENGINES[e]->edit[i - P_E0] : &TP[i];
+        t->p[i] = (int16_t)clamp(s->p[i], d->min, d->max);
+    }
+    t->preset = (uint8_t)(ENGINES[e]->npresets ? (s->preset == 0xFFu ? 0u : s->preset) % ENGINES[e]->npresets : 0u);
+    memcpy(t->step, s->step, sizeof t->step);
+    if (k != TRK_DRUM)
+        for (i = 0; i < NSTEP; i++) {
+            step_t *st = &t->step[i];
+            uint32_t j;
+            if (st->n > 4u) st->n = 4;
+            if (st->time > ST_REST) st->time = ST_REST;
+            for (j = 0; j < 4u; j++) st->note[j] &= 127u;
+        }
+}
+
+static void trk_clear_state(track_t *t)
+{
+    seq_release(t);
+    trk_all_off(t);
+    t->nheld = t->arp_phys = t->arp_note = t->rh_n = t->rskip_n = 0;
+    t->rskip_lanes = 0;
+}
+
+/* Per-entry section switch: each track independently picks its scene or mutes.
+ * Called only at an audio-block boundary after start-time validation. The song
+ * keeps one tempo and global FX (only drum level/reverb come from the section). */
+static void arrangement_apply(uint32_t entry_index)
 {
     uint32_t k;
+    const arr_entry_t *e = &arrangement.entry[entry_index];
     for (k = 0; k < NTRK; k++) {
-        track_t *t = &trk[k];
-        seq_release(t);
-        trk_all_off(t);
-        t->nheld = t->arp_phys = t->arp_note = t->rh_n = t->rskip_n = 0;
-        t->rskip_lanes = 0;
+        trk_clear_state(&trk[k]);
+        if (e->track[k] == ARR_MUTE) {
+            trk[k].p[P_LEVEL] = 0;     /* P_LEVEL=0 silences the track in the mixer */
+        } else {
+            proj_apply_track(&proj_slot[e->track[k]], k);
+        }
     }
+    sync_reload = 1;
+    ui.force = 1;
+}
+
+/* Live section jump (SAVE+key): all tracks from one scene, no per-track split. */
+static void arrangement_apply_scene(uint32_t scene)
+{
+    uint32_t k;
+    for (k = 0; k < NTRK; k++)
+        trk_clear_state(&trk[k]);
     proj_apply(&proj_slot[scene], 0);
     sync_reload = 1;
     ui.force = 1;

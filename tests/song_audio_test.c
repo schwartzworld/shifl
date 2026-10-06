@@ -12,6 +12,8 @@ static struct { uint8_t force; } ui;
 static uint8_t sync_reload;
 #include "../firmware/src/arranger_scene.c"
 
+#define SET_ENTRY(e,sc,ba) do { uint32_t _k; for(_k=0;_k<ARR_TRACKS;_k++) (e)->track[_k]=(uint8_t)(sc); (e)->bars=(ba); } while(0)
+
 static void capture(uint32_t slot)
 {
     project_t *p = &proj_slot[slot];
@@ -67,8 +69,8 @@ int main(int argc, char **argv)
     capture(1);
     arr_defaults(&arrangement);
     arrangement.count = 2;
-    arrangement.entry[0] = (arr_entry_t){0, 2};
-    arrangement.entry[1] = (arr_entry_t){1, 2};
+    SET_ENTRY(&arrangement.entry[0], 0, 2);
+    SET_ENTRY(&arrangement.entry[1], 1, 2);
     arrangement_enabled = 1;
     transport_req = 1;
     if (f) wav_hdr(f, frames);
@@ -100,12 +102,12 @@ int main(int argc, char **argv)
         for (k = 0; k < NVOICE; k++) assert(!trk[i].v[k].gate);
     }
     /* A missing later scene must prevent even the first scene from starting. */
-    arrangement.entry[1].scene = 3;
+    { uint32_t _k; for(_k=0;_k<ARR_TRACKS;_k++) arrangement.entry[1].track[_k]=3; }
     transport_req = 1; events_block(CTL);
     assert(!song.playing && arrangement_clock.error);
     {   /* LIVE: A as the loop, SONG REC armed; B asked for in bar 2 starts on bar 3; stop in B's 3rd bar */
         uint32_t bar = 4u * 60u * FS / (uint32_t)song.g[G_BPM], t, jumped = 0;
-        arrangement.entry[1].scene = 1;
+        { uint32_t _k; for(_k=0;_k<ARR_TRACKS;_k++) arrangement.entry[1].track[_k]=1; }
         arrangement_enabled = 0;
         proj_apply(&proj_slot[0], 1);
         live_sec = 0;
@@ -120,9 +122,35 @@ int main(int argc, char **argv)
         mix_block(out, CTL);
         assert(jumped >= 2u * bar && jumped < 2u * bar + CTL);      /* exactly on the bar */
         assert(trk[0].step[0].note[0] == 41 && srec == 0 && srec_done == 2u);
-        assert(arrangement.count == 2u && arrangement.entry[0].scene == 0 && arrangement.entry[0].bars == 2u &&
-               arrangement.entry[1].scene == 1 && arrangement.entry[1].bars == 3u);
+        assert(arrangement.count == 2u &&
+               arrangement.entry[0].track[0] == 0 && arrangement.entry[0].bars == 2u &&
+               arrangement.entry[1].track[0] == 1 && arrangement.entry[1].bars == 3u);
         printf("song live: B on the bar (%u), SONG REC -> A 2 bars, B 3 bars PASS\n", jumped);
+    }
+    {   /* Per-track scene mixing: T1 from slot 0, T2-T4 from slot 1 */
+        arrangement.entry[0].track[0] = 0;  /* T1 -> slot A (bass note 36) */
+        arrangement.entry[0].track[1] = 1;  /* T2 -> slot B (chord notes +5) */
+        arrangement.entry[0].track[2] = 1;  /* T3 -> slot B */
+        arrangement.entry[0].track[3] = 1;  /* T4 drum -> slot B (kit 4) */
+        arrangement.entry[0].bars = 1;
+        arrangement.count = 1;
+        arrangement_enabled = 1;
+        arrangement_apply(0);
+        assert(trk[0].step[0].note[0] == 36);   /* T1 from slot 0: original bass note */
+        assert(trk[1].step[0].note[0] == 65);   /* T2 from slot 1: chord note 60+5 */
+        assert(drum_kit() == 4);                 /* T4 drum from slot 1 */
+
+        /* Muted synth track: P_LEVEL set to 0 by the mixer */
+        arrangement.entry[0].track[0] = ARR_MUTE;
+        arrangement_apply(0);
+        assert(trk[0].p[P_LEVEL] == 0);
+
+        /* Muted drum track: P_LEVEL set to 0 */
+        arrangement.entry[0].track[3] = ARR_MUTE;
+        arrangement_apply(0);
+        assert(trk[3].p[P_LEVEL] == 0);
+
+        puts("song audio: per-track scenes and mute PASS");
     }
     printf("song audio: 3 synth parts + drums, section at %u, stop at %u, no held sequencer notes PASS\n",at_change,at_stop);
     return 0;
