@@ -30,7 +30,7 @@ static void arr_defaults(arr_config_t *c)
     for (i = 0; i < ARR_STEPS; i++) {
         for (k = 0; k < ARR_TRACKS; k++)
             c->entry[i].track[k] = (uint8_t)(i % ARR_SCENES);
-        c->entry[i].bars = 4;
+        c->entry[i].bars = 8;
         c->entry[i].rsv[0] = c->entry[i].rsv[1] = c->entry[i].rsv[2] = 0;
     }
 }
@@ -40,7 +40,7 @@ static int arr_valid(const arr_config_t *c, uint32_t ready)
     if (!c->count || c->count > ARR_STEPS || c->loop > 1u) return 0;
     for (i = 0; i < c->count; i++) {
         const arr_entry_t *e = &c->entry[i];
-        if (!e->bars || e->bars > 64u) return 0;
+        if (!e->bars || e->bars > 128u) return 0;
         for (k = 0; k < ARR_TRACKS; k++) {
             if (e->track[k] == ARR_MUTE) continue;
             if (e->track[k] >= ARR_SCENES || !(ready & (1u << e->track[k]))) return 0;
@@ -61,7 +61,7 @@ static int arr_begin(arr_clock_t *r, const arr_config_t *c, uint32_t ready)
 static int arr_next(arr_clock_t *r, const arr_config_t *c, uint32_t sample_rate)
 {
     int result = ARR_NONE;
-    uint32_t period = sample_rate * 240u;
+    uint32_t period = sample_rate * 120u;
     if (!r->running || !period) return ARR_NONE;
     while (r->phase >= period) {
         r->phase -= period;

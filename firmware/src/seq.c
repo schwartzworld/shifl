@@ -1202,9 +1202,9 @@ static void srec_add(uint32_t s)
 /* STOP (or SONG REC pressed again): the bar playing counts if it had begun */
 static void srec_stop(void)
 {
-    if (srec == 2u && srec_n && srec_e[srec_n - 1u].bars < 64u &&
+    if (srec == 2u && srec_n && srec_e[srec_n - 1u].bars <= 126u &&
         ((!(clk_beat & 3u) && (clk_beat >> 2) != live_bar) || (clk_beat & 3u)))
-        srec_e[srec_n - 1u].bars++;
+        srec_e[srec_n - 1u].bars += 2;
     if (srec == 2u)
         srec_finish();
     srec = 0;
@@ -1217,12 +1217,12 @@ static void live_block(void)                       /* once a block while playing
     live_bar = clk_beat >> 2;                       /* a new bar */
     if (srec == 2u && srec_n) {
         arr_entry_t *e = &srec_e[srec_n - 1u];
-        if (e->bars < 64u) {
-            e->bars++;
+        if (e->bars <= 126u) {
+            e->bars += 2;
         } else {                                    /* (64 bars of one section: it goes on in the next entry) */
             srec_add(e->track[0]);   /* live sections are whole-scene; track[0] is representative */
             if (srec == 2u)
-                srec_e[srec_n - 1u].bars = 1;
+                srec_e[srec_n - 1u].bars = 2;
         }
     }
     if (live_req >= 0) {

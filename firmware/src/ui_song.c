@@ -11,7 +11,7 @@ static void song_sane(void)
     uint32_t i, k, ok = arrangement.count >= 1u && arrangement.count <= ARR_STEPS;
     for (i = 0; ok && i < arrangement.count; i++) {
         const arr_entry_t *e = &arrangement.entry[i];
-        ok = e->bars >= 1u && e->bars <= 64u;
+        ok = e->bars >= 1u && e->bars <= 128u;
         for (k = 0; ok && k < ARR_TRACKS; k++)
             ok = e->track[k] == ARR_MUTE || e->track[k] < ARR_SCENES;
     }
@@ -70,13 +70,15 @@ static void song_screen_draw(void)
     {
         const arr_entry_t *e = &arrangement.entry[song_cursor];
         int sel = (song_sub == 0u);
-        int32_t w = (int32_t)e->bars * 100 / 64 + 4;
+        int32_t w = (int32_t)e->bars * 100 / 128 + 4;
         cv_begin(240, 26, C_BLACK);
         fmt_int(b, (int32_t)song_cursor + 1);
         cv_text(4, 5, &FONT_S, b, C_WHITE);
         cv_rect(26, 9, w, 8, sel ? RGB(180, 180, 190) : RGB(54, 54, 60));
-        fmt_int(b, e->bars);
-        str_cpy(b + str_len(b), e->bars == 1 ? " bar" : " bars", 8);
+        { uint32_t whole = e->bars / 2u, half = e->bars & 1u;
+          if (whole) { fmt_int(b, (int32_t)whole); if (half) str_cpy(b + str_len(b), ".5", 4); }
+          else str_cpy(b, "0.5", 4);
+          str_cpy(b + str_len(b), (whole == 1u && !half) ? " bar" : " bars", 8); }
         cv_text(26 + w + 4, 5, &FONT_S, b, sel ? C_WHITE : RGB(118, 118, 126));
         /* mini tiles for all 4 tracks at right edge */
         for (k = 0; k < ARR_TRACKS; k++) {
@@ -199,7 +201,7 @@ static void song_screen_input(uint32_t pressed, uint32_t home)
         } else if (k == 2) {
             arr_entry_t *e = &arrangement.entry[song_cursor];
             if (song_sub == 0u) {
-                e->bars = (uint8_t)clamp(e->bars + steps, 1, 64);
+                e->bars = (uint8_t)clamp(e->bars + steps, 1, 128);
             } else {
                 uint32_t t = (uint32_t)(song_sub - 1u);
                 int32_t cur = (int32_t)e->track[t];   /* 0-3=A-D, 4=MUTE */
