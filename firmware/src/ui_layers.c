@@ -364,7 +364,7 @@ static void layer_knobs(uint32_t layer)
                     pen_n = 1;
                 }
             } else if (k == 1u) {
-                t->p[P_SDIV] = (int16_t)clamp(t->p[P_SDIV] + s, 0, 5);
+                t->p[P_SDIV] = (int16_t)clamp(t->p[P_SDIV] + s, 0, 8);
             } else if (k == 2u) {
                 t->p[P_SSWING] = (int16_t)clamp(t->p[P_SSWING] + accel(EN_K3, s, 100), 0, 100);
             } else {
@@ -601,10 +601,10 @@ static void layer_screen_draw(void)
             str_cpy(v[2], "x1 x4", 8);
         } else {
             lab[1] = "div", lab[2] = "swing", lab[3] = "steps";
-            str_cpy(v[1], N_DIV[t->p[P_SDIV] % 6], 8);
+            str_cpy(v[1], N_DIV[t->p[P_SDIV] % 9], 8);
             swing_str(v[2], t->p[P_SSWING]);
             fmt_int(v[3], t->p[P_SLEN]);
-            ratio[1] = t->p[P_SDIV] * 200;
+            ratio[1] = t->p[P_SDIV] * 1000 / 8;
             ratio[2] = t->p[P_SSWING] * 10;
             ratio[3] = (t->p[P_SLEN] - 1) * 1000 / 63;
         }

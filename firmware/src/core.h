@@ -258,8 +258,9 @@ static song_t song;
 #endif
 #define BEAT_U ((uint32_t)FS * 60u)
 static volatile uint32_t clk_beat, clk_pos;
-static const uint8_t DIV_DEN[6] = {1, 2, 4, 8, 3, 6};    /* N_DIV: beats = 1 / DEN */
-static uint32_t div_units(uint32_t div) { return BEAT_U / DIV_DEN[div % 6u]; }
+static const uint8_t DIV_NUM[9] = {1, 1, 1, 1, 1, 1, 2, 4, 8};  /* N_DIV: step = NUM/DEN beats */
+static const uint8_t DIV_DEN[9] = {1, 2, 4, 8, 3, 6, 1, 1, 1};
+static uint32_t div_units(uint32_t div) { uint32_t i = div % 9u; return BEAT_U * DIV_NUM[i] / DIV_DEN[i]; }
 /* length of one division (N_DIV order) in samples at the song tempo (rounded down) */
 static uint32_t div_samples(uint32_t div)
 {
