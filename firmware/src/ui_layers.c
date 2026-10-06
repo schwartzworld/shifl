@@ -483,8 +483,8 @@ static void layer_screen_draw(void)
         col = TE_DRUM;
         str_cpy(sub, "hold + key", sizeof sub);
         for (i = 0; i < 16u; i++) {
-            static const char *const PSHORT[16] = {"loop 4", "loop 8", "loop16", "loop32", "stutt", "rev", "stop", "half",
-                                                   "low", "high", "phone", "crush", "alias", "gate", "echo", "wobble"};
+            static const char *const PSHORT[16] = {"loop 4", "loop 8", "loop16", "loop32", "stutt", "oct up", "stop", "slap",
+                                                   "flange", "echo 2", "phone", "crush", "alias", "gate", "echo", "wobble"};
             int on = punch.req == (int8_t)i;
             str_cpy(tl[i].lab, PSHORT[i], 8);
             tl[i].bg = on ? C_WHITE : TE_G1;

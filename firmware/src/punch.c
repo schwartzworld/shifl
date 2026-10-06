@@ -9,11 +9,11 @@
 /* the transport clock (core.h clk_pos) places the loops and the gate on the grid */
 static uint32_t clk_samples(void) { return clk_pos / (uint32_t)song.g[G_BPM]; }   /* samples into the beat */
 #define PUNCH_NFX 16u
-enum { PX_LOOP4, PX_LOOP8, PX_LOOP16, PX_LOOP32, PX_STUT, PX_REV, PX_STOP, PX_HALF,
-       PX_LPF, PX_HPF, PX_TEL, PX_CRUSH, PX_DOWN, PX_GATE, PX_ECHO, PX_WOBBLE };
+enum { PX_LOOP4, PX_LOOP8, PX_LOOP16, PX_LOOP32, PX_STUT, PX_OCT, PX_STOP, PX_SLAP,
+       PX_FLANGE, PX_ECH2, PX_TEL, PX_CRUSH, PX_DOWN, PX_GATE, PX_ECHO, PX_WOBBLE };
 static const char *const PUNCH_NAME[PUNCH_NFX] = {
-    "LOOP 4", "LOOP 8", "LOOP 16", "LOOP 32", "STUTTER", "REVERSE", "STOP", "HALF",
-    "LOW", "HIGH", "PHONE", "CRUSH", "ALIAS", "GATE", "ECHO", "WOBBLE"};
+    "LOOP 4", "LOOP 8", "LOOP 16", "LOOP 32", "STUTTER", "OCT UP", "STOP", "SLAP",
+    "FLANGE", "ECHO 2", "PHONE", "CRUSH", "ALIAS", "GATE", "ECHO", "WOBBLE"};
 static int16_t punch_ring[PUNCH_N] __attribute__((section(".pool")));
 static struct {
     volatile int8_t req;          /* effect asked for by the keys (-1 none), ISR keyboard_block */
@@ -48,10 +48,10 @@ static int32_t ring_q16(uint32_t p)                 /* read at Q16 position, lin
 static void punch_start(int32_t fx)
 {
     uint32_t beat = beat_samples(), len, ph = clk_samples();
-    static const uint8_t DIV[8] = {1, 2, 4, 8, 6, 1, 1, 2};   /* loops: beat / DIV */
+    static const uint8_t DIV[8] = {1, 2, 4, 8, 6, 2, 1, 1};   /* loops: beat / DIV */
     punch.cur = (int8_t)fx;
     punch.t = 0;
-    len = fx <= PX_HALF ? beat / DIV[fx] : beat;
+    len = fx <= PX_SLAP ? beat / DIV[fx] : beat;
     if (len > PUNCH_N - 1024u)
         len = PUNCH_N - 1024u;
     if (len < 64u)
@@ -70,7 +70,7 @@ static void punch_start(int32_t fx)
     }
     punch.rp = punch.w << 16;
     punch.spd = 65536u;
-    punch.dspd = 65536u / len + 1u;
+    punch.dspd = 65536u / (len * 2u) + 1u;
     punch.sub = 0;
     punch.k = punch.t % len;
     punch.lfo = 0;
@@ -86,9 +86,10 @@ static int32_t punch_ring_fx(int32_t fx)
     uint32_t len = punch.len, k = punch.k;
     int32_t y;
     switch (fx) {
-    case PX_REV:
-        y = ring_at(punch.start - k);
-        break;
+    case PX_OCT:
+        y = ring_at(punch.start + k * 2u);
+        punch.k = k + 1u >= len ? 0u : k + 1u;
+        return k < 64u ? (y * (int32_t)k) >> 6 : len - k < 64u ? (y * (int32_t)(len - k)) >> 6 : y;
     case PX_STOP:
         y = ring_q16(punch.rp);
         punch.rp += punch.spd;
@@ -103,8 +104,7 @@ static int32_t punch_ring_fx(int32_t fx)
         y = ring_at(punch.start + k);
         break;
     }
-    if (fx != PX_HALF || (punch.sub ^= 1u) == 0u)       /* HALF: every other sample */
-        punch.k = k + 1u >= len ? 0u : k + 1u;
+    punch.k = k + 1u >= len ? 0u : k + 1u;
     /* declick at the seams */
     return k < 64u ? (y * (int32_t)k) >> 6 : len - k < 64u ? (y * (int32_t)(len - k)) >> 6 : y;
 }
@@ -116,10 +116,8 @@ static int32_t punch_ring_fx(int32_t fx)
 static int punch_owns(int32_t fx, uint32_t w)
 {
     uint32_t d = w - punch.start, len = punch.len;
-    if (fx < 0 || fx > PX_HALF || fx == PX_STOP || punch.pre)
+    if (fx < 0 || fx > PX_STUT || punch.pre)
         return 0;
-    if (fx == PX_REV)
-        return d >= 1u && ((d + len - 1u) & (PUNCH_N - 1u)) < len;
     return d >= len && (d & (PUNCH_N - 1u)) < len;
 }
 
@@ -143,13 +141,8 @@ static void punch_process(int32_t *l, int32_t *r, uint32_t n)
     if (echo_d > PUNCH_N - 64u) echo_d = PUNCH_N - 64u;
     if (punch.cur == PX_GATE)
         punch.gp = (song.playing ? clk_samples() : punch.t) % step;
-    {   /* filter sweeps: per block */
-        int32_t fx = punch.cur;
-        if (fx == PX_LPF && punch.g > 0)
-            punch.cut = punch.cut > (34 << 8) ? punch.cut - 96 : 34 << 8;   /* closes over ~1 s */
-        if (fx == PX_HPF && punch.g > 0)
-            punch.cut = punch.cut > (88 << 8) ? punch.cut - 64 : 88 << 8;
-        tsvf_coef(&c1, fx == PX_LPF ? punch.cut : fx == PX_HPF ? (127 << 8) - punch.cut + (40 << 8) : 96 << 8, 90);
+    {   /* filter coefficients: per block */
+        tsvf_coef(&c1, 96 << 8, 90);                  /* PHONE: bandpass < 2.5 kHz */
         tsvf_coef(&c2, 58 << 8, 40);                  /* PHONE: low cut ~ 500 Hz */
     }
     for (i = 0; i < n; i++) {
@@ -159,14 +152,24 @@ static void punch_process(int32_t *l, int32_t *r, uint32_t n)
         if (!punch_owns(fx, punch.w))                   /* (a held loop keeps its material) */
             punch_ring[punch.w & (PUNCH_N - 1u)] = (int16_t)clamp(m >> 3, -32768, 32767);
         switch (fx) {
-        case PX_LPF:
-            wl = tsvf_lp(&c1, x >> 1, &punch.f1l, &punch.f2l) << 1;
-            wr = tsvf_lp(&c1, y >> 1, &punch.f1r, &punch.f2r) << 1;
+        case PX_FLANGE: {
+            int32_t fd = 926 + (sine_i(punch.lfo) * 840 >> 15);
+            punch.lfo += 0xFFFFFFFFu / FS;
+            int32_t fe = ring_raw(punch.w - (uint32_t)fd) * 18000 >> 12;
+            wl = x + fe;
+            wr = y + fe;
             break;
-        case PX_HPF:
-            wl = x - (tsvf_lp(&c1, x >> 1, &punch.f1l, &punch.f2l) << 1);
-            wr = y - (tsvf_lp(&c1, y >> 1, &punch.f1r, &punch.f2r) << 1);
+        }
+        case PX_ECH2: {
+            uint32_t echo2_d = beat >> 1;
+            if (echo2_d > PUNCH_N - 64u) echo2_d = PUNCH_N - 64u;
+            if (echo2_d < 64u) echo2_d = 64u;
+            int32_t e2 = (ring_raw(punch.w - echo2_d) * 18000) >> 12;
+            punch_ring[punch.w & (PUNCH_N - 1u)] = (int16_t)clamp((m + e2) >> 3, -32768, 32767);
+            wl = x + e2;
+            wr = y + e2;
             break;
+        }
         case PX_TEL: {
             int32_t b = tsvf_lp(&c1, m >> 1, &punch.f1l, &punch.f2l);        /* < 2.5 kHz */
             b -= tsvf_lp(&c2, b, &punch.f3l, &punch.f4l);                   /* > 500 Hz */
@@ -194,6 +197,15 @@ static void punch_process(int32_t *l, int32_t *r, uint32_t n)
             else if (p >= step / 2u && p < step / 2u + 64u) gg = 32767 - (int32_t)(p - step / 2u) * 512;
             wl = ((x >> 3) * gg) >> 12;
             wr = ((y >> 3) * gg) >> 12;
+            break;
+        }
+        case PX_SLAP: {
+            uint32_t slap_d = beat >> 2;
+            if (slap_d > PUNCH_N - 64u) slap_d = PUNCH_N - 64u;
+            if (slap_d < 64u) slap_d = 64u;
+            int32_t se = (ring_raw(punch.w - slap_d) * 12000) >> 12;
+            wl = x + se;
+            wr = y + se;
             break;
         }
         case PX_ECHO: {
