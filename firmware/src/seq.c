@@ -1316,6 +1316,7 @@ static void seq_stop(void)
 #if FELUCCA_ARRANGER
     if (arrangement_clock.running) {
         arrangement_clock.running = 0;
+        punch.song = -1;
         song_restore();                            /* back to the loop you were making */
     }
 #endif
@@ -1647,6 +1648,7 @@ static void events_block(uint32_t n)
         }
         else if (scene >= 0) {
             arrangement_apply((uint32_t)scene);
+            punch.song = arrangement.entry[scene].rsv[0] == 0xFFu ? (int8_t)-1 : (int8_t)arrangement.entry[scene].rsv[0];
             seq_reset_tracks(arrangement_clock.phase);   /* (the remainder: exactly on the bar) */
         }
     } else if (song.playing) {

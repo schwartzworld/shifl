@@ -18,7 +18,7 @@ static void song_sane(void)
     if (!ok) arr_defaults(&arrangement);
     if (song_cursor >= arrangement.count)
         song_cursor = (uint8_t)(arrangement.count - 1u);
-    if (song_sub > ARR_TRACKS) song_sub = 0;
+    if (song_sub > ARR_TRACKS + 1u) song_sub = 0;
 }
 
 /* Scene targeted by REC/LOAD: the selected track's scene, or the first non-muted
@@ -26,10 +26,24 @@ static void song_sane(void)
 static int song_ref_scene(uint32_t *out)
 {
     const arr_entry_t *e = &arrangement.entry[song_cursor];
-    uint32_t k = song_sub > 0u ? (uint32_t)(song_sub - 1u) : 0u;
+    uint32_t k = (song_sub > 0u && song_sub <= ARR_TRACKS) ? (uint32_t)(song_sub - 1u) : 0u;
     if (e->track[k] == ARR_MUTE) return 0;
     *out = e->track[k];
     return 1;
+}
+
+/* Insert a copy of the current fragment after it, shifting subsequent ones. */
+static void song_clone_fragment(void)
+{
+    uint32_t i;
+    if (song.playing || transport_req) { ui_message("STOP FIRST"); return; }
+    if (arrangement.count >= ARR_STEPS) { ui_message("SONG FULL"); return; }
+    for (i = arrangement.count; i > (uint32_t)song_cursor + 1u; i--)
+        arrangement.entry[i] = arrangement.entry[i - 1u];
+    arrangement.entry[song_cursor + 1u] = arrangement.entry[song_cursor];
+    arrangement.count++;
+    song_cursor++;
+    ui_message("CLONED");
 }
 
 /* SONG: each entry as a header row (bars) + four track rows */
@@ -49,6 +63,7 @@ static void song_screen_draw(void)
         const arr_entry_t *e = &arrangement.entry[i];
         sig = sig * 31u + e->bars;
         for (k = 0; k < ARR_TRACKS; k++) sig = sig * 7u + e->track[k];
+        sig = sig * 5u + e->rsv[0];
     }
     for (i = 0; i < ARR_SCENES; i++) sig = sig * 3u + (uint32_t)project_used(i);
     if (!ui.force && !ui.msg_t && sig == previous) return;
@@ -119,21 +134,40 @@ static void song_screen_draw(void)
         cv_blit(0, (int32_t)(68 + 26u * k));
     }
 
+    /* FX row (sub=5): punch-in effect for this fragment */
+    {
+        const arr_entry_t *e = &arrangement.entry[song_cursor];
+        int sel = (song_sub == (uint8_t)(ARR_TRACKS + 1u));
+        uint8_t fx = e->rsv[0];
+        cv_begin(240, 26, C_BLACK);
+        cv_text(4, 5, &FONT_S, "FX", RGB(118, 118, 126));
+        if (fx == 0xFFu) {
+            cv_rect(26, 3, 22, 20, RGB(26, 26, 30));
+            cv_text(30, 5, &FONT_S, "--", RGB(80, 80, 88));
+            cv_text(56, 5, &FONT_S, "none", sel ? C_WHITE : RGB(80, 80, 88));
+        } else {
+            cv_rect(26, 3, 92, 20, RGB(40, 40, 52));
+            cv_text(30, 5, &FONT_S, PUNCH_NAME[fx], sel ? C_WHITE : RGB(180, 180, 220));
+        }
+        if (sel) cv_rect(0, 1, 240, 1, RGB(54, 54, 60)), cv_rect(0, 24, 240, 1, RGB(54, 54, 60));
+        cv_blit(0, 172);
+    }
+
     /* Footer */
-    cv_begin(240, 68, C_BLACK);
+    cv_begin(240, 42, C_BLACK);
     if (ui.msg_t) {
         cv_rect(0, 4, 240, 30, C_WHITE);
         cv_text((240 - text_w(&FONT_S, ui.msg)) / 2, 11, &FONT_S, ui.msg, C_BLACK);
     } else {
         static const char *const L[4] = {"entry", "field", "value", "length"};
         for (i = 0; i < 4u; i++) {
-            cv_rect((int32_t)i * 60 + 4, 6, 52, 3, SC[i]);
-            cv_text((int32_t)i * 60 + 30 - text_w(&FONT_S, L[i]) / 2, 12, &FONT_S, L[i], RGB(118, 118, 126));
+            cv_rect((int32_t)i * 60 + 4, 2, 52, 3, SC[i]);
+            cv_text((int32_t)i * 60 + 30 - text_w(&FONT_S, L[i]) / 2, 8, &FONT_S, L[i], RGB(118, 118, 126));
         }
+        cv_text(4, 22, &FONT_S, "rec: store   save: chain", RGB(196, 196, 204));
+        cv_text(4, 33, &FONT_S, "oct-: loop/song  arp: clone", RGB(118, 118, 126));
     }
-    cv_text(4, 34, &FONT_S, "rec: store   save: chain", RGB(196, 196, 204));
-    cv_text(4, 50, &FONT_S, "oct-: loop/song  oct+ x2: load", RGB(118, 118, 126));
-    cv_blit(0, 172);
+    cv_blit(0, 198);
 }
 
 static void song_screen_input(uint32_t pressed, uint32_t home)
@@ -149,7 +183,11 @@ static void song_screen_input(uint32_t pressed, uint32_t home)
         if (b == B_PLAY) {
             if (!song.playing && arrangement_enabled && !arr_valid(&arrangement, arrangement_ready()))
                 ui_message("EMPTY SECTION: REC");
-            else transport_req = song.playing ? 2 : 1;
+            else {
+                if (!song.playing && arrangement_enabled)
+                    arrangement_start_index = song_cursor;
+                transport_req = song.playing ? 2 : 1;
+            }
         } else if (b == B_SEQ) {
             open_family(FAM_SEQ);
         } else if (b == B_SAVE || b == B_REC || b == B_OCTDN || b == B_OCTUP) {
@@ -198,15 +236,20 @@ static void song_screen_input(uint32_t pressed, uint32_t home)
         }
         if (song.playing || transport_req) { ui_message("STOP FIRST"); continue; }
         if (k == 1) {
-            song_sub = (uint8_t)clamp((int32_t)song_sub + steps, 0, (int32_t)ARR_TRACKS);
+            song_sub = (uint8_t)clamp((int32_t)song_sub + steps, 0, (int32_t)ARR_TRACKS + 1);
         } else if (k == 2) {
             arr_entry_t *e = &arrangement.entry[song_cursor];
             if (song_sub == 0u) {
                 e->bars = (uint8_t)clamp(e->bars + steps, 1, 128);
-            } else {
+            } else if (song_sub <= ARR_TRACKS) {
                 uint32_t t = (uint32_t)(song_sub - 1u);
-                int32_t cur = (int32_t)e->track[t];   /* 0-3=A-D, 4=MUTE */
+                int32_t cur = (int32_t)e->track[t];   /* 0-5=A-F, 6=MUTE */
                 e->track[t] = (uint8_t)clamp(cur + steps, 0, (int32_t)ARR_MUTE);
+            } else {
+                /* FX row: rsv[0] holds punch FX index, 0xFF = none */
+                int32_t cur_fx = (e->rsv[0] == 0xFFu) ? -1 : (int32_t)e->rsv[0];
+                int32_t new_fx = clamp(cur_fx + steps, -1, (int32_t)PUNCH_NFX - 1);
+                e->rsv[0] = (new_fx < 0) ? 0xFFu : (uint8_t)new_fx;
             }
         } else if (k == 3) {
             arrangement.count = (uint8_t)clamp(arrangement.count + steps, 1, ARR_STEPS);

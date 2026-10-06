@@ -18,6 +18,7 @@ static int16_t punch_ring[PUNCH_N] __attribute__((section(".pool")));
 static struct {
     volatile int8_t req;          /* effect asked for by the keys (-1 none), ISR keyboard_block */
     volatile uint8_t hold;        /* FX button held (UI main loop) */
+    int8_t song;                  /* punch FX queued by the active arrangement entry (-1 none) */
     uint32_t keybit;              /* the key that started it */
     int8_t cur;                   /* effect playing (fading out when req differs) */
     int32_t g;                    /* wet gain Q15 */
@@ -33,7 +34,7 @@ static struct {
     int32_t held_l, held_r, hn;   /* downsample */
     int32_t f1l, f2l, f1r, f2r, f3l, f4l, f3r, f4r;   /* filter states */
     int32_t cut;                  /* sweep, 0..127 << 8 */
-} punch = {.req = -1, .cur = -1};
+} punch = {.req = -1, .cur = -1, .song = -1};
 
 static uint32_t beat_samples(void) { return (uint32_t)FS * 60u / (uint32_t)song.g[G_BPM]; }
 
@@ -125,7 +126,7 @@ static int punch_owns(int32_t fx, uint32_t w)
 static void punch_process(int32_t *l, int32_t *r, uint32_t n)
 {
     uint32_t i;
-    int32_t want = punch.req;
+    int32_t want = punch.hold ? punch.req : punch.song;
     uint32_t beat, step, echo_d;
     tsvf_t c1, c2;
     if (punch.cur < 0 && want < 0) {                   /* idle: only the ring */

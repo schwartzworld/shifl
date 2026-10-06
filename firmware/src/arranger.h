@@ -31,7 +31,8 @@ static void arr_defaults(arr_config_t *c)
         for (k = 0; k < ARR_TRACKS; k++)
             c->entry[i].track[k] = (uint8_t)(i % ARR_SCENES);
         c->entry[i].bars = 8;
-        c->entry[i].rsv[0] = c->entry[i].rsv[1] = c->entry[i].rsv[2] = 0;
+        c->entry[i].rsv[0] = 0xFFu;  /* 0xFF = no punch FX */
+        c->entry[i].rsv[1] = c->entry[i].rsv[2] = 0;
     }
 }
 static int arr_valid(const arr_config_t *c, uint32_t ready)

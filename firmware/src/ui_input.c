@@ -519,7 +519,10 @@ static void layer_tap(uint32_t layer)
         open_family(layer == LY_STEP ? FAM_SEQ : FAM_EDIT);
         break;
     case LY_ROLL:
-        open_family(FAM_ARP);
+        if (on_song_page())
+            song_clone_fragment();
+        else
+            open_family(FAM_ARP);
         break;
     case LY_SCALE:
         open_family(FAM_SCL);
