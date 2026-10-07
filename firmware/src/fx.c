@@ -158,11 +158,7 @@ static inline void master_out(int32_t *l, int32_t *r)
 
 static uint32_t delay_samples(void)
 {
-    /* parallel to N_DTIME; dotted notes use 3/2 or 3/4 of a beat */
-    static const uint8_t NUM[] = {1, 1, 1, 1, 1, 1, 3, 3};
-    static const uint8_t DEN[] = {1, 2, 4, 8, 3, 6, 4, 2};
-    uint32_t d = (uint32_t)song.g[G_DTIME] % (sizeof(NUM) / sizeof(NUM[0]));
-    uint32_t s = BEAT_U * NUM[d] / DEN[d] / (uint32_t)song.g[G_BPM];
+    uint32_t s = dly_samples((uint32_t)song.g[G_DTIME]);
     return s < 16u ? 16u : s >= DLY_LEN ? DLY_LEN - 1u : s;
 }
 

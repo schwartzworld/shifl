@@ -579,7 +579,7 @@ static void layer_screen_draw(void)
             str_cpy(v[2], "x1 x4", 8);
         } else {
             lab[1] = "div", lab[2] = "swing", lab[3] = "steps";
-            str_cpy(v[1], N_DIV[t->p[P_SDIV] % 9], 8);
+            str_cpy(v[1], N_SDIV[t->p[P_SDIV] % NDIV_STEP], 8);
             swing_str(v[2], t->p[P_SSWING]);
             fmt_int(v[3], t->p[P_SLEN]);
             ratio[1] = t->p[P_SDIV] * 1000 / 8;

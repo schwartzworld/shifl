@@ -186,19 +186,9 @@ static uint32_t swing_units(int32_t pct, uint32_t u)
 {
     return (uint32_t)clamp(pct, 0, 100) * u / 200u;
 }
-/* step size num/den beats, odd sub-beat steps sw late: the abs step index, units into it, its length */
-static uint32_t grid_at(uint32_t num, uint32_t den, uint32_t sw, uint32_t *into, uint32_t *len)
+/* odd sub-beat steps sw late: abs step, units into it, its length */
+static uint32_t grid_swing(uint32_t abs, uint32_t frac, uint32_t u, uint32_t sw, uint32_t *into, uint32_t *len)
 {
-    uint32_t u = BEAT_U * num / den, abs, frac;
-    if (num > 1u) {                                         /* super-beat step: no swing */
-        abs = clk_beat / num;
-        frac = (clk_beat % num) * BEAT_U + clk_pos;
-        *len = u;
-        *into = frac;
-        return abs;
-    }
-    abs = clk_beat * den + clk_pos / u;
-    frac = clk_pos % u;
     if (abs & 1u) {                                         /* an odd step: sw late */
         if (frac < sw) {
             abs--;
@@ -214,12 +204,28 @@ static uint32_t grid_at(uint32_t num, uint32_t den, uint32_t sw, uint32_t *into,
     *into = frac;
     return abs;
 }
+/* the clock on a grid of den steps a beat (the rolls: ROLL_DEN) */
+static uint32_t grid_den(uint32_t den, uint32_t sw, uint32_t *into, uint32_t *len)
+{
+    uint32_t u = BEAT_U / den;
+    return grid_swing(clk_beat * den + clk_pos / u, clk_pos % u, u, sw, into, len);
+}
+/* the clock on the grid of a division (N_SDIV: steps inside a beat, or of 2, 4, 8 whole beats) */
+static uint32_t grid_at(uint32_t div, uint32_t sw, uint32_t *into, uint32_t *len)
+{
+    uint32_t m;
+    if (div < NDIV_SHORT)
+        return grid_den(DIV_DEN[div], sw, into, len);
+    m = DIV_BEATS[(div - NDIV_SHORT) % 3u];                /* whole beats: the step from the beat count */
+    return grid_swing(clk_beat / m, (clk_beat % m) * BEAT_U + clk_pos, BEAT_U * m, sw, into, len);
+}
+/* swing is for the straight grids inside a beat: off on the triplet grids and on steps of whole beats */
+static uint32_t swings(uint32_t div) { return div < 4u; }
+static uint32_t trk_div(const track_t *t) { return (uint32_t)t->p[P_SDIV] % NDIV_STEP; }
 static uint32_t trk_grid(const track_t *t, uint32_t *into, uint32_t *len)
 {
-    uint32_t idx = (uint32_t)t->p[P_SDIV] % 9u;
-    uint32_t num = DIV_NUM[idx], den = DIV_DEN[idx];
-    uint32_t sw = (num > 1u) ? 0u : swing_units(t->p[P_SSWING] + song.g[G_SWING], BEAT_U / den);
-    return grid_at(num, den, sw, into, len);
+    uint32_t div = trk_div(t);
+    return grid_at(div, swings(div) ? swing_units(t->p[P_SSWING] + song.g[G_SWING], div_units(div)) : 0u, into, len);
 }
 static uint32_t trk_len(const track_t *t) { return t->p[P_SLEN] > 0 ? (uint32_t)t->p[P_SLEN] : 1u; }
 
@@ -713,9 +719,7 @@ static uint32_t arp_next(track_t *t)
  * each note it plays is recorded (what you hear) */
 static void arp_tick(track_t *t, uint32_t adv)
 {
-    uint32_t idx = (uint32_t)t->p[P_ARATE] % 9u;
-    uint32_t arp_num = DIV_NUM[idx], arp_den = DIV_DEN[idx];
-    uint32_t u = BEAT_U * arp_num / arp_den, into, slen, abs = 0, fire = 0;
+    uint32_t div = (uint32_t)t->p[P_ARATE] % NDIV_SHORT, u = div_units(div), into, slen, abs = 0, fire = 0;
     if (t->arp_note) {
         if (t->arp_off <= adv) {
             trk_note_off(t, t->arp_note);
@@ -733,8 +737,7 @@ static void arp_tick(track_t *t, uint32_t adv)
         return;
     }
     if (song.playing) {
-        uint32_t sw = (arp_num > 1u) ? 0u : swing_units(t->p[P_ASWING], u);
-        abs = grid_at(arp_num, arp_den, sw, &into, &slen);
+        abs = grid_at(div, swings(div) ? swing_units(t->p[P_ASWING], u) : 0u, &into, &slen);
         if (t->arp_new) {
             t->arp_new = 0;
             t->arp_abs = into * 4u >= slen * 3u ? abs : abs - 1u;   /* the last quarter: the grid plays it */
@@ -913,7 +916,7 @@ static void roll_start(uint32_t k, track_t *t, uint32_t note, uint32_t lvl)
     roll[r].off = 0;
     roll[r].rec_abs = SEQ_NONE;
     if (song.playing) {
-        abs = grid_at(1u, den, 0u, &into, &slen);
+        abs = grid_den(den, 0u, &into, &slen);
         roll[r].last = abs;
         if (into * 4u >= slen * 3u)
             return;                                  /* the grid is just ahead: it starts there */
@@ -945,7 +948,7 @@ static void roll_block(uint32_t adv)
             }
         }
         if (song.playing) {
-            uint32_t abs = grid_at(1u, den, 0u, &into, &slen);
+            uint32_t abs = grid_den(den, 0u, &into, &slen);
             if (abs != roll[r].last) {
                 roll[r].last = abs;
                 roll_hit(r);
