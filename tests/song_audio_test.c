@@ -152,6 +152,28 @@ int main(int argc, char **argv)
 
         puts("song audio: per-track scenes and mute PASS");
     }
+    {   /* Transpose: rsv[1] sets arr_song_transpose on start, clears on stop */
+        int32_t out2[CTL * 2];
+        arrangement.entry[0].track[0] = 0;
+        arrangement.entry[0].track[1] = 0;
+        arrangement.entry[0].track[2] = 0;
+        arrangement.entry[0].track[3] = 0;
+        arrangement.entry[0].bars = 1;
+        arrangement.count = 1;
+        arrangement.entry[0].rsv[1] = 0;
+        arrangement_enabled = 1;
+        arrangement_apply(0);
+        assert(trk[0].step[0].note[0] == 36);   /* bass note in slot 0 */
+        arrangement.entry[0].rsv[1] = 5;
+        transport_req = 1;
+        events_block(CTL);
+        assert(arr_song_transpose == 5);
+        transport_req = 2;
+        events_block(CTL);
+        assert(arr_song_transpose == 0);
+        (void)out2;
+        puts("song audio: transpose rsv[1] -> arr_song_transpose on start/stop PASS");
+    }
     printf("song audio: 3 synth parts + drums, section at %u, stop at %u, no held sequencer notes PASS\n",at_change,at_stop);
     return 0;
 }

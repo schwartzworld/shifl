@@ -18,7 +18,7 @@ static void song_sane(void)
     if (!ok) arr_defaults(&arrangement);
     if (song_cursor >= arrangement.count)
         song_cursor = (uint8_t)(arrangement.count - 1u);
-    if (song_sub > ARR_TRACKS + 1u) song_sub = 0;
+    if (song_sub > ARR_TRACKS + 2u) song_sub = 0;
 }
 
 /* Scene targeted by REC/LOAD: the selected track's scene, or the first non-muted
@@ -64,6 +64,7 @@ static void song_screen_draw(void)
         sig = sig * 31u + e->bars;
         for (k = 0; k < ARR_TRACKS; k++) sig = sig * 7u + e->track[k];
         sig = sig * 5u + e->rsv[0];
+        sig = sig * 3u + (uint32_t)(uint8_t)e->rsv[1];
     }
     for (i = 0; i < ARR_SCENES; i++) sig = sig * 3u + (uint32_t)project_used(i);
     if (!ui.force && !ui.msg_t && sig == previous) return;
@@ -153,21 +154,40 @@ static void song_screen_draw(void)
         cv_blit(0, 172);
     }
 
-    /* Footer */
-    cv_begin(240, 42, C_BLACK);
-    if (ui.msg_t) {
-        cv_rect(0, 4, 240, 30, C_WHITE);
-        cv_text((240 - text_w(&FONT_S, ui.msg)) / 2, 11, &FONT_S, ui.msg, C_BLACK);
-    } else {
-        static const char *const L[4] = {"entry", "field", "value", "length"};
-        for (i = 0; i < 4u; i++) {
-            cv_rect((int32_t)i * 60 + 4, 2, 52, 3, SC[i]);
-            cv_text((int32_t)i * 60 + 30 - text_w(&FONT_S, L[i]) / 2, 8, &FONT_S, L[i], RGB(118, 118, 126));
+    /* Transpose row (sub=6) replaces footer when selected; footer shown otherwise */
+    if (song_sub == (uint8_t)(ARR_TRACKS + 2u)) {
+        const arr_entry_t *e = &arrangement.entry[song_cursor];
+        int8_t tr = (int8_t)e->rsv[1];
+        cv_begin(240, 42, C_BLACK);
+        cv_text(4, 11, &FONT_S, "TRANS", RGB(118, 118, 126));
+        if (tr == 0) {
+            cv_rect(60, 9, 22, 20, RGB(26, 26, 30));
+            cv_text(64, 11, &FONT_S, "0", RGB(80, 80, 88));
+        } else {
+            char tb[8];
+            if (tr > 0) { tb[0] = '+'; fmt_int(tb + 1, tr); }
+            else fmt_int(tb, tr);
+            cv_rect(60, 9, 52, 20, RGB(40, 52, 40));
+            cv_text(64, 11, &FONT_S, tb, RGB(120, 220, 120));
         }
-        cv_text(4, 22, &FONT_S, "rec: store   save: chain", RGB(196, 196, 204));
-        cv_text(4, 33, &FONT_S, "oct-: loop/song  arp: clone", RGB(118, 118, 126));
+        cv_rect(0, 1, 240, 1, RGB(54, 54, 60));
+        cv_blit(0, 198);
+    } else {
+        cv_begin(240, 42, C_BLACK);
+        if (ui.msg_t) {
+            cv_rect(0, 4, 240, 30, C_WHITE);
+            cv_text((240 - text_w(&FONT_S, ui.msg)) / 2, 11, &FONT_S, ui.msg, C_BLACK);
+        } else {
+            static const char *const L[4] = {"entry", "field", "value", "length"};
+            for (i = 0; i < 4u; i++) {
+                cv_rect((int32_t)i * 60 + 4, 2, 52, 3, SC[i]);
+                cv_text((int32_t)i * 60 + 30 - text_w(&FONT_S, L[i]) / 2, 8, &FONT_S, L[i], RGB(118, 118, 126));
+            }
+            cv_text(4, 22, &FONT_S, "rec: store   save: chain", RGB(196, 196, 204));
+            cv_text(4, 33, &FONT_S, "oct-: loop/song  arp: clone", RGB(118, 118, 126));
+        }
+        cv_blit(0, 198);
     }
-    cv_blit(0, 198);
 }
 
 static void song_screen_input(uint32_t pressed, uint32_t home)
@@ -236,7 +256,7 @@ static void song_screen_input(uint32_t pressed, uint32_t home)
         }
         if (song.playing || transport_req) { ui_message("STOP FIRST"); continue; }
         if (k == 1) {
-            song_sub = (uint8_t)clamp((int32_t)song_sub + steps, 0, (int32_t)ARR_TRACKS + 1);
+            song_sub = (uint8_t)clamp((int32_t)song_sub + steps, 0, (int32_t)ARR_TRACKS + 2);
         } else if (k == 2) {
             arr_entry_t *e = &arrangement.entry[song_cursor];
             if (song_sub == 0u) {
@@ -245,11 +265,16 @@ static void song_screen_input(uint32_t pressed, uint32_t home)
                 uint32_t t = (uint32_t)(song_sub - 1u);
                 int32_t cur = (int32_t)e->track[t];   /* 0-5=A-F, 6=MUTE */
                 e->track[t] = (uint8_t)clamp(cur + steps, 0, (int32_t)ARR_MUTE);
-            } else {
+            } else if (song_sub == ARR_TRACKS + 1u) {
                 /* FX row: rsv[0] holds punch FX index, 0xFF = none */
                 int32_t cur_fx = (e->rsv[0] == 0xFFu) ? -1 : (int32_t)e->rsv[0];
                 int32_t new_fx = clamp(cur_fx + steps, -1, (int32_t)PUNCH_NFX - 1);
                 e->rsv[0] = (new_fx < 0) ? 0xFFu : (uint8_t)new_fx;
+            } else {
+                /* Transpose row: rsv[1] holds signed semitone offset */
+                int32_t cur_tr = (int8_t)e->rsv[1];
+                int32_t new_tr = clamp(cur_tr + steps, -24, 24);
+                e->rsv[1] = (uint8_t)(int8_t)new_tr;
             }
         } else if (k == 3) {
             arrangement.count = (uint8_t)clamp(arrangement.count + steps, 1, ARR_STEPS);

@@ -105,11 +105,29 @@ int main(int argc,char **argv)
         /* ENC1 clamps at 0 (bars row) when going below */
         enc[EN_K2]=-99; song_screen_input(0,0);
         assert(song_sub==0);
-        /* ENC1 clamps at ARR_TRACKS (=4) when going above */
+        /* ENC1 clamps at ARR_TRACKS+2 (transpose row) when going above */
         enc[EN_K2]=99; song_screen_input(0,0);
-        assert(song_sub==ARR_TRACKS);
+        assert(song_sub==ARR_TRACKS+2);
     }
     puts("song UI: per-track pattern editing, mute, field navigation PASS");
+
+    /* Transpose row: encoder changes rsv[1] as signed semitones, clamped -24..+24 */
+    {
+        arr_defaults(&arrangement); song_cursor=0; song_sub=0; song.playing=0; transport_req=0;
+        enc[EN_K2]=6; song_screen_input(0,0);          /* navigate to transpose row */
+        assert(song_sub==ARR_TRACKS+2);
+        enc[EN_K3]=3; song_screen_input(0,0);          /* +3 semitones */
+        assert((int8_t)arrangement.entry[0].rsv[1]==3);
+        enc[EN_K3]=-6; song_screen_input(0,0);         /* -6 from 3 = -3 */
+        assert((int8_t)arrangement.entry[0].rsv[1]==-3);
+        enc[EN_K3]=99; song_screen_input(0,0);         /* clamps at +24 */
+        assert((int8_t)arrangement.entry[0].rsv[1]==24);
+        enc[EN_K3]=-99; song_screen_input(0,0);        /* clamps at -24 */
+        assert((int8_t)arrangement.entry[0].rsv[1]==-24);
+        enc[EN_K3]=24; song_screen_input(0,0);         /* back to 0 */
+        assert((int8_t)arrangement.entry[0].rsv[1]==0);
+    }
+    puts("song UI: transpose row navigation and editing PASS");
 
     arr_defaults(&arrangement);ready=15;ui.msg_t=0;ui.force=1;
     for(k=0;k<ARR_TRACKS;k++) arrangement.entry[0].track[k]=0; arrangement.entry[0].bars=4;

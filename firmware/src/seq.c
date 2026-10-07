@@ -1317,6 +1317,7 @@ static void seq_stop(void)
     if (arrangement_clock.running) {
         arrangement_clock.running = 0;
         punch.song = -1;
+        arr_song_transpose = 0;
         song_restore();                            /* back to the loop you were making */
     }
 #endif
@@ -1328,6 +1329,17 @@ static uint32_t step_vel(const step_t *s, uint32_t i)
     uint32_t base = (s->flags & SF_ACCENT) ? 127u : (s->vel ? s->vel : 96u);
     return lvl_vel((s->lvl >> (2u * i)) & 3u, base);
 }
+
+/* Apply per-fragment transpose from song mode to a sequencer note (synth parts only). */
+#if FELUCCA_ARRANGER
+static uint32_t seq_note_trans(const track_t *t, uint32_t n)
+{
+    if (is_drum(t) || !arr_song_transpose) return n;
+    return (uint32_t)clamp((int32_t)n + arr_song_transpose, 0, 127);
+}
+#else
+static uint32_t seq_note_trans(const track_t *t, uint32_t n) { (void)t; return n; }
+#endif
 
 /* play one synth step: TIE extends, REST releases, NOTE (re)triggers; a SLIDE on the previous
  * step makes this one legato with a glide (acid style). skip: bit k = note k already sounds
@@ -1363,10 +1375,10 @@ static void seq_step(track_t *t, const step_t *s, uint32_t slen, uint32_t skip)
             skip |= 1u << i;                        /* (a roll plays it) */
     for (i = 0; i < s->n; i++)
         if (!((skip >> i) & 1u))
-            trk_note_on(t, s->note[i], step_vel(s, i));
+            trk_note_on(t, seq_note_trans(t, s->note[i]), step_vel(s, i));
     if (slide_in)                                   /* release what is not held over */
         for (i = 0; i < t->seq_n; i++) {
-            for (j = 0; j < s->n && s->note[j] != t->seq_notes[i]; j++)
+            for (j = 0; j < s->n && seq_note_trans(t, s->note[j]) != t->seq_notes[i]; j++)
                 ;
             if (j == s->n)
                 trk_note_off(t, t->seq_notes[i]);
@@ -1374,7 +1386,7 @@ static void seq_step(track_t *t, const step_t *s, uint32_t slen, uint32_t skip)
     t->seq_n = 0;
     for (i = 0; i < s->n; i++)
         if (!((skip >> i) & 1u))
-            t->seq_notes[t->seq_n++] = s->note[i];
+            t->seq_notes[t->seq_n++] = (uint8_t)seq_note_trans(t, s->note[i]);
     t->seq_off = gate;
     t->seq_hold = !s->rat && ((s->flags & SF_SLIDE) != 0 || next_tie);   /* next step a TIE: keep the notes to it */
 }
@@ -1419,14 +1431,15 @@ static void seq_ratchets(track_t *t, uint32_t into, uint32_t slen)
             h = into * hits / slen;
             if (h > t->rat_done[i] && h < hits) {
                 uint32_t j;
+                uint32_t tn = seq_note_trans(t, s->note[i]);
                 t->rat_done[i] = (uint8_t)h;
-                trk_note_off(t, s->note[i]);
-                trk_note_on(t, s->note[i], step_vel(s, i));
+                trk_note_off(t, tn);
+                trk_note_on(t, tn, step_vel(s, i));
                 t->seq_off = slen / hits * (uint32_t)t->p[P_SGATE] / 128u;
-                for (j = 0; j < t->seq_n && t->seq_notes[j] != s->note[i]; j++)
+                for (j = 0; j < t->seq_n && t->seq_notes[j] != tn; j++)
                     ;
                 if (j == t->seq_n && t->seq_n < 4u)
-                    t->seq_notes[t->seq_n++] = s->note[i];   /* (its gate ends it) */
+                    t->seq_notes[t->seq_n++] = (uint8_t)tn;   /* (its gate ends it) */
             }
         }
     }
@@ -1649,6 +1662,7 @@ static void events_block(uint32_t n)
         else if (scene >= 0) {
             arrangement_apply((uint32_t)scene);
             punch.song = arrangement.entry[scene].rsv[0] == 0xFFu ? (int8_t)-1 : (int8_t)arrangement.entry[scene].rsv[0];
+            arr_song_transpose = (int8_t)arrangement.entry[scene].rsv[1];
             seq_reset_tracks(arrangement_clock.phase);   /* (the remainder: exactly on the bar) */
         }
     } else if (song.playing) {

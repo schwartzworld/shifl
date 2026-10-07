@@ -10,6 +10,7 @@ static void arrangement_apply(uint32_t entry_index);   /* project.c: per-track p
 static void arrangement_apply_scene(uint32_t scene);   /* project.c: all-tracks-same-scene switch */
 
 static uint8_t arrangement_start_index;  /* set by UI before transport start to begin from a specific entry */
+static int8_t arr_song_transpose;         /* semitone offset for the current fragment; 0 when not in song mode */
 
 static int arrangement_start(void)
 {
@@ -27,6 +28,7 @@ static int arrangement_start(void)
     }
     arrangement_apply((uint32_t)ei);
     punch.song = arrangement.entry[ei].rsv[0] == 0xFFu ? (int8_t)-1 : (int8_t)arrangement.entry[ei].rsv[0];
+    arr_song_transpose = (int8_t)arrangement.entry[ei].rsv[1];
     song.rec = 0;                                    /* song playback does not overwrite patterns */
     return 1;
 }
