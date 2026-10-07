@@ -586,6 +586,8 @@ static int layers_input(uint32_t note_edges, uint32_t *pressed, uint32_t home)
             used[l] = 1;                                  /* a key while held: not a tap */
         if (!d && down[l] && !used[l] && now - t0[l] < TAP_MS && !ui.menu && !ui.confirm)
             layer_tap(l);
+        if (!d && down[l] && l == LY_SONG)
+            chain_release();                              /* SAVE let go: commit a quick chain if ≥2 taps */
         down[l] = (uint8_t)d;
         if (d && held == LY_PLAY)
             held = l;

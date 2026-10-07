@@ -1202,7 +1202,14 @@ static void click_tick(void)
  * song chain (arrangement): each section with the bars it played, from the bar after the arm. */
 static volatile int8_t live_req = -1;              /* section asked for (UI), applied on the next bar */
 static volatile int8_t live_sec = -1;              /* the section playing: last jumped to, loaded or stored */
-static uint32_t live_bar = 0xFFFFFFFFu;            /* clk_beat / 4 of the last bar seen */
+static uint32_t live_bar = 0xFFFFFFFFu;            /* clk_beat / 4 of the last bar seen (= bars the section played) */
+/* QUICK CHAIN (SAVE held, two or more section keys tapped): the sections in order, looped, each for the bars its
+ * longest pattern takes (section_bars); the UI writes it whole with the IRQ off, chain_n last (0 = none) */
+#define CHAIN_MAX 8u
+static volatile uint8_t chain_sec[CHAIN_MAX];
+static volatile uint8_t chain_n, chain_i;          /* entries; the one playing (or asked for) */
+static volatile uint8_t chain_bars;                /* the bars it plays */
+static uint32_t section_bars(uint32_t s);          /* project.c (arranger_scene.c) */
 static volatile uint8_t srec;                      /* SONG REC: 0 off, 1 armed (from the next bar), 2 recording */
 static arr_entry_t srec_e[ARR_STEPS];
 static volatile uint8_t srec_n;                    /* entries so far (the last one still growing) */
@@ -1262,6 +1269,10 @@ static void live_block(void)                       /* once a block while playing
                 srec_e[srec_n - 1u].bars = 2;
         }
     }
+    if (chain_n && live_req < 0 && live_bar >= chain_bars) {   /* the chain: this entry has played its bars */
+        chain_i = (uint8_t)((chain_i + 1u) % (chain_n < CHAIN_MAX ? chain_n : CHAIN_MAX));
+        live_req = (int8_t)(chain_sec[chain_i] & 3u);
+    }
     if (live_req >= 0) {
         uint32_t s = (uint32_t)live_req;
         live_req = -1;
@@ -1271,6 +1282,8 @@ static void live_block(void)                       /* once a block while playing
             live_sec = (int8_t)s;
             seq_reset_tracks(clk_pos);              /* on the bar: every track from its step 0 */
             live_bar = 0;
+            if (chain_n)
+                chain_bars = (uint8_t)section_bars(chain_sec[chain_i % CHAIN_MAX]);
             if (srec == 2u)
                 srec_add(s);
         }
@@ -1330,6 +1343,7 @@ static void seq_start(void)
     if (arrangement_enabled && !song.playing) {
         rec_wait = 0;                              /* song mode plays, it does not record */
         song_backup();
+        chain_n = 0;                               /* (the song, not a quick chain) */
     }
     if (!arrangement_start()) return;
 #endif
@@ -1354,6 +1368,7 @@ static void seq_stop(void)
     if (song.playing)
         srec_stop();                                /* SONG REC: the order played so far is the song */
     live_req = -1;
+    chain_n = 0;
 #endif
     song.playing = 0;
     fill_held = 0;
