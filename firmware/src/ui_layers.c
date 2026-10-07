@@ -33,6 +33,7 @@ static void layers_init(void)
     dyn_bit[1] = 1u << panel.btn[B_OCTUP];
     ft_btn_mask = 1u << panel.btn[B_REC];
     ft_drop_mask = 1u << panel.btn[B_PLAY];
+    ui.lock_par = P_ED_FLT;                             /* the lock parameter until a sound knob is turned */
 }
 
 static uint32_t key_of_white(uint32_t w) { return key_of_lane(w & 15u); }   /* white key w -> key index */
@@ -152,6 +153,11 @@ static void step_up(uint32_t w)
         dstep_clr(&t->dstep[idx], pen_lane);
     else
         step_clear(&t->step[idx]);
+    if (!is_drum(t) || !dstep_mask(&t->dstep[idx])) {   /* an empty step keeps no lock, no nudge, no condition */
+        lock_del(t, idx, P_COUNT);
+        t->micro[idx] = 0;
+        step_fill_set(t, idx, FC_NORM);
+    }
     fm1_irq_on();
     sync_reload = 1;
 }
@@ -163,7 +169,8 @@ static void pen_lane_move(int32_t s)
         audition_lane(l);
     pen_lane = l;
 }
-/* KNOB 1..4 with step keys held: sound/note, level, ratchet, nudge (1/64 of a step, - early + late) */
+/* KNOB 1..4 with step keys held: sound/note, level, ratchet, nudge (1/64 of a step, - early + late).
+ * knob 4 = PRESETS: a lock of ui.lock_par on them, made at the track's value, then moved */
 static void steps_held_edit(uint32_t knob, int32_t s)
 {
     track_t *t = TSEL;
@@ -177,6 +184,15 @@ static void steps_held_edit(uint32_t knob, int32_t s)
             continue;
         if (knob == 3u) {                                 /* NUDGE: the whole step (drums: every lane) */
             t->micro[idx] = (int8_t)clamp(t->micro[idx] + s, MICRO_MIN, MICRO_MAX);
+            continue;
+        }
+        if (knob == 4u) {                                 /* LOCK (PRESETS): ui.lock_par on this step */
+            uint32_t id = ui.lock_par % P_COUNT;
+            int k = lock_find(t, idx, id, 0);
+            const param_desc_t *d = lock_desc(t, id);
+            int32_t v = k >= 0 ? t->lock[k].val : t->p[id];
+            if (!lock_set(t, idx, id, v + accel(EN_PRESET, s, d->max - d->min)))
+                ui_message(p_lockable(id) ? "NO LOCK LEFT" : "NOT LOCKABLE");
             continue;
         }
         if (is_drum(t)) {
@@ -210,6 +226,61 @@ static void steps_held_edit(uint32_t knob, int32_t s)
     }
     fm1_irq_on();
     sync_reload = 1;
+}
+
+/* ALGORITHM with step keys held: the lock parameter, through the lockable ones */
+static void lock_par_step(int32_t s)
+{
+    const track_t *t = TSEL;
+    uint32_t id = ui.lock_par % P_COUNT, guard = P_COUNT;
+    do {
+        id = (id + (uint32_t)P_COUNT + (uint32_t)(s > 0 ? 1 : -1)) % P_COUNT;
+    } while (guard-- && (!p_lockable(id) || lock_desc(t, id)->max <= lock_desc(t, id)->min ||
+                         (is_drum(t) && id > P_E0 && id <= P_E7)));
+    ui.lock_par = (uint8_t)id;
+}
+/* OCT- with step keys held: their nudge, locks and fill condition go */
+static void steps_held_clear(void)
+{
+    track_t *t = TSEL;
+    uint32_t w, n = 0;
+    layer_undo_mark(t);
+    step_pend_off &= (uint16_t)~ui.step_held;
+    fm1_irq_off();
+    for (w = 0; w < 16u; w++) {
+        uint32_t idx = ui.step_page * 16u + w;
+        if (!((ui.step_held >> w) & 1u) || idx >= trk_len(t))
+            continue;
+        n += step_locked(t, idx) || step_fill(t, idx);
+        lock_del(t, idx, P_COUNT);
+        t->micro[idx] = 0;
+        step_fill_set(t, idx, FC_NORM);
+    }
+    fm1_irq_on();
+    sync_reload = 1;
+    ui_message(n ? "NUDGE, LOCKS, FILL CLEARED" : "NO NUDGE, LOCK OR FILL");
+}
+/* OCT+ with step keys held: their fill condition, round: normal -> fill only -> no fill */
+static void steps_held_fill(void)
+{
+    track_t *t = TSEL;
+    static const char *const MSG[3] = {"FILL: NORMAL", "FILL ONLY", "NO FILL"};
+    uint32_t w, v = 0, first = 1;
+    layer_undo_mark(t);
+    step_pend_off &= (uint16_t)~ui.step_held;
+    fm1_irq_off();
+    for (w = 0; w < 16u; w++) {
+        uint32_t idx = ui.step_page * 16u + w;
+        if (!((ui.step_held >> w) & 1u) || idx >= trk_len(t))
+            continue;
+        if (first)
+            v = (step_fill(t, idx) + 1u) % 3u;
+        first = 0;
+        step_fill_set(t, idx, v);
+    }
+    fm1_irq_on();
+    sync_reload = 1;
+    ui_message(MSG[v % 3u]);
 }
 
 /* ------------------------------------------------------------- GLO --- */
@@ -319,6 +390,16 @@ static void layer_knobs(uint32_t layer)
     uint32_t k;
     int32_t s;
     track_t *t = TSEL;
+    if (layer == LY_STEP && ui.step_held) {              /* a step held: PRESETS the lock's value, ALGORITHM its parameter */
+        if ((s = panel_enc(EN_PRESET)) != 0) {
+            ui.layer_used = 1;
+            steps_held_edit(4, s);
+        }
+        if ((s = panel_enc(EN_ALGO)) != 0) {
+            ui.layer_used = 1;
+            lock_par_step(s);
+        }
+    }
     for (k = 0; k < 4u; k++) {
         if ((s = panel_enc(EN_K1 + k)) == 0)
             continue;
@@ -347,14 +428,14 @@ static void layer_knobs(uint32_t layer)
                 song.g[G_ROLL] = (int16_t)clamp(song.g[G_ROLL] + s, 0, 4);
             break;
         case LY_STEP:
-            if (ui.step_held && k < 3u) {
+            if (ui.step_held) {                         /* SOUND / NOTE  LEVEL  RATCHET  NUDGE */
                 if (k == 0u && is_drum(t))
-                    pen_lane = (uint8_t)clamp(pen_lane + s, 0, DRUM_LANES - 1);
+                    pen_lane_move(s);
                 else
                     steps_held_edit(k, s);
             } else if (k == 0u) {
                 if (is_drum(t)) {
-                    pen_lane = (uint8_t)clamp(pen_lane + s, 0, DRUM_LANES - 1);
+                    pen_lane_move(s);
                 } else {
                     pen_note[0] = (uint8_t)clamp(pen_note[0] + s, 0, 127);
                     pen_n = 1;

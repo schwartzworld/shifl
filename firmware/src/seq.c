@@ -449,12 +449,13 @@ static int project_empty(void)
             return 0;
     return 1;
 }
-static void steps_clear(track_t *t)           /* an empty pattern (synth: REST steps, drums: no lane) */
+static void locks_clear(track_t *t);           /* forward: defined after the lock data structures */
+static void steps_clear(track_t *t)           /* an empty pattern (synth: REST steps, drums: no lane); no lock, no nudge, no condition */
 {
     uint32_t k;
     memset(t->step, 0, sizeof t->step);
     memset(t->fill, 0, sizeof t->fill);
-    memset(t->micro, 0, sizeof t->micro);
+    locks_clear(t);
     if (!is_drum(t))
         for (k = 0; k < NSTEP; k++)
             t->step[k].time = ST_REST;
@@ -1117,9 +1118,40 @@ static void key_up(uint32_t k)
     }
 }
 
+/* the UI asks to hear drum sounds (a sound or a step picked with a knob, a step set from a key):
+ * aud_lanes the lanes, each at its level aud_lvl (2 bits a lane), played here, in the audio context */
+static volatile uint32_t aud_lanes, aud_lvl;
+static void audition_req(uint32_t lanes, uint32_t lvls)
+{
+    fm1_irq_off();
+    aud_lvl = lvls;
+    aud_lanes = lanes & 0xFFFFu;
+    fm1_irq_on();
+}
+static void audition_lane(uint32_t lane) { audition_req(1u << (lane & 15u), 0u); }   /* (LV_NORM = 0) */
+static void audition_step(const dstep_t *s)            /* every sound of a drum step, at its level */
+{
+    uint32_t m = dstep_mask(s), lv = 0, l;
+    for (l = 0; l < 16u; l++)
+        if ((m >> l) & 1u)
+            lv |= dstep_lvl(s, l) << (2u * l);
+    audition_req(m, lv);
+}
+static void audition_block(void)
+{
+    uint32_t m = aud_lanes, lv = aud_lvl, l;
+    if (!m)
+        return;
+    aud_lanes = 0;
+    for (l = 0; m; l++, m >>= 1)
+        if (m & 1u)
+            trk_note_on(TDRUM, LANE_NOTE[l], lvl_vel((lv >> (2u * l)) & 3u, 100));
+}
+
 static void keyboard_block(void)
 {
     uint32_t cur = fm1_in.notes, ch = cur ^ kb_prev, k, r;
+    audition_block();
     if (!(layer_buttons() & ly_bit[LY_ROLL]))         /* ARP up (and not locked): the rolls end (the keys stay silent) */
         for (r = 0; r < NROLL; r++)
             if (roll[r].on)
@@ -1283,6 +1315,7 @@ static void seq_reset_tracks(uint32_t pos)
 static void song_backup(void);                     /* project.c: song mode keeps the loop you made */
 static void song_restore(void);
 static void locks_restore(track_t *t);             /* Task 14: restore locked params on stop */
+static void locks_clear(track_t *t);               /* Task 14: clear all locks (empty pattern) */
 
 /* fill state (Task 13): updated each block in events_block, read by seq_tick */
 static volatile uint8_t fill_held;
@@ -1490,11 +1523,126 @@ static uint32_t step_plays(const track_t *t, uint32_t idx)
     return c == FC_FILL ? fill_now : c == FC_NOFILL ? !fill_now : 1u;
 }
 
-/* ---- parameter lock stubs (Task 14) ---- */
-static void locks_clear(track_t *t) { (void)t; }
-static void locks_restore(track_t *t) { (void)t; }
-static void lock_step(track_t *t, uint32_t idx) { (void)t; (void)idx; }
-static void seq_out_track_off(track_t *t) { (void)t; }
+/* ---- parameter locks (Task 14) ---- */
+/* A lock: on its step the track's p[param] takes its value; the parameter goes back to what it was
+ * at the next step without a lock on it (Elektron style). Only sound parameters lock (p_lockable). */
+static int p_lockable(uint32_t id)
+{
+    return id <= P_LD_AMP || id == P_SGATE || (id >= P_DIST && id <= P_REV) || id == P_GLIDE || id == P_PAN ||
+           id == P_DETUNE || (id >= P_SLCR && id <= P_SLDEPTH) || (id >= P_E0 && id <= P_E7) || id == P_TFLT;
+}
+static const param_desc_t *lock_desc(const track_t *t, uint32_t id)
+{
+    if (is_drum(t) && id == P_E0)
+        return &DRUM_KIT_DESC;
+    if (id >= P_E0 && id <= P_E7)
+        return &ENGINES[t->engine % NENGINES]->edit[id - P_E0];
+    return &TP[id % P_COUNT];
+}
+static void lock_write(track_t *t, uint32_t id, int32_t v)
+{
+    const param_desc_t *d = lock_desc(t, id);
+    t->p[id % P_COUNT] = (int16_t)clamp(v, d->min, d->max);
+}
+static void locks_restore(track_t *t)
+{
+    uint32_t i;
+    for (i = 0; i < t->lk_n && i < NLOCK; i++)
+        if (t->p[t->lk_param[i] % P_COUNT] == t->lk_set[i])
+            lock_write(t, t->lk_param[i], t->lk_base[i]);
+    t->lk_n = 0;
+}
+static void locks_clear(track_t *t)
+{
+    uint32_t i;
+    locks_restore(t);
+    memset(t->micro, 0, sizeof t->micro);
+    for (i = 0; i < NLOCK; i++) {
+        t->lock[i].step = LOCK_FREE;
+        t->lock[i].param = 0;
+        t->lock[i].val = 0;
+    }
+}
+static void lock_step(track_t *t, uint32_t idx)
+{
+    uint32_t i, k, n = 0;
+    for (i = 0; i < t->lk_n && i < NLOCK; i++) {
+        uint32_t p = t->lk_param[i] % P_COUNT, has = 0;
+        for (k = 0; k < NLOCK; k++)
+            if (t->lock[k].step == idx && t->lock[k].param == p)
+                has = 1;
+        if (has) {
+            t->lk_param[n] = (uint8_t)p;
+            t->lk_base[n] = t->lk_base[i];
+            t->lk_set[n] = t->lk_set[i];
+            n++;
+        } else if (t->p[p] == t->lk_set[i]) {
+            lock_write(t, p, t->lk_base[i]);
+        }
+    }
+    t->lk_n = (uint8_t)n;
+    for (k = 0; k < NLOCK; k++) {
+        const plock_t *l = &t->lock[k];
+        uint32_t p = l->param;
+        if (l->step != idx || p >= P_COUNT || !p_lockable(p))
+            continue;
+        for (i = 0; i < t->lk_n && t->lk_param[i] != p; i++)
+            ;
+        if (i == t->lk_n) {
+            if (i >= NLOCK)
+                continue;
+            t->lk_param[i] = (uint8_t)p;
+            t->lk_base[i] = t->p[p];
+            t->lk_n++;
+        } else if (t->p[p] != t->lk_set[i]) {
+            t->lk_base[i] = t->p[p];
+        }
+        lock_write(t, p, l->val);
+        t->lk_set[i] = t->p[p];
+    }
+}
+static int lock_find(const track_t *t, uint32_t step, uint32_t param, int make)
+{
+    uint32_t k;
+    int fr = -1;
+    for (k = 0; k < NLOCK; k++) {
+        if (t->lock[k].step == step && t->lock[k].param == param)
+            return (int)k;
+        if (fr < 0 && t->lock[k].step == LOCK_FREE)
+            fr = (int)k;
+    }
+    return make ? fr : -1;
+}
+static int lock_set(track_t *t, uint32_t step, uint32_t param, int32_t v)
+{
+    int k;
+    const param_desc_t *d;
+    if (step >= NSTEP || param >= P_COUNT || !p_lockable(param) || (k = lock_find(t, step, param, 1)) < 0)
+        return 0;
+    d = lock_desc(t, param);
+    t->lock[k].step = (uint8_t)step;
+    t->lock[k].param = (uint8_t)param;
+    t->lock[k].val = (int16_t)clamp(v, d->min, d->max);
+    return 1;
+}
+static void lock_del(track_t *t, uint32_t step, uint32_t param)
+{
+    uint32_t k;
+    for (k = 0; k < NLOCK; k++)
+        if (t->lock[k].step == step && (param >= P_COUNT || t->lock[k].param == param))
+            t->lock[k].step = LOCK_FREE;
+}
+static int step_locked(const track_t *t, uint32_t step)
+{
+    uint32_t k;
+    if (step < NSTEP && t->micro[step])
+        return 1;
+    for (k = 0; k < NLOCK; k++)
+        if (t->lock[k].step == step)
+            return 1;
+    return 0;
+}
+static void seq_out_track_off(track_t *t) { (void)t; }   /* Task 17 stub: MIDI out on stop */
 
 /* ratchets: the further hits of the playing step's notes / lanes, each at its share of the step */
 static void seq_ratchets(track_t *t, uint32_t into, uint32_t slen)
