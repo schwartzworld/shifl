@@ -97,7 +97,7 @@ def generate():
             [tools / "gen_tables.py", GEN / "felucca_tables.h"],
             [tools / "gen_samples.py", GEN / "felucca_samples.h"],
             [tools / "gen_drumkits.py", GEN / "felucca_drumkits.h"],
-            [tools / "gen_logo.py", "--from-image", SRC / "assets" / "logo" / "sloop-splash.png", GEN / "sloop_logo.h"]]
+            [tools / "gen_logo.py", "--from-image", SRC / "assets" / "logo" / "shifl-splash.png", GEN / "shifl_logo.h"]]
     procs = [subprocess.Popen([sys.executable, *map(str, c)], stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
                               text=True) for c in cmds]
     failed = []

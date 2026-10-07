@@ -147,7 +147,7 @@ int main(void)
     for (i = 0; i < 8u; i++)
         ok &= v[P_E0 + i] == (int16_t)(2000 + 45 + i);
     bad += check("old record (np 53): SLICER and CHORD defaults, E0..E7 kept", ok);
-    /* a record of SLOOP 1.0 (P_COUNT 57, P_E0 49): CHORD (SLOOP 2.0) takes its default */
+    /* a record of SHIFL 1.0 (P_COUNT 57, P_E0 49): CHORD (SHIFL 2.0) takes its default */
     r.np = 57;
     for (i = 0; i < 57u; i++)
         r.p[i] = (int16_t)(3000 + i);
@@ -158,7 +158,7 @@ int main(void)
     ok &= v[P_CHORD] == def[P_CHORD];
     for (i = 0; i < 8u; i++)
         ok &= v[P_E0 + i] == (int16_t)(3000 + 49 + i);
-    bad += check("SLOOP 1.0 record (np 57): CHORD default, the rest kept", ok);
+    bad += check("SHIFL 1.0 record (np 57): CHORD default, the rest kept", ok);
     r.np = P_COUNT;
     for (i = 0; i < P_COUNT; i++)
         r.p[i] = (int16_t)i;

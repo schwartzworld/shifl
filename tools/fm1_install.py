@@ -18,7 +18,7 @@ install finishes the write. Needs mido with python-rtmidi.
 Exit codes: 0 done, 1 cancelled or other error, 2 bad arguments or package,
 3 FM-1 not found, 4 connection lost or the device stopped, 5 timeout (no
 loader / no restart), 6 wrong model, another identity after the install, or the
-FM-1 is in the update mode of another firmware (only SLOOP's own loader,
+FM-1 is in the update mode of another firmware (only SHIFL's own loader,
 ota-FM-1_9XX, is resumed).
 """
 import argparse

@@ -160,7 +160,7 @@ async function editorLibrarian() {
   const rcEmpty = await E.bank.load(rq, 11);
   ok(rc === 0 && !b2.slots[11].used && b2.slots[10].used && rcEmpty === 1, "librarian: UP_ERASE, UP_LOAD of an empty slot -> rc 1");
 
-  /* audition: a PHASE patch with a pattern into an empty sequencer: the sound only (as UP_LOAD in SLOOP), never
+  /* audition: a PHASE patch with a pattern into an empty sequencer: the sound only (as UP_LOAD in SHIFL), never
      the pattern, and the mix / pattern / key parameters stay (ui.c param_kept) */
   const bass = await E.bank.get(rq, info, 2);   /* PHASE RESO, with the ACID pattern */
   for (let i = 0; i < info.nstep; i++) await rq(E.req.stepSet(i, emptyStep));
@@ -455,7 +455,7 @@ async function editorBackup() {
   await rq(E.req.smpEnd(1, hdr), { timeout: 2000, retries: 0 });
   const A = await E.backupCapture(rq, info);
   const obj = (id) => A.objects.find((o) => o.id === id);
-  ok(A.format === "sloop-backup" && A.objects.map((o) => o.id).join() === "0,1,2,3,4,5,6,7,32,33,34" && obj(33).len > 512
+  ok(A.format === "shifl-backup" && A.objects.map((o) => o.id).join() === "0,1,2,3,4,5,6,7,32,33,34" && obj(33).len > 512
     && obj(4).len > 0 && obj(3).len === 0 && obj(32).len === 0, "backup: LIST + GET: 11 objects (project in C, sample in USR2, B empty)");
   await rq(E.req.upErase(3));
   await rq(E.req.smpErase(1), { timeout: 2500, retries: 0 });
@@ -476,12 +476,12 @@ async function editorBackup() {
   old.done();
 }
 
-/* ------------------------------------- editor v5 (SLOOP 2.0): lanes, levels, ratchets --- */
+/* ------------------------------------- editor v5 (SHIFL 2.0): lanes, levels, ratchets --- */
 async function editorV5() {
   const C = E.CMD;
   const { m, rq, ev, done } = attachMock({ watchMs: 1000 });
   const info = E.parse[C.INFO](await rq(E.req.info()));
-  ok(info.proto === 6 && /SLOOP/.test(info.version) && info.pcount === 58 && info.gcount === 32 && info.pe0 === 50, "v5/v6: INFO ends with the protocol version (6: backup)");
+  ok(info.proto === 6 && /SHIFL/.test(info.version) && info.pcount === 58 && info.gcount === 32 && info.pe0 === 50, "v5/v6: INFO ends with the protocol version (6: backup)");
   /* the firmware says the same: ED_DRUM_STEP is command 33, INFO sends 5, P_CHORD / the master globals as the mock has them */
   const ec = readFileSync(join(HERE, "../firmware/src/editor.c"), "utf8"), pc = readFileSync(join(HERE, "../firmware/src/params.c"), "utf8");
   const en = (/enum \{ ED_INFO = 1,([^}]*)\}/.exec(ec) || [])[1] || "";
@@ -670,7 +670,7 @@ function chopTests() {
     && slot.data.length <= E.SMP.MAX_DATA, "chop: slot header (8 zones, one key each)");
   const w = E.parseWav(E.wavFile(zones[1].s));
   ok(w.sr === R && w.x.length === zones[1].s.length && Math.abs(w.x[100] * 32768 - zones[1].s[100]) < 2, "chop: WAV writer round trip");
-  const dir = mkdtempSync(join(tmpdir(), "sloop-chop-")), zp = join(dir, "c.zip");
+  const dir = mkdtempSync(join(tmpdir(), "shifl-chop-")), zp = join(dir, "c.zip");
   writeFileSync(zp, E.zipStore(zones.slice(0, 3).map((z) => ({ name: "BREAK/" + z.fname, data: E.wavFile(z.s) }))));
   const r = py(`import sys, zipfile
 z = zipfile.ZipFile(sys.argv[1]); assert z.testzip() is None

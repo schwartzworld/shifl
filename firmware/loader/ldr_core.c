@@ -24,7 +24,7 @@
  * Hooks from the platform (loader.c, tests/ldr_test.c):
  *   ldr_fread(off, p, n)  ldr_erase(off)  ldr_prog(off, p, n)   flash, 0 = ok
  *   ldr_record_clear()    forget the RAM update record
- *   ldr_flash_known()     the flash chip is the 1 MiB part SLOOP's storage expects (else nothing is
+ *   ldr_flash_known()     the flash chip is the 1 MiB part SHIFL's storage expects (else nothing is
  *                         written: the update records go and the old firmware starts again)
  *   ldr_progress(done, total)
  * plus the ota.c hooks (frames, time, idle). */
@@ -120,7 +120,7 @@ static int ldr_pass(void)
     ldr_sfc(sec, 32, 0, key);
     if (ota_crc16(sec + 2, 30, 0) != ota_rd16(sec))
         return -6;                                       /* package for another chip key */
-    if (!ldr_flash_known()) {                            /* SLOOP would run without its storage and could not */
+    if (!ldr_flash_known()) {                            /* SHIFL would run without its storage and could not */
         ldr_records_drop();                              /* be updated again: keep the firmware there is */
         return LDR_EFLASH;
     }

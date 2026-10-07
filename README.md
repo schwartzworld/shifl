@@ -1,20 +1,20 @@
-<p align="center"><img src="assets/logo/sloop-logo.png" alt="SLOOP" width="420"></p>
+<p align="center"><img src="assets/logo/shifl-logo.png" alt="SHIFL" width="420"></p>
 
 <p align="center"><b>A live groovebox firmware for the M-VAVE FM-1 — for any style.</b><br>
 Free and open source (GPL-3.0), based on <a href="https://github.com/hugelton/Felucca">Felucca</a> by Leo Kuroshita / Hügelton Instruments.</p>
 
 <p align="center">
-<a href="https://isod89.github.io/sloop-fm1/"><b>Install from the browser</b></a> ·
-<a href="SLOOP.md">Manual</a> ·
+<a href="https://isod89.github.io/shifl-fm1/"><b>Install from the browser</b></a> ·
+<a href="SHIFL.md">Manual</a> ·
 <a href="DEMARRAGE-RAPIDE-FR.md">Guide en français</a> ·
-<a href="https://isod89.github.io/sloop-fm1/webapp/editor/">Web editor</a> ·
+<a href="https://isod89.github.io/shifl-fm1/webapp/editor/">Web editor</a> ·
 <a href="../../releases">Releases</a> ·
 <a href="../../issues">Report a bug</a>
 </p>
 
 ---
 
-SLOOP turns the FM-1 into a four-track groovebox you play live: **three synths and a drum machine** with 16 sounds on the white keys, nine synthesis engines, 68 sounds, 37 drum kits, your own samples, a song mode you play with your hands — and now **USB audio**, a **MIDI keyboard on the jack**, **MIDI clock**, **lights for playing in the dark** and a **full backup**. House, techno, hip-hop, trap, drum & bass, amapiano, synthwave, lo-fi, ambient, chiptune — it does not pick a style for you. No factory patterns, nothing to load: everything you hear, you play.
+SHIFL turns the FM-1 into a four-track groovebox you play live: **three synths and a drum machine** with 16 sounds on the white keys, nine synthesis engines, 68 sounds, 37 drum kits, your own samples, a song mode you play with your hands — and now **USB audio**, a **MIDI keyboard on the jack**, **MIDI clock**, **lights for playing in the dark** and a **full backup**. House, techno, hip-hop, trap, drum & bass, amapiano, synthwave, lo-fi, ambient, chiptune — it does not pick a style for you. No factory patterns, nothing to load: everything you hear, you play.
 
 > **Status:** 2.3. Still a beta: install at your own risk, and please [report](../../issues) what you find. Your projects, presets, samples and settings are kept when you update, and you can go back at any time (see [Going back](#going-back)).
 
@@ -46,7 +46,7 @@ SLOOP turns the FM-1 into a four-track groovebox you play live: **three synths a
 | --- | --- |
 | **USB audio** | On USB the FM-1 is also an audio input (*Felucca*, 44.1 kHz stereo, no driver): record it in your DAW or Audacity over the same cable. Its level follows the MASTER knob, or stays at a fixed full level (HOME menu → **USB AUDIO**). From Felucca 1.0. |
 | **MIDI keyboard on the jack** | The 3.5 mm TRS MIDI IN works: a keyboard or a pad controller through a TRS-to-DIN adapter. Channels 1–3 the synths, 10 the drums, 4–16 the selected track. No note left hanging. |
-| **MIDI clock in** | GLO → SYSTEM → **SYNC** = USB or TRS: SLOOP follows a DAW or a drum machine — tempo, START, CONTINUE, STOP — pulse by pulse, with no drift. |
+| **MIDI clock in** | GLO → SYSTEM → **SYNC** = USB or TRS: SHIFL follows a DAW or a drum machine — tempo, START, CONTINUE, STOP — pulse by pulse, with no drift. |
 | **Record your way** | The REC screen has three dials: **mode** (*free*: the tempo follows your playing, or *tempo*: the tempo you set), **length** (1, 2 or 4 bars), **start** (your first note, or a one-bar **count-in** after PLAY). |
 | **Lights for playing in the dark** | HOME menu: **LIGHTS** (every button glows, LOW / MID / HIGH), **KEYS** (the C keys or every white key), **NOTES** (the notes playing light their keys, by @renebohne). |
 | **Backup and restore** | The web editor saves everything on the FM-1 in one file — the music in progress, projects, user presets, samples, settings — and puts it all back. |
@@ -54,23 +54,23 @@ SLOOP turns the FM-1 into a four-track groovebox you play live: **three synths a
 | **Back to the official firmware** | From the installer page, with a backup first: select M-VAVE's FM-1 V15 file and install it. |
 | **Steadier** | Knobs that answer every click; no dropped notes over USB MIDI; one voice fades on overload, never the bass or the lead; keys a millisecond faster; no stuck note after a VOICE change; stricter checks of what is read back from flash. |
 
-The full list, and what came in 2.0, 2.1 and 2.2: [SLOOP.md](SLOOP.md#new-in-23). Release notes: [Releases](../../releases).
+The full list, and what came in 2.0, 2.1 and 2.2: [SHIFL.md](SHIFL.md#new-in-23). Release notes: [Releases](../../releases).
 
 ## Screenshots
 
-<p align="center"><img src="assets/screens/sloop-2.3-screens.png" alt="SLOOP 2.3 screens on the FM-1" width="760"></p>
+<p align="center"><img src="assets/screens/shifl-2.3-screens.png" alt="SHIFL 2.3 screens on the FM-1" width="760"></p>
 
 <p align="center"><sub>The FM-1's screen in 2.3: the tracks, the REC screen and its count-in, the menu (lights and USB audio), MIDI clock, about.</sub></p>
 
-<p align="center"><img src="assets/screens/screens.png" alt="SLOOP screens on the FM-1" width="760"></p>
+<p align="center"><img src="assets/screens/screens.png" alt="SHIFL screens on the FM-1" width="760"></p>
 
 <p align="center"><sub>Start-up, the four tracks (recording), the drum grid and the acoustic kit, the sounds by kind, the layers (punch-in FX, steps, key and chords, mix, erase), a free take, the FX sends.</sub></p>
 
-<p align="center"><img src="assets/screens/editor-drums.png" alt="SLOOP web editor: the drum track" width="760"></p>
+<p align="center"><img src="assets/screens/editor-drums.png" alt="SHIFL web editor: the drum track" width="760"></p>
 
 <p align="center"><sub>The web editor: the drum track as a 16-lane grid, with levels and ratchets.</sub></p>
 
-<p align="center"><img src="assets/screens/editor-chop.png" alt="SLOOP web editor: CHOP" width="760"></p>
+<p align="center"><img src="assets/screens/editor-chop.png" alt="SHIFL web editor: CHOP" width="760"></p>
 
 <p align="center"><sub>CHOP: a 20 s recording cut into 16 chops, 8 kept, fitted to the slot.</sub></p>
 
@@ -145,7 +145,7 @@ Every button can glow so its label is readable on a black FM-1; the C keys or ev
 
 ### Memory and safety
 
-- **Autosave:** stop and leave it 2.5 s, your work is kept; at power-on SLOOP comes back exactly as you left it.
+- **Autosave:** stop and leave it 2.5 s, your work is kept; at power-on SHIFL comes back exactly as you left it.
 - **4 projects**, **32 user presets**, **undo / redo**.
 - **Full backup and restore** from the web editor (2.3).
 - **Safe updates:** the installer checks the package (SHA-256) before writing it, the update loader checks it again (CRC) before starting it; an interrupted install finishes when you press Install again; **USB rescue** (OCT− at power-on).
@@ -154,25 +154,25 @@ Every button can glow so its label is readable on a black FM-1; the C keys or ev
 
 ### From the browser (recommended)
 
-1. Open **[the SLOOP installer](https://isod89.github.io/sloop-fm1/)** in **Chrome or Edge** on a computer.
+1. Open **[the SHIFL installer](https://isod89.github.io/shifl-fm1/)** in **Chrome or Edge** on a computer.
 2. Connect the FM-1 by USB — a **data** cable, directly (no hub).
-3. Press **INSTALL**, allow MIDI access, and wait for *Done*. The FM-1 restarts on the SLOOP logo.
+3. Press **INSTALL**, allow MIDI access, and wait for *Done*. The FM-1 restarts on the SHIFL logo.
 
 Nothing to download or compile. Your projects, user presets, samples and settings are kept. After an install, **unplug and plug the FM-1 back in** once so the computer finds its USB audio input.
 
 ### Other ways
 
-- **Python:** the `.fwsc` of a [release](../../releases) with `python tools/fm1_install.py sloop-2.3.fwsc` (needs `pip install mido python-rtmidi`).
-- **Build it yourself:** see [Building and tests](#building-and-tests); on Windows, `INSTALL-SLOOP.bat` builds SLOOP and opens the installer locally.
+- **Python:** the `.fwsc` of a [release](../../releases) with `python tools/fm1_install.py shifl-2.3.fwsc` (needs `pip install mido python-rtmidi`).
+- **Build it yourself:** see [Building and tests](#building-and-tests); on Windows, `INSTALL-SHIFL.bat` builds SHIFL and opens the installer locally.
 
 ### Going back
 
-- **To an earlier SLOOP:** install the `.fwsc` of its [release](../../releases) (for example [2.2](../../releases/tag/v2.2)). It keeps your work and simply ignores the 2.3 settings.
-- **To the official firmware:** on the installer page, open **Return to the official firmware (V15)**. Save a backup with the editor first, download FM-1 V15 from m-vave.com and select its `FM-1.fwsc` — only that exact file is accepted. M-VAVE's updater, M-UPGRADE, works too. To come back, install SLOOP again and restore your backup.
+- **To an earlier SHIFL:** install the `.fwsc` of its [release](../../releases) (for example [2.2](../../releases/tag/v2.2)). It keeps your work and simply ignores the 2.3 settings.
+- **To the official firmware:** on the installer page, open **Return to the official firmware (V15)**. Save a backup with the editor first, download FM-1 V15 from m-vave.com and select its `FM-1.fwsc` — only that exact file is accepted. M-VAVE's updater, M-UPGRADE, works too. To come back, install SHIFL again and restore your backup.
 
 ### Rescue
 
-- **The FM-1 no longer starts SLOOP:** hold **OCT−** alone while switching it on (*SLOOP USB RESCUE*), then install again.
+- **The FM-1 no longer starts SHIFL:** hold **OCT−** alone while switching it on (*SHIFL USB RESCUE*), then install again.
 - **An install was cut off:** the FM-1 stays in update mode; press INSTALL again and it finishes.
 - If an FM-1 no longer starts at all, recovery needs [FM-1-transporter](https://github.com/kurogedelic/FM-1-transporter).
 
@@ -222,7 +222,7 @@ Hold **HOME**. **PRESETS** moves, **KNOB 1** sets, **OCT+** steps round, **OCT�
 | **NOTES** | OFF / ON | the notes playing on a synth track light their keys, on every page and in every layer |
 | **USB AUDIO** | MASTER / FULL | the level of the USB audio input: follows the MASTER knob, or a fixed full level |
 | **HARDWARE CALIBRATION** | | the panel table, if a key or a knob answers wrongly |
-| **ABOUT** | | the version (*SLOOP 2.3*) and its build date, the credits |
+| **ABOUT** | | the version (*SHIFL 2.3*) and its build date, the credits |
 
 Two more settings of the FM-1 live elsewhere: **SYNC** (GLO → SYSTEM: INT, USB or TRS) and the REC screen's **mode** and **start**.
 
@@ -230,7 +230,7 @@ Two more settings of the FM-1 live elsewhere: **SYNC** (GLO → SYSTEM: INT, USB
 
 ### MIDI in
 
-SLOOP takes MIDI from two places at once:
+SHIFL takes MIDI from two places at once:
 
 - **The MIDI IN jack** (3.5 mm TRS): a keyboard or a pad controller with a MIDI output, through a **TRS-to-DIN MIDI adapter**. If nothing plays, try the other adapter type (A / B).
 - **USB**, from a computer or a phone (a DAW, a MIDI routing app) or a USB MIDI host box.
@@ -241,11 +241,11 @@ SLOOP takes MIDI from two places at once:
 | 10 | the drum track (the nearest of its 16 sounds; GLO → DRUMS → CH changes the channel) |
 | 4–16 | the selected track: set your keyboard to channel 4 and it follows ALGORITHM |
 
-A USB keyboard plugged **straight into the FM-1** cannot work: both are USB devices, and a USB link needs a host (a computer, a phone, or a USB MIDI host box). Bluetooth MIDI is not supported: SLOOP, like Felucca, never switches the radio on.
+A USB keyboard plugged **straight into the FM-1** cannot work: both are USB devices, and a USB link needs a host (a computer, a phone, or a USB MIDI host box). Bluetooth MIDI is not supported: SHIFL, like Felucca, never switches the radio on.
 
 ### MIDI clock in
 
-GLO → SYSTEM → **SYNC** = **USB** or **TRS** (INT: SLOOP's own tempo). START plays from the top, CONTINUE carries on, STOP stops; the tempo follows the master and the steps follow its 24 pulses a beat, so SLOOP never drifts. When the clock stops for half a second, PLAY on the FM-1 plays at its own tempo again.
+GLO → SYSTEM → **SYNC** = **USB** or **TRS** (INT: SHIFL's own tempo). START plays from the top, CONTINUE carries on, STOP stops; the tempo follows the master and the steps follow its 24 pulses a beat, so SHIFL never drifts. When the clock stops for half a second, PLAY on the FM-1 plays at its own tempo again.
 
 ### USB audio: record the FM-1 on a computer
 
@@ -257,7 +257,7 @@ On USB the FM-1 is also an **audio input named "Felucca"**: 44.1 kHz, 16-bit ste
 
 ## The web editor
 
-Open it from the [installer page](https://isod89.github.io/sloop-fm1/) (or the [editor link](https://isod89.github.io/sloop-fm1/webapp/editor/)) in Chrome or Edge, with the FM-1 on USB, and press **Connect**. It follows the device live: turn a knob on the FM-1 and the editor moves.
+Open it from the [installer page](https://isod89.github.io/shifl-fm1/) (or the [editor link](https://isod89.github.io/shifl-fm1/webapp/editor/)) in Chrome or Edge, with the FM-1 on USB, and press **Connect**. It follows the device live: turn a knob on the FM-1 and the editor moves.
 
 - **Sound** — every parameter of the selected track, the engines and the presets.
 - **Sequencer** — the steps; on the drum track a grid of 16 sounds × the steps, with levels and ratchets, and the kit.
@@ -267,7 +267,7 @@ Open it from the [installer page](https://isod89.github.io/sloop-fm1/) (or the [
 - **Projects** — the four projects, and **Backup**: *Save a backup* writes everything on the FM-1 to one file; *Restore from a file* puts it all back (stop playback first).
 - **Settings** — global, master (DUST, DUCK, FILT, ROLL), drums.
 
-<p align="center"><img src="assets/screens/editor-backup.png" alt="SLOOP web editor: projects and backup" width="560"></p>
+<p align="center"><img src="assets/screens/editor-backup.png" alt="SHIFL web editor: projects and backup" width="560"></p>
 
 The protocol is documented in [web/EDITOR_PROTOCOL.md](web/EDITOR_PROTOCOL.md).
 
@@ -286,7 +286,7 @@ The protocol is documented in [web/EDITOR_PROTOCOL.md](web/EDITOR_PROTOCOL.md).
 
 **The installer or the editor does not find the FM-1.** Use Chrome or Edge, a data cable, no hub, and allow MIDI access. Close every other app or tab that uses MIDI (a DAW, M-UPGRADE, another editor tab), then reload the page.
 
-**An install stopped half-way.** The FM-1 waits in update mode: press INSTALL again. If SLOOP no longer starts, hold **OCT−** alone while switching on (*SLOOP USB RESCUE*) and install again.
+**An install stopped half-way.** The FM-1 waits in update mode: press INSTALL again. If SHIFL no longer starts, hold **OCT−** alone while switching on (*SHIFL USB RESCUE*) and install again.
 
 **The black keys make no sound on a synth track.** That track plays chords or the scale on the white keys: hold **SCL** (between FX and ENV) and set **KNOB 1 CHORD** to OFF and **KNOB 3 KEYS** to OFF. The drum track always uses the black keys.
 
@@ -296,11 +296,11 @@ The protocol is documented in [web/EDITOR_PROTOCOL.md](web/EDITOR_PROTOCOL.md).
 
 **The USB recording is too quiet, or follows the volume knob.** Set HOME menu → **USB AUDIO** to **FULL**, or turn MASTER up.
 
-**Recorded notes move to the grid.** SLOOP quantises what you record to the steps of the track (its **DIV**: 1/4 … 1/32, triplets). For finer timing, set DIV to 1/32; for groove, use SWING.
+**Recorded notes move to the grid.** SHIFL quantises what you record to the steps of the track (its **DIV**: 1/4 … 1/32, triplets). For finer timing, set DIV to 1/32; for groove, use SWING.
 
-**Notes fade out on a dense part.** The processor is at its limit: SLOOP fades one voice at a time (never the bass or the lead) rather than glitching. Fewer held notes or a lighter engine help.
+**Notes fade out on a dense part.** The processor is at its limit: SHIFL fades one voice at a time (never the bass or the lead) rather than glitching. Fewer held notes or a lighter engine help.
 
-**The lights or SYNC went back to OFF / INT.** You went back to an earlier SLOOP, which does not keep them; set them again in 2.3.
+**The lights or SYNC went back to OFF / INT.** You went back to an earlier SHIFL, which does not keep them; set them again in 2.3.
 
 Something else? [Open an issue](../../issues): what you did, what you expected, what happened, and the version shown in HOME menu → ABOUT.
 
@@ -323,7 +323,7 @@ Something else? [Open an issue](../../issues): what you did, what you expected, 
 
 ## Documentation
 
-- [SLOOP.md](SLOOP.md) — the full manual (every page, layer, sound and kit)
+- [SHIFL.md](SHIFL.md) — the full manual (every page, layer, sound and kit)
 - [DEMARRAGE-RAPIDE-FR.md](DEMARRAGE-RAPIDE-FR.md) — guide de démarrage en français
 - [BUILDING.md](BUILDING.md) — building, build options and tests
 - [web/EDITOR_PROTOCOL.md](web/EDITOR_PROTOCOL.md) — the editor's SysEx protocol
@@ -331,7 +331,7 @@ Something else? [Open an issue](../../issues): what you did, what you expected, 
 
 ## Building and tests
 
-See [BUILDING.md](BUILDING.md). In short: the JieLi toolchain and three files of the AC79 SDK, then `./build.sh` (Linux / macOS) or `INSTALL-SLOOP.bat` (Windows with WSL), which builds the firmware and serves the installer and the editor on `http://localhost:8766`.
+See [BUILDING.md](BUILDING.md). In short: the JieLi toolchain and three files of the AC79 SDK, then `./build.sh` (Linux / macOS) or `INSTALL-SHIFL.bat` (Windows with WSL), which builds the firmware and serves the installer and the editor on `http://localhost:8766`.
 
 `tests/run_tests.sh` runs the host test suite with no hardware: audio renders against golden hashes, CPU budgets, the sequencer's timing (no drift, swing, ratchets, rolls, the REC modes and the count-in, MIDI clock), the UI pages and layers, the knobs, flash storage, the update loader, MIDI and USB audio, and the web pages (editor, backup, CHOP, installer).
 
@@ -339,17 +339,17 @@ See [BUILDING.md](BUILDING.md). In short: the JieLi toolchain and three files of
 
 - **Bugs and ideas:** [open an issue](../../issues) — what you did, what you expected, what happened, and the version in HOME menu → ABOUT.
 - **Pull requests** are welcome. Keep the style of the code around your change, add a host test when you can, and make sure `tests/run_tests.sh` passes. Contributions are credited in the release notes and the manual.
-- By contributing you agree that your code is released under GPL-3.0, like the rest of SLOOP.
+- By contributing you agree that your code is released under GPL-3.0, like the rest of SHIFL.
 
 ## Credits and thanks
 
 - **[Felucca](https://github.com/hugelton/Felucca)** by **Leo Kuroshita** (@kurogedelic) / **Hügelton Instruments** — the engines, the sequencer, the editor, the installer, and in 2.3 the USB audio input, the MIDI clock, the knob reading and many fixes (Felucca 1.0 / 1.0.1). Thank you.
 - **@renebohne** — the played-note key lights (pull request #11).
 - **ChanceTheMaker** and **keremimo** — the TRS MIDI input fix (Felucca Salt) and contributions to the MIDI clock.
-- **Everyone who installed SLOOP, made music with it, commented, reported a bug or asked for a feature** — most of 2.3 comes from your messages.
+- **Everyone who installed SHIFL, made music with it, commented, reported a bug or asked for a feature** — most of 2.3 comes from your messages.
 - Samples: Versilian Studios VSCO-2 CE and VCSL, Sonic Pi (all CC0). Font: Terminus (SIL OFL 1.1). Icons: Fukiai (MIT, Hügelton Instruments). PHASE engine after CrispyZebra (GPL); VOICE after klattsch (MIT).
 - Interface ideas after teenage engineering's pocket operators and EP-133, Elektron's step entry and Akai's MPC (swing, note repeat, erase).
 
 ## Licence
 
-Code: GPL-3.0-only (see [LICENSE](LICENSE), and [LICENSING.md](LICENSING.md) for the assets). No warranty. M-VAVE and FM-1 are trademarks of their owners; SLOOP is not affiliated with M-VAVE, teenage engineering, Elektron or Akai. Drum kit names describe styles, not products.
+Code: GPL-3.0-only (see [LICENSE](LICENSE), and [LICENSING.md](LICENSING.md) for the assets). No warranty. M-VAVE and FM-1 are trademarks of their owners; SHIFL is not affiliated with M-VAVE, teenage engineering, Elektron or Akai. Drum kit names describe styles, not products.

@@ -1,5 +1,5 @@
 /* SPDX-License-Identifier: GPL-3.0-only */
-/* SLOOP 2.0 sequencer: the transport clock and what plays on it.
+/* SHIFL 2.0 sequencer: the transport clock and what plays on it.
  *   timing   the kick and the click stay together for 64 bars at any tempo (no drift); a tempo or DIV
  *            change mid-step plays one step, not a burst; LEN changes keep the track in phase; an odd
  *            LEN with SWING stays in phase with a 16-step track
@@ -457,7 +457,7 @@ static void t_mclk(void)
     mi_r = mi_w;
 }
 
-/* the REC screen's MODE and START (SLOOP 2.3): an empty project records at the tempo set (TEMPO) or
+/* the REC screen's MODE and START (SHIFL 2.3): an empty project records at the tempo set (TEMPO) or
  * takes it from the playing (FREE); COUNT: PLAY clicks one bar, then the loop and the recording start */
 static void t_recmode(void)
 {

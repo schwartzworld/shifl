@@ -348,7 +348,7 @@ static void mix_part(track_t *t, uint32_t n)
 /* ---- DUST: the master through an old sampler and a record. G_DUST 0..127 turns up together: drive
  * into a soft clip, a lower sample rate (held samples, 44.1 -> 11 kHz), fewer bits (15 -> 8), a
  * one-pole low-pass (open -> ~3 kHz), a little hiss and crackle. The hiss and the crackle are the
- * record turning: they fade in with PLAY and out (~0.1 s) at STOP, so a stopped SLOOP is silent.
+ * record turning: they fade in with PLAY and out (~0.1 s) at STOP, so a stopped SHIFL is silent.
  * Stereo, ~25 ops a sample. */
 static struct {
     int32_t hl, hr, hn;                                 /* held samples, samples left to hold */

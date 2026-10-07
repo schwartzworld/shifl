@@ -56,7 +56,7 @@ Retuned, cut and coloured by tools/gen_builtin_hiphop.py (gen_hiphop_pack.py's c
 """
 
 
-ATT_HEAD = """SLOOP SAMPLE engine - built-in sets: source material
+ATT_HEAD = """SHIFL SAMPLE engine - built-in sets: source material
 Licence: CC0 1.0 Universal (public domain dedication)
   https://creativecommons.org/publicdomain/zero/1.0/
 Sources:

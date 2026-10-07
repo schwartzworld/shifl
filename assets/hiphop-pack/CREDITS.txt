@@ -1,4 +1,4 @@
-SLOOP HIP-HOP PACK - free sounds for the user sample slots USR1..USR3
+SHIFL HIP-HOP PACK - free sounds for the user sample slots USR1..USR3
 Made by tools/gen_hiphop_pack.py: retuned, cut and processed ("dusty" chain) from:
 
   E.PIANO   Wurlitzer EP200 samples by Greg Sullivan (http://www.sullivang.net/),

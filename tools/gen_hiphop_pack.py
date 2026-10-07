@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 # SPDX-License-Identifier: GPL-3.0-only
-"""Build the SLOOP HIP-HOP PACK: free sounds for the user sample slots USR1..USR3.
+"""Build the SHIFL HIP-HOP PACK: free sounds for the user sample slots USR1..USR3.
 
     python tools/gen_hiphop_pack.py            (needs numpy, scipy, soundfile; network once)
 
@@ -286,7 +286,7 @@ def build_scratch(snd, report):
     return zones
 
 
-CREDITS = """SLOOP HIP-HOP PACK - free sounds for the user sample slots USR1..USR3
+CREDITS = """SHIFL HIP-HOP PACK - free sounds for the user sample slots USR1..USR3
 Made by tools/gen_hiphop_pack.py: retuned, cut and processed ("dusty" chain) from:
 
   E.PIANO   Wurlitzer EP200 samples by Greg Sullivan (http://www.sullivang.net/),
@@ -309,7 +309,7 @@ No sound here comes from a commercial record.
 
 
 def main():
-    report, pack = [], dict(format="sloop-pack", version=1, rate=RATE,
+    report, pack = [], dict(format="shifl-pack", version=1, rate=RATE,
                             default=["E.PIANO", "BASS", "HORNS"], sounds=[])
     for snd in SOUNDS + [SCRATCH]:
         snd["dir"] = snd["name"].replace(".", "")

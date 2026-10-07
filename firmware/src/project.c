@@ -3,11 +3,11 @@
 /* Projects: four slots in .noinit RAM (the song sections A..D), so they survive resets and UBOOT
  * entry. With FELUCCA_FLASH every save also goes to flash through storage.c, and an empty RAM slot
  * is filled from flash on load. The working project is also kept in flash by itself (autosave, when
- * the transport is stopped and nothing sounds) and comes back at power-on: SLOOP starts where you
+ * the transport is stopped and nothing sounds) and comes back at power-on: SHIFL starts where you
  * left it.
  *
- * Formats: 4 ("FUN4", written, SLOOP 2.0): today's P_COUNT / G_COUNT, 10-byte steps (levels and
- * ratchets; the drum track: 16 lanes). Read and converted: 3 ("FUN3", SLOOP 1.x: 8-byte steps, the
+ * Formats: 4 ("FUN4", written, SHIFL 2.0): today's P_COUNT / G_COUNT, 10-byte steps (levels and
+ * ratchets; the drum track: 16 lanes). Read and converted: 3 ("FUN3", SHIFL 1.x: 8-byte steps, the
  * drum track's notes become its lanes, the swings x 0.8 for the MPC scale), 2 ("FUN2") and 1 ("FUN1"),
  * which held PROJ_NP_V2 parameters per track, mapped by count as user presets are (the first
  * PROJ_NP_V2 - 8 are P_LEVEL.. in order, the last 8 P_E0..P_E7; the parameters added since take their
@@ -17,7 +17,7 @@
  * Built on the host too (tests/project_test.c, -DPROJ_HOST): the part above the #ifndef
  * PROJ_HOST needs core.h, params.c (TP), drums.c (the lanes), the engines and trk_def_engine (ui.c). */
 #define PROJ_MAGIC 0x46554E34u                 /* "FUN4": four tracks, P_COUNT parameters each, 10-byte steps */
-#define PROJ_MAGIC_V3 0x46554E33u              /* "FUN3": SLOOP 1.x; read only */
+#define PROJ_MAGIC_V3 0x46554E33u              /* "FUN3": SHIFL 1.x; read only */
 #define PROJ_MAGIC_V2 0x46554E32u              /* "FUN2": four tracks, PROJ_NP_V2 parameters; read only */
 #define PROJ_MAGIC_V1 0x46554E31u              /* "FUN1": one instrument; loads into track 1 */
 #define PROJ_NP_V3 57u                         /* P_COUNT of format 3 (P_E0 was 49) */
@@ -45,7 +45,7 @@ typedef struct {                               /* a track of format 3, read only
     uint8_t engine, preset;
     step8_t step[NSTEP];
 } proj_trk_v3_t;
-typedef struct {                               /* format 3 (SLOOP 1.x), read only */
+typedef struct {                               /* format 3 (SHIFL 1.x), read only */
     uint32_t magic, size;
     int16_t g[PROJ_NG_V3];
     uint8_t sel, rsv[3];
@@ -424,7 +424,7 @@ typedef struct {
 #if FELUCCA_ARRANGER
     arr_config_t arrangement;
 #endif
-    uint32_t lights;                               /* SLOOP 2.3: the backlight (panel.c lights_word); appended,
+    uint32_t lights;                               /* SHIFL 2.3: the backlight (panel.c lights_word); appended,
                                                     * so 2.2 still reads its part (st_load cuts at its size) */
 } persist_t;
 /* V22 = before lights; defined via offsetof(arr_config_t, patch) so it stays correct if entry[] grows */

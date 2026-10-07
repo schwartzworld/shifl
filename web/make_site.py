@@ -47,15 +47,15 @@ def main(pkg, version, out):
     html = (HERE / "index_pkg.html").read_text(encoding="utf-8")
     lib = strip_module((HERE / "fm1pkg.js").read_text(encoding="utf-8")) + "\n" + \
         strip_module((HERE / "fm1ota.js").read_text(encoding="utf-8"))
-    name = f"sloop-{re.sub(r'[^A-Za-z0-9.-]', '-', version)}.fwsc"
+    name = f"shifl-{re.sub(r'[^A-Za-z0-9.-]', '-', version)}.fwsc"
     meta = json.dumps({"version": version, "product": product, "pkg": "../../firmware/" + name,
                        "sha256": hashlib.sha256(raw).hexdigest()})   # the page checks the download against it
     for mark in ("/*LIB*/", "/*META*/"):
         if html.count(mark) != 1:
             raise SystemExit(f"index_pkg.html must contain {mark} once; update make_site.py")
     html = html.replace("/*LIB*/", lib).replace("/*META*/", meta)
-    logo = HERE.parent / "assets" / "logo" / "sloop-logo.svg"     # the SLOOP logo, inline
-    html = html.replace("<!--LOGO-->", logo.read_text(encoding="utf-8") if logo.exists() else "<b>SLOOP</b>")
+    logo = HERE.parent / "assets" / "logo" / "shifl-logo.svg"     # the SHIFL logo, inline
+    html = html.replace("<!--LOGO-->", logo.read_text(encoding="utf-8") if logo.exists() else "<b>SHIFL</b>")
     inst, ed, fw = out / "webapp" / "installer", out / "webapp" / "editor", out / "firmware"
     for d in (inst, ed, fw):
         d.mkdir(parents=True, exist_ok=True)
@@ -70,7 +70,7 @@ def main(pkg, version, out):
         notes = HERE / "beta_banner.html"
         banner = notes.read_text(encoding="utf-8") if notes.exists() else "<p><b>BETA</b></p>"
     html = html.replace("<!--BANNER-->", banner)
-    for old in list(fw.glob("felucca-*.fwsc")) + list(fw.glob("sloop-*.fwsc")):   # one package: the current one
+    for old in list(fw.glob("felucca-*.fwsc")) + list(fw.glob("shifl-*.fwsc")):   # one package: the current one
         old.unlink()
     (inst / "index.html").write_text(html, encoding="utf-8")
     shutil.copy(pkg, fw / name)
@@ -79,9 +79,9 @@ def main(pkg, version, out):
         if (HERE / f).exists():
             shutil.copy(HERE / f, ed / f)
     (out / "index.html").write_text(
-        '<!doctype html><meta charset="utf-8"><title>SLOOP</title>'
+        '<!doctype html><meta charset="utf-8"><title>SHIFL</title>'
         '<meta http-equiv="refresh" content="0; url=webapp/installer/">'
-        '<a href="webapp/installer/">SLOOP installer</a>\n', encoding="utf-8")
+        '<a href="webapp/installer/">SHIFL installer</a>\n', encoding="utf-8")
     print(f"site: {out}: webapp/installer ({len(html)} B), webapp/editor, firmware/{name} ({len(raw)} B, {product})")
 
 

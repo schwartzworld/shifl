@@ -77,7 +77,7 @@ static void host_tracks_init(void)                /* as felucca_init: defaults, 
     uint32_t i, k;
     for (i = 0; i < G_COUNT; i++)
         song.g[i] = GP[i].def;
-    song.g[G_BPM] = 120;                         /* (the tests' tempo; SLOOP powers on at 90) */
+    song.g[G_BPM] = 120;                         /* (the tests' tempo; SHIFL powers on at 90) */
     for (k = 0; k < NTRK; k++) {
         for (i = 0; i < P_E0; i++)
             trk[k].p[i] = TP[i].def;

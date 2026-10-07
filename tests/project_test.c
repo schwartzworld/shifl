@@ -1,8 +1,8 @@
 /* SPDX-License-Identifier: GPL-3.0-only
  * Copyright (C) 2026 Leo Kuroshita (@kurogedelic), Hügelton Instruments */
 /* Host test of the project formats (firmware/src/project.c, -DPROJ_HOST part). Format 4 ("FUN4",
- * SLOOP 2.0: 10-byte steps with levels and ratchets, the drum track's 16 lanes, P_CHORD) is written;
- * format 3 ("FUN3", SLOOP 1.x), format 2 ("FUN2", 53 parameters per track) and format 1 ("FUN1"), built
+ * SHIFL 2.0: 10-byte steps with levels and ratchets, the drum track's 16 lanes, P_CHORD) is written;
+ * format 3 ("FUN3", SHIFL 1.x), format 2 ("FUN2", 53 parameters per track) and format 1 ("FUN1"), built
  * byte for byte as the firmware stored them, convert: every old value at its parameter, the parameters
  * added since at their defaults, the swings onto the MPC scale (x 0.8), synth steps as they were, the
  * drum track's notes onto its lanes (accent: hard), globals, selection, the engine bytes (kept; the
@@ -124,7 +124,7 @@ int main(void)
     bad += check("format 4 fits one flash object; 4 slots fit .noinit", sizeof(project_t) <= 4096u - 256u &&
                  4u * sizeof(project_t) < 0x3D50u - 1024u);
 
-    /* format 3 (SLOOP 1.x) */
+    /* format 3 (SHIFL 1.x) */
     memset(&v3, 0, sizeof v3);
     v3.magic = PROJ_MAGIC_V3;
     v3.size = sizeof v3;

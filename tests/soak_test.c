@@ -1,5 +1,5 @@
 /* SPDX-License-Identifier: GPL-3.0-only */
-/* SLOOP soak test: 10 simulated minutes of random live use through the real audio path
+/* SHIFL soak test: 10 simulated minutes of random live use through the real audio path
  * (mix_block: sequencer, the 3 synth parts, the synthesised and sampled drum kits, the
  * punch-in FX, the record arm, free takes, MIDI in), then everything stopped and released.
  * Checks: the output stays bounded, every block renders in time on the host, voices never
@@ -33,7 +33,7 @@ int main(int argc, char **argv)
     host_preset(&trk[1], 1, 5);
     host_preset(&trk[2], 3, 0);
     TDRUM->p[P_E0] = DRUM_SAMPLED;
-    for (k = LY_FX; k < LY_COUNT; k++)                        /* the layer buttons (SLOOP 2.0): bits 8.. */
+    for (k = LY_FX; k < LY_COUNT; k++)                        /* the layer buttons (SHIFL 2.0): bits 8.. */
         ly_bit[k] = 1u << (7u + k);
     dyn_bit[0] = 1u << 14;
     dyn_bit[1] = 1u << 15;

@@ -1,4 +1,4 @@
-SLOOP SAMPLE engine - built-in sets: source material
+SHIFL SAMPLE engine - built-in sets: source material
 Licence: CC0 1.0 Universal (public domain dedication)
   https://creativecommons.org/publicdomain/zero/1.0/
 Sources:

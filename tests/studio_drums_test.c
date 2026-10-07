@@ -14,7 +14,7 @@ int main(int argc,char **argv)
     uint32_t i,j,k,v,total=0; uint64_t energy[DRUM_KITS]={0};
     int32_t out[CTL*2]; dstep_t step={{0}};
     host_tracks_init();
-    for(i=0;i<DRUM_LANES;i++)dstep_set(&step,i,i&3u,(i>>2)&3u);   /* SLOOP 2.0: all 16 lanes in one step */
+    for(i=0;i<DRUM_LANES;i++)dstep_set(&step,i,i&3u,(i>>2)&3u);   /* SHIFL 2.0: all 16 lanes in one step */
     assert(dstep_mask(&step)==0xFFFFu);
     for(i=0;i<DRUM_LANES;i++)assert(dstep_has(&step,i) && dstep_lvl(&step,i)==(i&3u) && dstep_rat(&step,i)==((i>>2)&3u));
     dstep_clr(&step,5);assert(!dstep_has(&step,5) && dstep_has(&step,4) && dstep_has(&step,6) && dstep_lvl(&step,6)==2u);

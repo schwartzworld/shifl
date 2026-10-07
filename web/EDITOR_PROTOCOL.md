@@ -1,9 +1,9 @@
-# SLOOP editor protocol (SysEx over USB-MIDI)
+# SHIFL editor protocol (SysEx over USB-MIDI)
 
-The firmware side is `firmware/src/editor.c` (SLOOP is based on Felucca: the frames keep its "FL"
+The firmware side is `firmware/src/editor.c` (SHIFL is based on Felucca: the frames keep its "FL"
 header). Commands 16-26 (user presets and live sync) form protocol v2; commands 27-30 (tracks) form
 protocol v3; commands 31-32 (any track's parameters) form protocol v4; command 33 and the extra step,
-`INFO` and `TRACK` bytes form protocol v5 (SLOOP 2.0).
+`INFO` and `TRACK` bytes form protocol v5 (SHIFL 2.0).
 
 **v3 (four tracks):** the device has four tracks: 1..3 are synth parts, 4 is the drum track. One
 of them is *selected* (the TRACKS page on the device, or `TRACK`). Every v1 / v2 command acts on the
@@ -14,7 +14,7 @@ selected track (its parameters, engine, preset, steps, the user presets it store
 the selection, and the `TRACK_CHANGED` push follows level, pan and mute of the tracks that are not
 selected. The v1-v3 commands are byte for byte as before; v4 is asked for with bit 1 of `WATCH`.
 
-**v5 (SLOOP 2.0):** the drum track has 16 lanes (one sound per white key) with a level and a ratchet per
+**v5 (SHIFL 2.0):** the drum track has 16 lanes (one sound per white key) with a level and a ratchet per
 hit; `DRUM_STEP` reads and writes them. Synth steps carry a level and a ratchet per note. `INFO` ends with
 the protocol version (5) and `TRACK` with the solo mask. Every addition is a byte appended at the end of
 a reply or a request, so v1-v4 editors keep working (they see the drum lanes as GM notes, below).
@@ -50,7 +50,7 @@ after an engine change.
 | 2 GET | scope, id | scope, id, v14 |
 | 3 SET | scope, id, v14 | scope, id, v14 (the value after clamping). Setting global `G_ENGSEL` (id from DESC label "ENG") changes the engine with its defaults |
 | 4 DUMP | — | engine, preset, then P_COUNT × v14 (the selected track), then G_COUNT × v14 (globals) |
-| 5 DESC | scope, id | scope, id, fmt, min v14, max v14, def v14, label string, unit string, then for an enum (fmt 8) one name string per value (at most 64; firmware before SLOOP sent at most 16) |
+| 5 DESC | scope, id | scope, id, fmt, min v14, max v14, def v14, label string, unit string, then for an enum (fmt 8) one name string per value (at most 64; firmware before SHIFL sent at most 16) |
 | 6 STEP_GET | index 0..NSTEP−1 | index, n (0..4 notes), note0..note3, time (0 NOTE, 1 TIE, 2 REST), flags (1 accent, 2 slide), vel, then (v5) lvl, hi, rat |
 | 7 STEP_SET | index, n, note0..3, time, flags, vel [, lvl, hi, rat (v5)] | same as STEP_GET (after the write). Without the v5 bytes the step's levels and ratchets become 0 |
 | 8 PRESET | engine, preset | engine, preset (applies the preset: sound, sends, arp; never the pattern, the mix or the key: `LEVEL PAN MUTE`, `LEN DIV SWG GATE`, `ROOT SCL QNT CHORD` stay) |
@@ -158,7 +158,7 @@ presets.
 slot count; a mismatch reads as an empty bank). A record keeps its layout version (mismatch: empty)
 and the P_COUNT it was stored with; another count is mapped by count (last 8 values = P_E0..P_E7, the
 first ones = P_LEVEL.. in order, missing ones = defaults). P_COUNT was 53 (P_E0 45) until the SLICER
-parameters (SLCR, PAT, RATE, DEPTH: ids 45..48) went in just before P_E0: P_COUNT 57, P_E0 49; SLOOP 2.0
+parameters (SLCR, PAT, RATE, DEPTH: ids 45..48) went in just before P_E0: P_COUNT 57, P_E0 49; SHIFL 2.0
 added CHORD (id 49): P_COUNT 58, P_E0 50 (and G_COUNT 32: DUST, DUCK, FILT, ROLL, NEW at 27..31). An
 editor takes them from `INFO`; older records load with the SLICER off and CHORD off.
 
@@ -192,7 +192,7 @@ editor takes them from `INFO`; older records load with the SLICER off and CHORD 
 - Level and mute are also `P_LEVEL` / `P_MUTE` of the selected track (`SET`); `TRACK_MIX` reaches the
   others. Presets and user presets change a part's sound but keep its mix (`P_LEVEL`, `P_PAN`,
   `P_MUTE`), its pattern parameters (`LEN DIV SWG GATE`) and its key (`ROOT SCL QNT`, `CHORD`).
-- Projects (`PROJECT`) save and load all four tracks and the selection (SLOOP 2.0: project format 4,
+- Projects (`PROJECT`) save and load all four tracks and the selection (SHIFL 2.0: project format 4,
   "FUN4", with the drum lanes, levels and ratchets; formats 3, 2 and 1 from older firmware are converted
   when loaded, a format 1 project into track 1).
 - Older firmware (no NTRK in `INFO`): one instrument; skip the track UI.
@@ -213,7 +213,7 @@ editor takes them from `INFO`; older records load with the SLICER off and CHORD 
   `TRACK_PARAM` / `TRACK_MIX` writes. After a selection change (`RELOAD`, or the editor's `TRACK`) the
   device takes the current values as known.
 
-## v5: drum lanes, levels, ratchets (SLOOP 2.0)
+## v5: drum lanes, levels, ratchets (SHIFL 2.0)
 
 - **Finding out:** `INFO` ends with 5. Older firmware ends after NTRK (or the engine names): use the
   v1-v4 commands only.
@@ -241,7 +241,7 @@ editor takes them from `INFO`; older records load with the SLICER off and CHORD 
   `KIT` (34 kits: ORIGINAL..DUST, the GM sample kit and its treatments, then the synthesised kits from
   808). `DESC` of `P_E1..P_E7` there still describes engine 0 (unused).
 
-## v6: backup / restore (SLOOP 2.3)
+## v6: backup / restore (SHIFL 2.3)
 
 `INFO` ends with 6. Objects: **0** the working project (a `project_t`, as the autosave), **1** the settings
 (`persist_t`: colours, low cut, zoom, the panel calibration, the song order, the lights and SYNC word),
@@ -260,7 +260,7 @@ A restore stages one object in RAM (the project load buffer), checks it at the c
 magic, palette, a permutation of the buttons and knobs, a valid song order) and writes it through the usual
 A/B commit; the working project is loaded at once (the song must be stopped). Samples are restored with
 `SMP_BEGIN` / `SMP_WRITE` / `SMP_END` (the header is the first 480 bytes of the object, the data from byte
-512), an empty slot with `SMP_ERASE`. The editor's file is JSON: `{format: "sloop-backup", version: 1,
+512), an empty slot with `SMP_ERASE`. The editor's file is JSON: `{format: "shifl-backup", version: 1,
 firmware, date, objects: [{id, len, crc, data (base64)}]}`; it is checked (lengths, CRCs) before anything is
 written.
 
@@ -270,10 +270,10 @@ written.
   The device holds only one incoming SysEx frame.
 - **Following the device.** With v2 firmware, `WATCH` and `PING` (above). Older firmware pushes
   nothing (no reply to `PING`): poll `DUMP` about every 300–500 ms while the page is visible.
-- **Port.** The device's MIDI port is named "Felucca" (USB 1209:0001; SLOOP keeps the name so editors
+- **Port.** The device's MIDI port is named "Felucca" (USB 1209:0001; SHIFL keeps the name so editors
   and installers find it). Updates use the same
   port with other SysEx (the `F0 22 24 35 …` keys, `00 59 …` frames); never send those
-  from the editor. Since SLOOP 2.3 (after Felucca 1.0) the same USB device also has an audio input
+  from the editor. Since SHIFL 2.3 (after Felucca 1.0) the same USB device also has an audio input
   ("Felucca", 44.1 kHz stereo; bcdDevice 3.11): the MIDI port and this protocol are unchanged, and both
   work while the computer records.
 - **Safety.** Only `PROJECT` save, the sample-slot commands and `UP_PUT` / `UP_STORE` / `UP_ERASE` write flash, and only in

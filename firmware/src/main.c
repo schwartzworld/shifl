@@ -133,7 +133,7 @@ static void fm1_main(void)
 #endif
     settings_init();
     lcd_init();
-    sloop_splash();                                     /* the SLOOP logo (splash.c) */
+    shifl_splash();                                     /* the SHIFL logo (splash.c) */
     if (felucca_dbg.magic != DBG_MAGIC) {
         memset(&felucca_dbg, 0, sizeof felucca_dbg);
         felucca_dbg.magic = DBG_MAGIC;

@@ -3,7 +3,7 @@
 /* Editor protocol: SysEx for the web editor (web/EDITOR_PROTOCOL.md; v2 = user presets + live sync,
  * v3 = four tracks: the v1 / v2 commands act on the selected track, cmds 27-30 reach any track;
  * v4 = TRACK_PARAM (31) and the TRACK_CHANGED push (32), enabled by WATCH bit 1;
- * v5 = SLOOP 2.0: INFO ends with the protocol version (5), steps carry level / ratchet bytes,
+ * v5 = SHIFL 2.0: INFO ends with the protocol version (5), steps carry level / ratchet bytes,
  * DRUM_STEP (33) reads / writes the drum track's 16 lanes, TRACK ends with the solo mask).
  *   F0 7D 46 4C cmd args.. F7     (7D = non-commercial ID, "FL")
  * Values are 14 bit, two 7-bit bytes LSB first, offset by 8192 (so -8192..8191).

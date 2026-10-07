@@ -1,16 +1,16 @@
-<p align="center"><img src="assets/logo/sloop-logo.png" alt="SLOOP" width="360"></p>
+<p align="center"><img src="assets/logo/shifl-logo.png" alt="SHIFL" width="360"></p>
 
-# SLOOP 2.3 — démarrage rapide
+# SHIFL 2.3 — démarrage rapide
 
-**SLOOP** transforme le M-VAVE FM-1 en groovebox à jouer en live, pour tous les styles : trois synthés et une batterie de 16 sons sur les touches blanches, 9 moteurs de synthèse, 68 sons rangés par famille (basses, claviers, orgues, nappes, leads, plucks, stabs), 37 kits de batterie (808, 909, trap, phonk, house, techno, UK garage, jungle, amapiano, synthwave, chiptune, ambient…), tes propres samples, ghost notes et ratchets, note repeat, accords sur une touche, 16 effets punch-in, et un écran à la teenage engineering qui montre toujours ce que tes mains peuvent faire. Aucun motif d'usine : tout ce que tu entends, tu le joues.
+**SHIFL** transforme le M-VAVE FM-1 en groovebox à jouer en live, pour tous les styles : trois synthés et une batterie de 16 sons sur les touches blanches, 9 moteurs de synthèse, 68 sons rangés par famille (basses, claviers, orgues, nappes, leads, plucks, stabs), 37 kits de batterie (808, 909, trap, phonk, house, techno, UK garage, jungle, amapiano, synthwave, chiptune, ambient…), tes propres samples, ghost notes et ratchets, note repeat, accords sur une touche, 16 effets punch-in, et un écran à la teenage engineering qui montre toujours ce que tes mains peuvent faire. Aucun motif d'usine : tout ce que tu entends, tu le joues.
 
-Le manuel complet (en anglais) : [SLOOP.md](SLOOP.md).
+Le manuel complet (en anglais) : [SHIFL.md](SHIFL.md).
 
 ---
 
 ## Installer
 
-1. Double-clique **`INSTALL-SLOOP.bat`** dans le dossier SLOOP : il compile le firmware et ouvre l'installateur sur `http://localhost:8766/webapp/installer/`.
+1. Double-clique **`INSTALL-SHIFL.bat`** dans le dossier SHIFL : il compile le firmware et ouvre l'installateur sur `http://localhost:8766/webapp/installer/`.
 2. Dans **Chrome ou Edge**, branche le FM-1 en USB (câble de données, directement, sans hub).
 3. **INSTALL**, autorise le MIDI, attends *Done*. Garde la fenêtre noire ouverte jusque-là.
 
@@ -95,7 +95,7 @@ Une touche noire joue le son de la touche blanche à sa gauche (deux doigts sur 
 
 Le mode et le départ restent comme tu les as laissés (réglages de la FM-1). Avec des notes déjà dans le projet, pas de mode : on enregistre toujours au tempo réglé. Pendant le décompte, REC l'annule et PLAY revient à *rec ready*.
 
-**Prise libre :** joue librement ; l'écran montre les secondes et la boucle que ça donnerait (*2 bars · 92 bpm*). **REC sur le « 1 » qui suit ta dernière mesure** : SLOOP choisit 1, 2 ou 4 mesures au tempo le plus proche, cale tes notes et lance la boucle. **PLAY** abandonne la prise.
+**Prise libre :** joue librement ; l'écran montre les secondes et la boucle que ça donnerait (*2 bars · 92 bpm*). **REC sur le « 1 » qui suit ta dernière mesure** : SHIFL choisit 1, 2 ou 4 mesures au tempo le plus proche, cale tes notes et lance la boucle. **PLAY** abandonne la prise.
 
 Les notes vont au pas le plus proche **tel que tu l'as entendu** (la latence de ~12 ms est compensée). La lumière PLAY clignote à chaque temps : un métronome visuel. Clic audible : GLO → GLOBAL → CLICK.
 
@@ -123,7 +123,7 @@ Les notes vont au pas le plus proche **tel que tu l'as entendu** (la latence de 
 - **Annuler / rétablir :** EDIT + OCT− / OCT+ (un niveau : le dernier passage d'enregistrement, effacement, piste effacée, modification de pas ou de motif).
 - **Effacer une piste :** maintiens REC ; après 0,7 s un anneau se remplit ; tiens encore ~1,3 s. Relâche avant : rien. Annuler la ramène.
 - **Sauvegarder :** SAVE + touches 5–8 sauvent la boucle dans la section / le projet A–D (= SLOT 1–4).
-- **Sauvegarde automatique :** à l'arrêt, 2,5 s sans toucher (au plus toutes les 20 s), le projet en cours est gardé ; au rallumage, SLOOP revient comme tu l'as laissé.
+- **Sauvegarde automatique :** à l'arrêt, 2,5 s sans toucher (au plus toutes les 20 s), le projet en cours est gardé ; au rallumage, SHIFL revient comme tu l'as laissé.
 - **Nouveau projet :** SAVE → TOOLS → NEW (tourner sur GO).
 
 ## Le master : DUST, DUCK, FILT
@@ -157,7 +157,7 @@ Chrome ou Edge, FM-1 en USB, **Connect**. Il suit l'appareil en direct.
 - **Prise MIDI IN** (jack 3,5 mm TRS du FM-1) : un clavier ou des pads avec une sortie MIDI, via un adaptateur TRS ↔ DIN MIDI. Si rien ne joue, essaie l'autre type d'adaptateur (type A / type B).
 - **USB** : depuis un ordinateur ou un téléphone (DAW, appli de routage MIDI) ou un boîtier « USB MIDI host ». Un clavier USB branché directement sur le FM-1 ne peut pas marcher : ce sont deux appareils USB, il faut un hôte.
 - **Canaux :** 1, 2, 3 = pistes synth 1, 2, 3 · 10 = la batterie · 4 à 16 = **la piste sélectionnée** (règle ton clavier sur le canal 4 et il suit ALGORITHM).
-- **Horloge MIDI :** GLO → SYSTEM → **SYNC** = **USB** ou **TRS**. SLOOP suit le tempo, START, CONTINUE et STOP du maître, sans jamais dériver. Sans horloge pendant une demi-seconde, PLAY rejoue au tempo du FM-1. SYNC est un réglage de la FM-1 : il reste quand tu charges un projet.
+- **Horloge MIDI :** GLO → SYSTEM → **SYNC** = **USB** ou **TRS**. SHIFL suit le tempo, START, CONTINUE et STOP du maître, sans jamais dériver. Sans horloge pendant une demi-seconde, PLAY rejoue au tempo du FM-1. SYNC est un réglage de la FM-1 : il reste quand tu charges un projet.
 - Le MIDI Bluetooth n'est pas pris en charge (la radio reste éteinte).
 
 ## Lumières (jouer dans le noir)
@@ -180,8 +180,8 @@ Dans l'éditeur, onglet **Projects** → **Backup** : **Save a backup** enregist
 
 ## Secours
 
-- **Secours USB :** maintiens **OCT−** seul à l'allumage (*SLOOP USB RESCUE*), puis réinstalle.
+- **Secours USB :** maintiens **OCT−** seul à l'allumage (*SHIFL USB RESCUE*), puis réinstalle.
 - **Installation interrompue :** le FM-1 reste en mode mise à jour ; relance INSTALL et il termine. Un paquet abîmé est refusé et le FM-1 attend un paquet correct.
 - **Retour au firmware officiel :** sur la page d'installation, ouvre **Return to the official firmware (V15)** : fais d'abord une sauvegarde avec l'éditeur, télécharge FM-1 V15 sur m-vave.com, choisis son fichier FM-1.fwsc (seul ce fichier exact est accepté) et installe-le. M-UPGRADE de M-VAVE marche aussi (ferme les autres applis qui utilisent le MIDI).
 
-SLOOP est libre (GPL-3.0), basé sur Felucca de Leo Kuroshita (Hügelton Instruments). M-VAVE et FM-1 sont des marques de leurs propriétaires ; SLOOP n'y est pas affilié.
+SHIFL est libre (GPL-3.0), basé sur Felucca de Leo Kuroshita (Hügelton Instruments). M-VAVE et FM-1 sont des marques de leurs propriétaires ; SHIFL n'y est pas affilié.

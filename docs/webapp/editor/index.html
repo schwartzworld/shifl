@@ -7,7 +7,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>SLOOP Editor</title>
+<title>SHIFL Editor</title>
 <style>
   /* Fukiai: Hügelton Instruments' icon font (MIT, FUKIAI-LICENSE.txt). Icons are text in .ic spans;
      they stay hidden until the face has loaded (html.fk), so a missing font never shows boxes. */
@@ -180,7 +180,7 @@
 <body>
 <main>
   <button class="lang" id="lang"></button>
-  <h1>SLOOP Editor</h1>
+  <h1>SHIFL Editor</h1>
   <p class="dim"><a href="../installer/" style="color:inherit" data-t="installer"></a></p>
   <!-- always visible: connection, version, sync mode, the tabs and (Sound / Sequencer / Tracks) the track selector -->
   <header class="top">
@@ -320,7 +320,7 @@
     </div>
   </section>
 
-  <footer>SLOOP, based on Felucca by Leo Kuroshita (@kurogedelic), <a href="https://hugelton.com" target="_blank" rel="noopener">Hügelton Instruments</a>. GPL-3.0.<br>
+  <footer>SHIFL, based on Felucca by Leo Kuroshita (@kurogedelic), <a href="https://hugelton.com" target="_blank" rel="noopener">Hügelton Instruments</a>. GPL-3.0.<br>
     <span data-t="foot"></span> M-VAVE and FM-1 are trademarks of their respective owners.<br>
     <a href="FUKIAI-LICENSE.txt" data-t="iconsCredit"></a></footer>
 </main>
@@ -343,7 +343,7 @@ const PUSH = new Set([CMD.CHANGED, CMD.RELOAD, CMD.STEP_CHANGED, CMD.TRACK_CHANG
 const UP = { NAME_MAX: 12, PAT: 16, LIST_MAX: 16 };
 const F = { INT: 0, PCT: 1, BIPCT: 2, TIME: 3, LFOHZ: 4, CUTOFF: 5, DB: 6, SEMI: 7, ENUM: 8, BPM: 9, NOTE: 10, ONOFF: 11, OCT: 12, STEPS: 13,
   SWING: 14, FILT: 15 };
-/* v5 (SLOOP 2.0): the drum track's 16 sounds (firmware drums.c LANE_NOTE / LANE_NAME), one per white key
+/* v5 (SHIFL 2.0): the drum track's 16 sounds (firmware drums.c LANE_NOTE / LANE_NAME), one per white key
    F3..G5; a hit has a level (NORM, GHOST, SOFT, HARD: OCT- / OCT+ held on the device) and a ratchet x1..x4 */
 const DRUM_LANES = [[36, "KICK"], [35, "KICK 2"], [38, "SNARE"], [39, "CLAP"], [42, "HAT"], [46, "OPEN HAT"], [44, "PEDAL"], [37, "RIM"],
   [40, "SNARE 2"], [43, "LOW TOM"], [48, "HI TOM"], [49, "CRASH"], [51, "RIDE"], [70, "SHAKER"], [63, "CONGA"], [56, "COWBELL"]];
@@ -1239,7 +1239,7 @@ function b64dec(s) {
 }
 /* object ids (firmware editor.c ED_BK_IDS): 0 the working project, 1 the settings, 2..5 projects A..D,
    6..7 the user preset banks, 32..34 the sample slots USR1..3 */
-const BK = { FORMAT: "sloop-backup", VERSION: 1, SAMPLES: [32, 33, 34], RESTORE: [6, 7, 2, 3, 4, 5, 0, 1] };
+const BK = { FORMAT: "shifl-backup", VERSION: 1, SAMPLES: [32, 33, 34], RESTORE: [6, 7, 2, 3, 4, 5, 0, 1] };
 class BackupError extends Error { constructor(code, msg) { super(msg); this.code = code; } }
 /* read everything; progress(done, total bytes) */
 async function backupCapture(rq, info, progress = () => {}) {
@@ -1265,7 +1265,7 @@ async function backupCapture(rq, info, progress = () => {}) {
 }
 /* a backup file -> {id: Uint8Array}; every object checked against its length and CRC */
 function backupObjects(file) {
-  if (!file || file.format !== BK.FORMAT || !(file.version >= 1) || !Array.isArray(file.objects)) throw new BackupError("bkBad", "not a SLOOP backup");
+  if (!file || file.format !== BK.FORMAT || !(file.version >= 1) || !Array.isArray(file.objects)) throw new BackupError("bkBad", "not a SHIFL backup");
   const m = new Map();
   for (const o of file.objects) {
     const d = b64dec(o.data || "");
@@ -1327,7 +1327,7 @@ async function capturePatch(rq, info, name) {
 }
 
 /* what loading a sound leaves alone (firmware ui.c param_kept): the mix (LEVEL, PAN, MUTE), the pattern
-   parameters (LEN, DIV, SWG, GATE) and the key the part plays in (ROOT, SCL, QNT; CHORD from SLOOP 2.0) */
+   parameters (LEN, DIV, SWG, GATE) and the key the part plays in (ROOT, SCL, QNT; CHORD from SHIFL 2.0) */
 const keptIds = (info) => new Set([0, 25, 26, 27, 29, 30, 31, 32, 39, 40, ...(info.pe0 > 49 ? [49] : [])]);
 /* play a patch without writing flash, as UP_LOAD would load it: SET the engine (G_ENGSEL, engine defaults),
    then every parameter of the sound that differs. Never the pattern (LIVE: a sound never changes the
@@ -1425,7 +1425,7 @@ function makeMockDevice(opt = {}) {
   const LANE_OF_GM = [1, 0, 7, 2, 3, 8, 9, 4, 9, 6, 9, 5, 10, 10, 11, 10, 12, 11, 12, 13, 11, 15, 11, 13, 12, 14, 14, 14, 14, 14,
     14, 14, 15, 15, 13, 13, 15, 15, 13, 13, 7, 7, 7, 14, 14, 15, 15];
   const laneOf = (n) => (n < 35 ? 0 : n > 81 ? 13 : LANE_OF_GM[n - 35]);
-  const v5 = !opt.legacy && !opt.v3;              /* SLOOP 2.0: steps with level / ratchet, DRUM_STEP, TRACK solo */
+  const v5 = !opt.legacy && !opt.v3;              /* SHIFL 2.0: steps with level / ratchet, DRUM_STEP, TRACK solo */
   /* the drum step as an old (v1..v4) step: its first 4 lanes as GM notes, ACC when one is hard (editor.c ed_dstep_old) */
   const dOld = (d) => {
     const notes = [];
@@ -1678,7 +1678,7 @@ function makeMockDevice(opt = {}) {
         b(0);
         break;
       case CMD.INFO:
-        s(opt.legacy ? "FELUCCA 0.4 BETA (MOCK)" : opt.v3 ? "FELUCCA 0.8 (MOCK)" : "FELUCCA SLOOP 2.0 (MOCK)"); b(ENG.length); b(P_COUNT); b(G_COUNT); b(NSTEP); b(P_E0);
+        s(opt.legacy ? "FELUCCA 0.4 BETA (MOCK)" : opt.v3 ? "FELUCCA 0.8 (MOCK)" : "FELUCCA SHIFL 2.0 (MOCK)"); b(ENG.length); b(P_COUNT); b(G_COUNT); b(NSTEP); b(P_E0);
         ENG.forEach((e) => s(e.name));
         if (!opt.legacy) b(NTRK);
         if (v5) b(opt.noBackup ? 5 : 6);                 /* v6: backup / restore */
@@ -2055,7 +2055,7 @@ const TEXT = {
     foot: "Chrome か Edge で使えます。", iconsCredit: "アイコン: Fukiai（MIT）Hügelton Instruments",
     nomidi: "このブラウザでは使えません。Chrome か Edge で開いてください。",
     denied: "MIDI（SysEx）の使用が許可されませんでした。",
-    nodevice: "SLOOP が見つかりません。USB で接続して、もう一度押してください。",
+    nodevice: "SHIFL が見つかりません。USB で接続して、もう一度押してください。",
     connecting: "接続中", reading: "読み込み中 ", steploading: "ステップを読み込み中 ",
     ready: "接続しました", disconnected: "切断されました", lost: "FM-1 が外されました",
     noreply: "応答がありません", error: "エラー: ", busy: "処理中",
@@ -2103,7 +2103,7 @@ const TEXT = {
     putDone: "本体に書き込みました: スロット ", storedSlot: "本体に保存しました: スロット ", erasedSlot: "消去しました: スロット ",
     loadedUser: "読み込みました: ", reloaded: "本体で音色が変わったので読み直しました", readingBank: "スロットを読み込み中",
     badEngine: "このファームウェアにないエンジンです: ", flashFail: "書き込みに失敗しました（rc {rc}）",
-    installer: "SLOOP インストーラー",
+    installer: "SHIFL インストーラー",
     tabSeq: "シーケンサー", tabTracks: "トラック", tabSettings: "設定",
     needDevice: "FM-1 を接続すると編集できます。", smpNone: "このファームウェアにはユーザーサンプルのスロットがありません。",
     bankConnect: "FM-1 を接続すると本体のユーザープリセットも扱えます。", bankNone: "このファームウェアにはユーザープリセットがありません。",
@@ -2118,7 +2118,7 @@ const TEXT = {
     bkTitle: "バックアップ", bkHelp: "FM-1 の中身をすべて 1 つのファイルに保存します: 今の曲、プロジェクト 1〜4（ソングのセクション A〜D）、ユーザープリセット、サンプル USR1〜3、設定（色、キャリブレーション、ソング、ライト）。復元すると、本体はファイルの状態に戻ります（今の内容は上書きされます）。",
     bkSave: "バックアップを保存", bkLoad: "ファイルから復元", bkSaving: "バックアップ中 ", bkSaved: "バックアップを保存しました",
     bkRestoring: "復元中 ", bkRestored: "復元しました", bkConfirm: "FM-1 の今の内容をすべてこのバックアップで置き換えます。続けますか？",
-    bkBad: "SLOOP のバックアップファイルではないか、壊れています: ", bkStop: "FM-1 の再生を止めてから、もう一度復元してください。",
+    bkBad: "SHIFL のバックアップファイルではないか、壊れています: ", bkStop: "FM-1 の再生を止めてから、もう一度復元してください。",
     bkStale: "本体の内容が途中で変わりました。もう一度バックアップしてください: ", bkRead: "読み取りエラー: ", bkWrite: "書き込みエラー: ", bkRc4: "フラッシュがありません",
     system: "システム", firmware: "ファームウェア", sync: "同期", tracksN: "トラック", stepsN: "ステップ数", enginesL: "エンジン",
     smpSlots: "サンプルスロット", userBank: "ユーザープリセット", none: "なし",
@@ -2135,7 +2135,7 @@ const TEXT = {
     foot: "Works in Chrome or Edge.", iconsCredit: "Icons: Fukiai (MIT), Hügelton Instruments",
     nomidi: "This browser cannot do it. Open the page in Chrome or Edge.",
     denied: "MIDI (SysEx) access was not allowed.",
-    nodevice: "SLOOP not found. Connect the FM-1 by USB and press Connect again.",
+    nodevice: "SHIFL not found. Connect the FM-1 by USB and press Connect again.",
     connecting: "Connecting", reading: "Reading ", steploading: "Reading steps ",
     ready: "Connected", disconnected: "Disconnected", lost: "The FM-1 was unplugged",
     noreply: "No reply from the device", error: "Error: ", busy: "Busy",
@@ -2183,7 +2183,7 @@ const TEXT = {
     putDone: "Written to the device: slot ", storedSlot: "Stored on the device: slot ", erasedSlot: "Erased slot ",
     loadedUser: "Loaded ", reloaded: "The sound changed on the device: read again", readingBank: "Reading the slots",
     badEngine: "This firmware has no such engine: ", flashFail: "Write failed (rc {rc})",
-    installer: "SLOOP installer",
+    installer: "SHIFL installer",
     tabSeq: "Sequencer", tabTracks: "Tracks", tabSettings: "Settings",
     needDevice: "Connect the FM-1 to edit.", smpNone: "This firmware has no user sample slots.",
     bankConnect: "Connect the FM-1 to see its user presets too.", bankNone: "This firmware has no user presets.",
@@ -2198,7 +2198,7 @@ const TEXT = {
     bkTitle: "Backup", bkHelp: "Everything on the FM-1 in one file: the music you are working on, the projects 1–4 (the song sections A–D), the user presets, the samples USR1–3 and the settings (colours, calibration, the song, the lights). Restoring puts the FM-1 back as it was in the file (what is on it now is replaced).",
     bkSave: "Save a backup", bkLoad: "Restore from a file", bkSaving: "Backing up ", bkSaved: "Backup saved",
     bkRestoring: "Restoring ", bkRestored: "Restored", bkConfirm: "Replace everything on the FM-1 with this backup?",
-    bkBad: "Not a SLOOP backup, or damaged: ", bkStop: "Stop the FM-1 (PLAY), then restore again.",
+    bkBad: "Not a SHIFL backup, or damaged: ", bkStop: "Stop the FM-1 (PLAY), then restore again.",
     bkStale: "The FM-1 changed during the backup; back up again: ", bkRead: "Read error: ", bkWrite: "Write error: ", bkRc4: "No flash",
     system: "System", firmware: "Firmware", sync: "Sync", tracksN: "Tracks", stepsN: "Steps", enginesL: "Engines",
     smpSlots: "Sample slots", userBank: "User presets", none: "none",
@@ -2333,7 +2333,7 @@ const pById = (label, def) => { const i = dev.pdesc.findIndex((d, k) => d && k <
 const pPan = () => pById("PAN", 39), pMute = () => pById("MUTE", 40);
 const gDrLvl = () => { const i = dev.gdesc.findIndex((d, k) => d && k > gEng() && (d.label === "LVL" || d.label === "LEVEL")); return i >= 0 ? i : 25; };
 const isDrum = () => !!dev && !!dev.dump && dev.dump.engine >= dev.info.nengines;
-/* v5 (SLOOP 2.0): the drum track is edited as its 16 lanes (DRUM_STEP); older firmware: as GM notes */
+/* v5 (SHIFL 2.0): the drum track is edited as its 16 lanes (DRUM_STEP); older firmware: as GM notes */
 const drumGrid = () => isDrum() && !!dev.info.proto && dev.info.proto >= 5;
 
 /* -------------------------------------------------------------- MIDI --- */
@@ -4284,7 +4284,7 @@ function bkReport(e) {
 $("bk-save").addEventListener("click", () => op(async () => {
   try {
     const arc = await backupCapture(rq, dev.info, bkProgress("bkSaving"));
-    download(`SLOOP-backup-${today()}.json`, arc);
+    download(`SHIFL-backup-${today()}.json`, arc);
     sayK("bkSaved");
   } catch (e) { bkReport(e); } finally { $("bk-prog").hidden = true; }
 }));

@@ -1,6 +1,6 @@
 /* SPDX-License-Identifier: GPL-3.0-only
  * Copyright (C) 2026 Leo Kuroshita (@kurogedelic), Hügelton Instruments */
-/* SLOOP menu (HOME held): COLOR, LOWCUT, ZOOM, LIGHTS, KEYS, NOTES, USB AUDIO, HARDWARE CALIBRATION, ABOUT. */
+/* SHIFL menu (HOME held): COLOR, LOWCUT, ZOOM, LIGHTS, KEYS, NOTES, USB AUDIO, HARDWARE CALIBRATION, ABOUT. */
 /* ------------------------------------------------------------ menu --- */
 enum { MI_COLOR, MI_LOWCUT, MI_ZOOM, MI_LIGHTS, MI_KEYS, MI_NOTES, MI_USB, MI_PANEL, MI_ABOUT, MI_BACK, MI_COUNT };
 static const char *const MI_NAME[MI_COUNT] = {"COLOR", "LOWCUT", "ZOOM", "LIGHTS", "KEYS", "NOTES", "USB AUDIO",
@@ -27,7 +27,7 @@ static void draw_menu(void)
         cv_begin(240, pass ? 95u : 124u, C_BLACK);
         cv_oy = pass ? -124 : 0;
         if (ui.menu == 2) {
-            cv_text(4, 4, &FONT_L, "SLOOP", C_WHITE);
+            cv_text(4, 4, &FONT_L, "SHIFL", C_WHITE);
             cv_rect(96, 10, 8, 4, TE_COL[0]), cv_rect(96, 16, 12, 4, TE_COL[1]);   /* the sail */
             cv_rect(96, 22, 16, 4, TE_COL[2]), cv_rect(96, 28, 20, 4, TE_COL[3]);
             cv_text(4, 36, &FONT_S, "BASED ON FELUCCA", C_AMB);
@@ -37,7 +37,7 @@ static void draw_menu(void)
             cv_text(4, 88, &FONT_S, "H\xDCGELTON INSTRUMENTS", C_HI);   /* Latin-1 U-umlaut */
             cv_text(4, 104, &FONT_S, "HUGELTON.COM", C_AMB);
             cv_text(4, 119, &FONT_S, "GPL-3.0, NO WARRANTY", C_HI);
-            cv_text(4, 132, &FONT_S, "GITHUB.COM/ISOD89/SLOOP-FM1", C_AMB);   /* (the source of this firmware) */
+            cv_text(4, 132, &FONT_S, "GITHUB.COM/ISOD89/SHIFL-FM1", C_AMB);   /* (the source of this firmware) */
             cv_text(4, 146, &FONT_S, "FONT: TERMINUS (OFL)", C_DIM);
             cv_text(4, 159, &FONT_S, "SAMPLES: VERSILIAN (CC0)", C_DIM);
             cv_text(4, 172, &FONT_S, "+ SONIC PI (CC0)", C_DIM);
