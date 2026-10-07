@@ -266,10 +266,10 @@ Six specific bug fixes from the 2.4 changelog — not features.
 
 ---
 
-**Task 22 — Visualizer**
+**Task 22 — Visualizer — SKIPPED (not included in this build)**
 
 *Files:* `firmware/src/ui_vis.c` (new), `firmware/src/ui_input.c`, `firmware/src/ui_draw.c`
 
-**The visualizer is the original cause of the RAM overflow.** Its large audio/FFT buffers must have `.pool` annotations — confirm before committing.
+> **Decision (2026-10-07):** The visualizer will not be merged into this build. The upstream `ui_vis.c`, `vis_open()`, `vis_select()`, `vis_shown()`, `vis_draw()`, `vis_on`, and the HOME-tap wiring in `ui_input.c` and `ui_draw.c` are all excluded. The `scope_buf` `.pool` annotation (Task 5) was applied for its RAM benefit, but `scope_bufr` was not added and `vis_tap` in `fx.c` was not added.
 
-> **Agent prompt:** Add the visualizer from the `with-merge-conflicts` branch. Working directory is `/Users/ischwartz/sloop2/sloop-fm1`. The main file `firmware/src/ui_vis.c` is new — copy it verbatim using `git show with-merge-conflicts:firmware/src/ui_vis.c`. **Before committing:** verify that `vis_l[512]`, `vis_r[512]`, and `vis_lj[3][256][2]` all have `__attribute__((section(".pool")))`. If any are missing this annotation, add it — these buffers caused the original `.bss` overflow and must stay in `.pool`. Also apply the upstream changes to `firmware/src/ui_input.c` and `firmware/src/ui_draw.c` that wire up the visualizer (HOME tap → full-screen styles, SELECT to change). Wire `ui_vis.c` into the build. Run `bash build.sh` and inspect the `.bss` / `.pool` map to confirm no overflow. The 12 visualizer styles are: oscilloscope, spectrum, spectrogram, Lissajous, VU meters, circle, tape, LCD, bounce, orbit, wires, SHIFL logo. Commit.
+> The `.bss` budget is comfortable without the visualizer buffers (`vis_l[512]`, `vis_r[512]`, `vis_lj[3][256][2]` = 3,584 B would have been in `.pool` anyway). No action needed.
