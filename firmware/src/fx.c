@@ -259,6 +259,62 @@ static void fx_buses(const int32_t *cho_in, const int32_t *dly_in, const int32_t
 static void events_block(uint32_t n);                    /* seq.c */
 static int32_t send_c[CTL], send_d[CTL], send_r[CTL], wet_l[CTL], wet_r[CTL], mix_l[CTL], mix_r[CTL], part_buf[CTL];
 
+/* ---- the DJ filter: v < 0 a low-pass closing, > 0 a high-pass opening, 0 off. The cutoff glides
+ * to the knob (no zipper); at 0 it opens fully, then the filter is bypassed. On the master (G_FILT)
+ * and, SLOOP 2.4, on each track (P_TFLT: a synth part's mono signal, the drum track's left, right and
+ * reverb send) */
+typedef struct {
+    int32_t cut;                                        /* now, 0..127 << 8 (CUTOFF_HZ index) */
+    int8_t mode;                                        /* -1 LP, 1 HP, 0 off */
+    int32_t z[3][2];                                    /* the SVF states, per channel */
+} djf_t;
+static djf_t djf, tflt[NTRK];
+
+/* the knob v -> this block's coefficients in *c; 0 = bypassed (nothing to do) */
+static int djf_block(djf_t *f, int32_t v, tsvf_t *c)
+{
+    int32_t to;
+    if (v < 0 && f->mode >= 0) {                        /* (switching side: from open) */
+        f->mode = -1;
+        f->cut = 127 << 8;
+        memset(f->z, 0, sizeof f->z);
+    } else if (v > 0 && f->mode <= 0) {
+        f->mode = 1;
+        f->cut = 0;
+        memset(f->z, 0, sizeof f->z);
+    }
+    if (!f->mode)
+        return 0;
+    to = f->mode < 0 ? (v < 0 ? (127 << 8) + v * 90 * 4 : 127 << 8) : (v > 0 ? v * 90 * 4 : 0);
+    f->cut += clamp(to - f->cut, -384, 384);            /* ~1.5 index a block */
+    if (!v && f->cut == to) {
+        f->mode = 0;                                    /* fully open again: off */
+        return 0;
+    }
+    tsvf_coef(c, f->cut, 40);
+    return 1;
+}
+/* n samples of channel ch through the filter (x within +-140000) */
+static void djf_run(djf_t *f, const tsvf_t *c, int32_t *b, uint32_t n, uint32_t ch)
+{
+    uint32_t i;
+    int32_t *z = f->z[ch];
+    for (i = 0; i < n; i++) {
+        int32_t x = clamp(b[i], -140000, 140000), y = tsvf_lp(c, x, &z[0], &z[1]);
+        b[i] = f->mode < 0 ? y : x - y;
+    }
+}
+/* a track's filter on a signal at 4x its level (b >> 2 into the filter's range, back << 2) */
+static void tflt_run(djf_t *f, const tsvf_t *c, int32_t *b, uint32_t n, uint32_t ch)
+{
+    uint32_t i;
+    for (i = 0; i < n; i++)
+        b[i] >>= 2;
+    djf_run(f, c, b, n, ch);
+    for (i = 0; i < n; i++)
+        b[i] <<= 2;
+}
+
 /* ---- mute / solo: a track that goes silent fades out over ~6 ms (and back in) */
 #define MUTE_STEP 4096                                  /* Q15 per block: 8 blocks */
 static int32_t gain_next(track_t *t)                    /* the track's mute gain at the end of this block */
@@ -321,6 +377,12 @@ static void mix_part(track_t *t, uint32_t n)
         xmax = 0x7FFFFFFF / ((xmax > r ? xmax : r) | 1);   /* sends: loud chords at a high LEVEL */
         track_dist(t, b, n);
         slicer_track(t, b, n);                          /* slicer.c: before the level, pan and sends */
+        {
+            tsvf_t fc;                                  /* the track's FILTER (P_TFLT), after the SLICER */
+            djf_t *f = &tflt[(uint32_t)(t - trk) % NTRK];
+            if (djf_block(f, t->p[P_TFLT], &fc))
+                tflt_run(f, &fc, b, n, 0);
+        }
         int32_t lvl0 = t->lvl ? t->lvl : lvl, dl = (lvl - lvl0) >> CTL_LOG2;   /* a new sound's trim: ramped */
         t->lvl = lvl;
         for (i = 0; i < n; i++) {
@@ -403,42 +465,13 @@ static void dust_process(int32_t *l, int32_t *r, uint32_t n)
     }
 }
 
-/* ---- the DJ filter on the master: G_FILT < 0 a low-pass closing, > 0 a high-pass opening, 0 off.
- * The cutoff glides to the knob (no zipper); at 0 it opens fully, then the filter is bypassed. */
-static struct {
-    int32_t cut;                                        /* now, 0..127 << 8 (CUTOFF_HZ index) */
-    int8_t mode;                                        /* -1 LP, 1 HP, 0 off */
-    int32_t l1, l2, r1, r2;
-} djf;
-
 static void djf_process(int32_t *l, int32_t *r, uint32_t n)
 {
-    int32_t v = song.g[G_FILT], to, i;
     tsvf_t c;
-    if (v < 0 && djf.mode >= 0) {                       /* (switching side: from open) */
-        djf.mode = -1;
-        djf.cut = 127 << 8;
-        djf.l1 = djf.l2 = djf.r1 = djf.r2 = 0;
-    } else if (v > 0 && djf.mode <= 0) {
-        djf.mode = 1;
-        djf.cut = 0;
-        djf.l1 = djf.l2 = djf.r1 = djf.r2 = 0;
-    }
-    if (!djf.mode)
+    if (!djf_block(&djf, song.g[G_FILT], &c))
         return;
-    to = djf.mode < 0 ? (v < 0 ? (127 << 8) + v * 90 * 4 : 127 << 8) : (v > 0 ? v * 90 * 4 : 0);
-    djf.cut += clamp(to - djf.cut, -384, 384);          /* ~1.5 index a block */
-    if (!v && djf.cut == to) {
-        djf.mode = 0;                                   /* fully open again: off */
-        return;
-    }
-    tsvf_coef(&c, djf.cut, 40);
-    for (i = 0; i < (int32_t)n; i++) {
-        int32_t x = clamp(l[i], -140000, 140000), y = clamp(r[i], -140000, 140000);
-        int32_t fl = tsvf_lp(&c, x, &djf.l1, &djf.l2), fr = tsvf_lp(&c, y, &djf.r1, &djf.r2);
-        l[i] = djf.mode < 0 ? fl : x - fl;
-        r[i] = djf.mode < 0 ? fr : y - fr;
-    }
+    djf_run(&djf, &c, l, n, 0);
+    djf_run(&djf, &c, r, n, 1);
 }
 
 #include "punch.c"            /* PUNCH-IN FX on the whole mix (FX held + a white key) */
@@ -455,7 +488,26 @@ static void mix_block(int32_t *out, uint32_t n)
         mix_part(&trk[i], n);
     drums.a0 = TDRUM->att;                              /* the drum track's mute / solo fade */
     drums.a1 = 32767 - gain_next(TDRUM);
-    slicer_drums(mix_l, mix_r, send_r, n);              /* drums_render, through the SLICER when on */
+    {
+        static int32_t dl[CTL], dr[CTL], dv[CTL];
+        tsvf_t fc;
+        djf_t *f = &tflt[TRK_DRUM];
+        if (n <= CTL && djf_block(f, TDRUM->p[P_TFLT], &fc)) {   /* the drum track's FILTER: left, right, reverb */
+            for (i = 0; i < n; i++)
+                dl[i] = dr[i] = dv[i] = 0;
+            slicer_drums(dl, dr, dv, n);
+            tflt_run(f, &fc, dl, n, 0);
+            tflt_run(f, &fc, dr, n, 1);
+            tflt_run(f, &fc, dv, n, 2);
+            for (i = 0; i < n; i++) {
+                mix_l[i] += dl[i];
+                mix_r[i] += dr[i];
+                send_r[i] += dv[i];
+            }
+        } else {
+            slicer_drums(mix_l, mix_r, send_r, n);      /* drums_render, through the SLICER when on */
+        }
+    }
     fx_buses(send_c, send_d, send_r, wet_l, wet_r, n);
     for (i = 0; i < n; i++) {
         mix_l[i] += wet_l[i];

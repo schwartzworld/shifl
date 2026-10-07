@@ -69,6 +69,8 @@ static struct {
     uint8_t step_page;           /* SEQ layer: the 16 steps shown (page x 16) */
     uint16_t step_held;          /* SEQ layer: the step keys held (white key index) */
     uint32_t step_sess;          /* SEQ layer: the undo session of this hold */
+    uint8_t lock_par;            /* SEQ layer, a step held + KNOB 4: the parameter it locks (the last sound
+                                  * parameter a knob changed on a page of the selected track; P_ED_FLT at boot) */
     uint8_t hold_kind;           /* a hold to confirm: 1 = clear the track (REC), 2 = save (SAVE) */
     uint32_t hold_t0;            /* (ms) */
     uint8_t hold_trk;
@@ -79,6 +81,8 @@ static struct {
     /* drawn-state cache */
     char col[4][32];
     char focus_l[8], focus_v[8], focus_u[8];   /* the touched column, shown large */
+    char big_l[4][8], big_v[4][10], big_u[4][8];   /* the four columns, for the big values (2.4: pages without a graph) */
+    uint16_t big_c[4];
     uint32_t graph_sig, head_sig, foot_sig, frame;
     uint8_t graph_top;           /* the graph strip's top G_OY rows hold something */
 } ui;
@@ -194,6 +198,35 @@ static void open_family(uint32_t fam)
     ui.fam_last[fam] = ui.page;
     ui.home = 0;
     page_entered();
+}
+
+/* SELECT on a page: the previous / next page of its family, as tapping the button again but both ways,
+ * stopping at the ends. Not the screens of their own (SONG, DRUMS) nor a family of one page (TRACKS):
+ * 0 then, and SELECT is the tempo there */
+static int page_walk(int32_t s)
+{
+    const page_t *pg = cur_page();
+    uint32_t i, fam = pg->fam, n = 0;
+    int32_t cur = -1, to;
+    uint8_t idx[8];
+    if (ui.home || pg->scope == SC_SONG || pg->scope == SC_DRUM)
+        return 0;
+    for (i = 0; i < NPAGES && n < 8u; i++) {
+        if (PAGES[i].fam != fam || PAGES[i].scope == SC_SONG || PAGES[i].scope == SC_DRUM)
+            continue;
+        if (i == ui.page)
+            cur = (int32_t)n;
+        idx[n++] = (uint8_t)i;
+    }
+    if (n < 2u || cur < 0)
+        return 0;
+    to = clamp(cur + s, 0, (int32_t)n - 1);
+    if (to != cur) {
+        ui.page = idx[to];
+        ui.fam_last[fam] = ui.page;
+        page_entered();
+    }
+    return 1;
 }
 
 static void go_home(void)

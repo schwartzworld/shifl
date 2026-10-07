@@ -864,7 +864,8 @@ static void ui_input(void)
     }
     if ((s = panel_enc(EN_ALGO)) != 0 && !ft_on)     /* ALGORITHM: the selected track, on every page (not in a take) */
         track_select((uint32_t)clamp((int32_t)song.sel + (s > 0 ? 1 : -1), 0, NTRK - 1));
-    if ((s = panel_enc(EN_SELECT)) != 0) {          /* SELECT knob = global tempo */
+    if ((s = panel_enc(EN_SELECT)) != 0 && (rec_wait || ft_on || !page_walk(s))) {   /* SELECT: the pages of the
+                                                     * family shown, else (and on the REC screen) the tempo */
         song.g[G_BPM] = (int16_t)clamp(song.g[G_BPM] + accel(EN_SELECT, s, 200), GP[G_BPM].min, GP[G_BPM].max);
         ui.bpm_t = 40;                              /* the header's BPM lights up; no message over the header */
     }
