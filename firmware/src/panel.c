@@ -69,17 +69,18 @@ struct { uint32_t magic, palette, lowcut, zoom; } settings __attribute__((sectio
  * (project.c persist_t.lights), read at every boot; not in .noinit, so nothing there moves. The same
  * word keeps SYNC and the REC screen's MODE / START (seq.c rec_tempo, rec_count) */
 enum { LIGHTS_OFF, LIGHTS_LOW, LIGHTS_MID, LIGHTS_HIGH, LIGHTS_N };
-enum { KEYS_OFF, KEYS_C, KEYS_WHITE, KEYS_N };
+enum { KEYS_OFF, KEYS_C, KEYS_WHITE, KEYS_ALL, KEYS_N };
 static uint8_t lights_lvl, lights_keys;
 static uint8_t lights_notes;                   /* 1: on a synth track the sounding notes light their keys */
 static uint8_t lights_sync;                    /* GLO > SYSTEM > SYNC (G_SYNC), kept here: 0 INT, 1 USB, 2 TRS */
+static uint8_t usb_serial;                    /* menu USB SERIAL: 1 = the serial console presented (usb.c) */
 static const uint16_t LIGHTS_NS[LIGHTS_N] = {0u, 500u, 1000u, 2000u};   /* the backlight pulse a frame (ns): a lit
                                                 * LED ~95 us, the glow (landmarks) 4 us (fm1_input.h) */
 static uint32_t lights_word(void)
 {
     return (uint32_t)lights_lvl | (uint32_t)lights_keys << 4 | (uint32_t)(lights_notes != 0u) << 8 |
            (uint32_t)(rec_tempo != 0u) << 9 | (uint32_t)(rec_count != 0u) << 10 | (uint32_t)(usb_full != 0u) << 11 |
-           (uint32_t)(lights_sync % 3u) << 12;
+           (uint32_t)(lights_sync % 3u) << 12 | (uint32_t)(usb_serial != 0u) << 16;
 }
 static void lights_from_word(uint32_t w)
 {
@@ -90,6 +91,7 @@ static void lights_from_word(uint32_t w)
     rec_count = (uint8_t)((w >> 10) & 1u);
     usb_full = (uint8_t)((w >> 11) & 1u);       /* menu USB AUDIO (fx.c) */
     lights_sync = (uint8_t)(((w >> 12) & 3u) % 3u);
+    usb_serial = (uint8_t)((w >> 16) & 1u);     /* menu USB SERIAL */
 }
 
 static void settings_save(void);              /* project.c: flash copy (FELUCCA_FLASH) */
