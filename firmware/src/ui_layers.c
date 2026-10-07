@@ -241,6 +241,8 @@ static void layer_key(uint32_t layer, uint32_t k, uint32_t down)
             ui.step_held &= (uint16_t)~(1u << w);
             if (layer == LY_STEP)
                 step_up((uint32_t)w);
+            if (layer == LY_MIX && w == 8)
+                fill_held = 0;
         }
         return;
     }
@@ -298,6 +300,10 @@ static void layer_key(uint32_t layer, uint32_t k, uint32_t down)
             trk[w].p[P_MUTE] = (int16_t)!trk[w].p[P_MUTE];
         } else if (w >= 4 && w < 8) {
             song.solo ^= (uint8_t)(1u << (w - 4));
+        } else if (w == 8) {
+            fill_held = 1;
+        } else if (w == 9) {
+            fill_arm = (uint8_t)!fill_arm;
         } else if (w == 15) {
             tap_tempo();
         }

@@ -453,6 +453,8 @@ static void steps_clear(track_t *t)           /* an empty pattern (synth: REST s
 {
     uint32_t k;
     memset(t->step, 0, sizeof t->step);
+    memset(t->fill, 0, sizeof t->fill);
+    memset(t->micro, 0, sizeof t->micro);
     if (!is_drum(t))
         for (k = 0; k < NSTEP; k++)
             t->step[k].time = ST_REST;
@@ -1280,6 +1282,14 @@ static void seq_reset_tracks(uint32_t pos)
 
 static void song_backup(void);                     /* project.c: song mode keeps the loop you made */
 static void song_restore(void);
+static void locks_restore(track_t *t);             /* Task 14: restore locked params on stop */
+
+/* fill state (Task 13): updated each block in events_block, read by seq_tick */
+static volatile uint8_t fill_held;
+static volatile uint8_t fill_arm;
+static uint8_t fill_bar_on;
+static uint8_t fill_now;
+static uint32_t fill_last_bar = 0xFFFFFFFFu;
 
 static void seq_start(void)
 {
@@ -1290,6 +1300,7 @@ static void seq_start(void)
     }
     if (!arrangement_start()) return;
 #endif
+    fill_last_bar = 0xFFFFFFFFu;
     seq_reset_tracks(0);
 }
 
@@ -1312,8 +1323,12 @@ static void seq_stop(void)
     live_req = -1;
 #endif
     song.playing = 0;
+    fill_held = 0;
+    fill_arm = 0;
+    fill_bar_on = 0;
     for (i = 0; i < NTRK; i++) {
         seq_release(&trk[i]);
+        locks_restore(&trk[i]);
         trk[i].rh_n = 0;                           /* a recorded note held over the stop: as far as it got */
     }
 #if FELUCCA_ARRANGER
@@ -1455,8 +1470,29 @@ static void drum_step(track_t *t, const dstep_t *s, uint32_t skip)
     }
 }
 
-/* ---- stubs for Tasks 13 (fills) and 14 (parameter locks) — replaced below */
-static int step_plays(const track_t *t, uint32_t idx) { (void)t; (void)idx; return 1; }
+/* ---- fills (Task 13) ---- */
+static uint32_t step_fill(const track_t *t, uint32_t idx)
+{
+    idx %= NSTEP;
+    return (uint32_t)(t->fill[idx / 4u] >> (2u * (idx % 4u))) & 3u;
+}
+static void step_fill_set(track_t *t, uint32_t idx, uint32_t v)
+{
+    uint32_t sh;
+    idx %= NSTEP;
+    sh = 2u * (idx % 4u);
+    t->fill[idx / 4u] = (uint8_t)((t->fill[idx / 4u] & ~(3u << sh)) | (v & 3u) << sh);
+}
+
+static uint32_t step_plays(const track_t *t, uint32_t idx)
+{
+    uint32_t c = step_fill(t, idx);
+    return c == FC_FILL ? fill_now : c == FC_NOFILL ? !fill_now : 1u;
+}
+
+/* ---- parameter lock stubs (Task 14) ---- */
+static void locks_clear(track_t *t) { (void)t; }
+static void locks_restore(track_t *t) { (void)t; }
 static void lock_step(track_t *t, uint32_t idx) { (void)t; (void)idx; }
 static void seq_out_track_off(track_t *t) { (void)t; }
 
@@ -1868,6 +1904,19 @@ static void events_block(uint32_t n)
             input_off(t, d1);
         }
     }
+    if (song.playing) {
+        uint32_t bar = clk_beat / 4u;
+        if (bar != fill_last_bar) {
+            fill_last_bar = bar;
+            if (fill_arm) {
+                fill_bar_on = 1;
+                fill_arm = 0;
+            } else {
+                fill_bar_on = 0;
+            }
+        }
+    }
+    fill_now = (uint8_t)(fill_held || fill_bar_on);
     for (i = 0; i < NTRK; i++)
         seq_tick(&trk[i], adv);
     click_tick();
