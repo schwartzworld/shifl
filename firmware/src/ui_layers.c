@@ -155,7 +155,15 @@ static void step_up(uint32_t w)
     fm1_irq_on();
     sync_reload = 1;
 }
-/* KNOB 2 / 3 with step keys held: their level / ratchet (drums: the sound's lane; synth: every note) */
+/* the drum sound the SEQ layer sets (KNOB 1): heard when it changes */
+static void pen_lane_move(int32_t s)
+{
+    uint8_t l = (uint8_t)clamp(pen_lane + s, 0, DRUM_LANES - 1);
+    if (l != pen_lane)
+        audition_lane(l);
+    pen_lane = l;
+}
+/* KNOB 1..4 with step keys held: sound/note, level, ratchet, nudge (1/64 of a step, - early + late) */
 static void steps_held_edit(uint32_t knob, int32_t s)
 {
     track_t *t = TSEL;
@@ -167,6 +175,10 @@ static void steps_held_edit(uint32_t knob, int32_t s)
         uint32_t idx = ui.step_page * 16u + w;
         if (!((ui.step_held >> w) & 1u) || idx >= trk_len(t))
             continue;
+        if (knob == 3u) {                                 /* NUDGE: the whole step (drums: every lane) */
+            t->micro[idx] = (int8_t)clamp(t->micro[idx] + s, MICRO_MIN, MICRO_MAX);
+            continue;
+        }
         if (is_drum(t)) {
             dstep_t *d = &t->dstep[idx];
             uint32_t lv = dstep_lvl(d, pen_lane), rt = dstep_rat(d, pen_lane);

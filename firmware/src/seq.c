@@ -1455,6 +1455,11 @@ static void drum_step(track_t *t, const dstep_t *s, uint32_t skip)
     }
 }
 
+/* ---- stubs for Tasks 13 (fills) and 14 (parameter locks) — replaced below */
+static int step_plays(const track_t *t, uint32_t idx) { (void)t; (void)idx; return 1; }
+static void lock_step(track_t *t, uint32_t idx) { (void)t; (void)idx; }
+static void seq_out_track_off(track_t *t) { (void)t; }
+
 /* ratchets: the further hits of the playing step's notes / lanes, each at its share of the step */
 static void seq_ratchets(track_t *t, uint32_t into, uint32_t slen)
 {
@@ -1500,9 +1505,21 @@ static void seq_ratchets(track_t *t, uint32_t into, uint32_t slen)
     }
 }
 
+/* the nudge of grid step abs of track t, in units of a step slen long: where in its own step it fires
+ * (micro >= 0), or how far before its step (micro < 0, as a negative number) */
+static int32_t micro_units(const track_t *t, uint32_t abs, uint32_t slen)
+{
+    int32_t m = t->micro[abs % trk_len(t) % NSTEP];
+    return (int32_t)(slen / 64u) * m;                /* |m| <= 32: fits */
+}
+
+/* The steps fire in order, one a block at most, each at its nudged time (micro: 1/64 of a step early
+ * or late): the step after the last one played (seq_abs) is due when the grid is in its own step past
+ * its nudge, or, nudged early, in the previous grid step past (length - |nudge|). */
 static void seq_tick(track_t *t, uint32_t adv)
 {
-    uint32_t len = trk_len(t), into, slen, abs, idx;
+    uint32_t len = trk_len(t), into, slen, abs, idx, nabs, fire = 0;
+    int32_t rel;
     if (t->seq_n && !t->seq_hold) {
         if (t->seq_off <= adv)
             seq_release(t);
@@ -1512,11 +1529,30 @@ static void seq_tick(track_t *t, uint32_t adv)
     if (!song.playing)
         return;
     abs = trk_grid(t, &into, &slen);
-    if (t->seq_abs != SEQ_NONE && abs + 1u == t->seq_abs)
-        abs = t->seq_abs;                            /* SWING turned up inside a played odd step */
-    if (abs != t->seq_abs) {                         /* a new step: one a block at most */
-        t->seq_abs = abs;
-        idx = abs % len;
+    {
+        uint32_t div = trk_div(t);
+        if (t->seq_abs != SEQ_NONE && div != t->seq_den)
+            t->seq_abs = abs;                        /* DIV changed: the next step of the new grid plays */
+        t->seq_den = (uint8_t)div;
+    }
+    if (t->seq_abs == SEQ_NONE) {                    /* PLAY: the step the grid is in (nudged late: once there) */
+        nabs = abs;
+        fire = micro_units(t, nabs, slen) <= (int32_t)into;
+    } else {
+        int32_t mu;
+        nabs = t->seq_abs + 1u;
+        mu = micro_units(t, nabs, slen);
+        if (abs == nabs)
+            fire = mu <= (int32_t)into;              /* its own step: past its nudge (early: due already) */
+        else if (abs + 1u == nabs)
+            fire = mu < 0 && (int32_t)slen + mu <= (int32_t)into;   /* the step before: nudged early into it */
+        else if ((int32_t)(abs - nabs) > 0)
+            fire = 1;                                /* the grid jumped ahead: catch up, a step a block */
+        /* (abs + 1 == seq_abs: SWING turned up inside a played odd step: nothing until the grid is back) */
+    }
+    if (fire) {                                      /* a new step: one a block at most */
+        t->seq_abs = nabs;
+        idx = nabs % len;
         t->seq_idx = (uint16_t)idx;
         t->rat_done[0] = t->rat_done[1] = t->rat_done[2] = t->rat_done[3] = 0;
         t->rat_lanes = 0;
@@ -1525,15 +1561,28 @@ static void seq_tick(track_t *t, uint32_t adv)
             t->pass++;                               /* a new pass of the loop (recording: one undo) */
         if (erasing(t))
             erase_step(t, idx);                      /* EDIT + key held: gone as it passes */
-        if (is_drum(t)) {
-            uint32_t skip = t->rskip_abs == abs ? t->rskip_lanes : 0u;
+        t->seq_skip = (uint8_t)!step_plays(t, idx);
+        if (t->seq_skip) {                           /* its fill condition fails: as a REST with no lock */
+            lock_step(t, NSTEP);                     /* (no step has locks there: the bases are back) */
+            t->rskip_lanes = 0;
+            t->rskip_n = 0;
+            if (is_drum(t)) {
+                seq_out_track_off(t);
+            } else {
+                rec_hold(t, idx, len, nabs);
+                seq_release(t);
+            }
+        } else if (is_drum(t)) {
+            uint32_t skip = t->rskip_abs == nabs ? t->rskip_lanes : 0u;
+            lock_step(t, idx);                       /* its parameter locks, before the block renders */
             t->rskip_lanes = 0;
             drum_step(t, &t->dstep[idx], skip);
         } else {
             const step_t *s = &t->step[idx];
             uint32_t skip = 0, i, k;
-            rec_hold(t, idx, len, abs);
-            if (t->rskip_n && t->rskip_abs == abs)
+            lock_step(t, idx);
+            rec_hold(t, idx, len, nabs);
+            if (t->rskip_n && t->rskip_abs == nabs)
                 for (i = 0; i < s->n; i++)
                     for (k = 0; k < t->rskip_n; k++)
                         if (s->note[i] == t->rskip[k])
@@ -1542,7 +1591,15 @@ static void seq_tick(track_t *t, uint32_t adv)
             seq_step(t, s, slen, skip);
         }
     }
-    seq_ratchets(t, into, slen);
+    /* the ratchets of the step playing, timed from where it fired (its hits ride with its nudge) */
+    if (t->seq_abs == abs)
+        rel = (int32_t)into - micro_units(t, abs, slen);
+    else if (t->seq_abs == abs + 1u)
+        rel = (int32_t)into - ((int32_t)slen + micro_units(t, abs + 1u, slen));
+    else
+        rel = (int32_t)into;
+    if (t->seq_abs != SEQ_NONE)
+        seq_ratchets(t, rel < 0 ? 0u : (uint32_t)rel, slen);
 }
 
 /* MIDI in: the track a channel plays (0..15) */
