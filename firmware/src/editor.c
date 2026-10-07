@@ -909,7 +909,7 @@ static void ed_handle(const uint8_t *f, uint32_t n)   /* f: the bytes between F0
             if (song.sel == TRK_DRUM)
                 ed_w.st[a[0]] = ed_step_sig(&TDRUM->step[a[0]]);
         }
-        on = dstep_mask(d);
+        on = dstep_full_mask(d);
         lv = (uint32_t)d->lvl[0] | (uint32_t)d->lvl[1] << 8 | (uint32_t)d->lvl[2] << 16 | (uint32_t)d->lvl[3] << 24;
         rt = (uint32_t)d->rat[0] | (uint32_t)d->rat[1] << 8 | (uint32_t)d->rat[2] << 16 | (uint32_t)d->rat[3] << 24;
         ed_b(a[0]);

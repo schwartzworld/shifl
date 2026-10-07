@@ -123,7 +123,7 @@ static int step_on(const step_t *st) { return step_fires(st->time) && st->n; }
 /* step i of track t has something to play (synth: notes, drums: a lane) */
 static int trk_step_on(const track_t *t, uint32_t i)
 {
-    return is_drum(t) ? dstep_mask(&t->dstep[i % NSTEP]) != 0u : step_on(&t->step[i % NSTEP]);
+    return is_drum(t) ? dstep_full_mask(&t->dstep[i % NSTEP]) != 0u : step_on(&t->step[i % NSTEP]);
 }
 
 static void step_clear(step_t *st)

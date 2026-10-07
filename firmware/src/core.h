@@ -173,9 +173,9 @@ typedef struct {                 /* a step of a synth part (10 bytes): up to 4 n
 } step_t;
 #define DRUM_LANES 16            /* the drum track: 16 sounds, one per white key (drums.c LANE_*) */
 typedef struct {                 /* a step of the drum track (10 bytes, the size of a step_t) */
-    uint8_t on[2];               /* bit per lane */
+    uint8_t on[2];               /* bit per lane: 1=certain hit; 0=off or probabilistic (see rat) */
     uint8_t lvl[4];              /* 2 bits per lane (lane k: byte k / 4, bits 2 (k % 4)..): LV_* */
-    uint8_t rat[4];              /* 2 bits per lane: ratchet */
+    uint8_t rat[4];              /* 2 bits per lane: ratchet when on=1; probability level when on=0 (0=off, 1=75%, 2=50%, 3=25%) */
 } dstep_t;
 _Static_assert(sizeof(step_t) == 10 && sizeof(dstep_t) == 10, "a step is 10 bytes on every track");
 
@@ -218,6 +218,7 @@ typedef struct track {
     uint8_t seq_active;          /* any step programmed */
     uint8_t rat_done[4];         /* ratchet hits played in this step: per note (synth) */
     uint32_t rat_lanes;          /* .. per lane (drums): 2 bits each */
+    uint32_t drum_fired;         /* lanes that actually fired this step (after probability) */
     uint32_t rskip_abs;          /* live recording put notes into the step about to play: */
     uint8_t rskip_n, rskip[4];   /* do not trigger them again there (they sound already) */
     uint16_t rskip_lanes;        /* (the drum track: lanes) */

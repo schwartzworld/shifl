@@ -7,7 +7,7 @@
  * left it.
  *
  * Formats: 4 ("FUN4", written, SHIFL 2.0): today's P_COUNT / G_COUNT, 10-byte steps (levels and
- * ratchets; the drum track: 16 lanes). Read and converted: 3 ("FUN3", SHIFL 1.x: 8-byte steps, the
+ * ratchets; the drum track: 16 lanes, with probabilistic hits encoded in on/rat). Read and converted: 3 ("FUN3", SHIFL 1.x: 8-byte steps, the
  * drum track's notes become its lanes, the swings x 0.8 for the MPC scale), 2 ("FUN2") and 1 ("FUN1"),
  * which held PROJ_NP_V2 parameters per track, mapped by count as user presets are (the first
  * PROJ_NP_V2 - 8 are P_LEVEL.. in order, the last 8 P_E0..P_E7; the parameters added since take their

@@ -89,7 +89,7 @@ static uint32_t erase_lanes(const track_t *t)   /* EDIT erase, drum track: the s
     uint32_t i, m = 0;
     if (is_drum(t))
         for (i = 0; i < trk_len(t); i++) {
-            uint32_t l, d = dstep_mask(&t->dstep[i]);
+            uint32_t l, d = dstep_full_mask(&t->dstep[i]);
             for (l = 0; d; l++, d >>= 1)
                 if (d & 1u)
                     m |= 1u << key_of_white(l);

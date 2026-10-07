@@ -288,6 +288,15 @@ static void studio_tracks_draw(void)
 
 /* ---------------------------------------------------------------- DRUMS --- */
 static const char *const LV_NAME[4] = {"norm", "ghost", "soft", "hard"};
+/* hit mode: 0=off 1=on(100%) 2=P75 3=P50 4=P25 5=x2 6=x3 7=x4 */
+static const char *const HIT_MODES[8] = {"--", "on", "P75", "P50", "P25", "x2", "x3", "x4"};
+static uint32_t drum_hit_mode(const dstep_t *s, uint32_t l)
+{
+    uint32_t rat = dstep_rat(s, l);
+    if (!dstep_has(s, l)) return 0u;
+    if (dstep_certain(s, l)) return rat ? 4u + rat : 1u;   /* certain: 1(on), 5(x2), 6(x3), 7(x4) */
+    return 1u + rat;                                        /* probabilistic: 2(P75), 3(P50), 4(P25) */
+}
 static uint16_t lvl_col(uint32_t lvl)                   /* a hit's colour by its level */
 {
     return lvl == LV_GHOST ? TE_DIM[3] : lvl == LV_SOFT ? TE_MID[3] : lvl == LV_HARD ? C_WHITE : TE_DRUM;
@@ -337,7 +346,7 @@ static void drum_screen_draw(void)
     for (i = 0; i < DRUM_LANES; i++) sig = sig * 3u + (pad_lit[i] != 0);
     for (i = 0; i < len; i++) {
         const dstep_t *s = &TDRUM->dstep[i];
-        sig = sig * 31u + dstep_mask(s);
+        sig = sig * 31u + dstep_full_mask(s);
         sig = sig * 31u + s->lvl[0] + s->lvl[1] * 7u + s->lvl[2] * 49u + s->lvl[3] * 343u;
         sig = sig * 31u + s->rat[0] + s->rat[1] * 7u + s->rat[2] * 49u + s->rat[3] * 343u;
     }
@@ -356,7 +365,7 @@ static void drum_screen_draw(void)
                     c = dstep_has(s, i) ? lvl_col(dstep_lvl(s, i)) : i == drum_lane ? TE_G2 : TE_G1;
                     if (song.playing && p == TDRUM->seq_idx && c == TE_G1) c = TE_G2;
                     cv_rect(12 + (int32_t)j * 14, y, 12, 5, c);
-                    if (dstep_has(s, i) && dstep_rat(s, i)) {   /* a ratchet: a notch per extra hit */
+                    if (dstep_certain(s, i) && dstep_rat(s, i)) {   /* a ratchet: a notch per extra hit */
                         uint32_t r;
                         for (r = 0; r < dstep_rat(s, i); r++)
                             cv_rect(13 + (int32_t)j * 14 + (int32_t)r * 3, y + 2, 2, 1, C_BLACK);
@@ -385,11 +394,11 @@ static void drum_screen_draw(void)
             const dstep_t *s = &TDRUM->dstep[drum_cursor];
             str_cpy(v[0], LANE_SHORT[drum_lane], 8);
             fmt_int(v[1], drum_cursor + 1);
-            str_cpy(v[2], dstep_has(s, drum_lane) ? "on" : "--", 4);
+            str_cpy(v[2], HIT_MODES[drum_hit_mode(s, drum_lane)], 4);
             str_cpy(v[3], dstep_has(s, drum_lane) ? LV_NAME[dstep_lvl(s, drum_lane)] : "--", 8);
             ratio[0] = (int32_t)drum_lane * 1000 / (DRUM_LANES - 1);
             ratio[1] = (int32_t)drum_cursor * 1000 / (int32_t)(len > 1u ? len - 1u : 1u);
-            ratio[2] = v[2][0] == 'o' ? 1000 : 0;
+            ratio[2] = (int32_t)drum_hit_mode(s, drum_lane) * 1000 / 7;
             ratio[3] = dstep_has(s, drum_lane) ? (int32_t)((dstep_lvl(s, drum_lane) + 1u) % 4u) * 333 : 0;
             te_dials(184, LG, val, ratio, 1u, &footer);
         } else {
@@ -457,11 +466,30 @@ static void drum_screen_input(uint32_t pressed, uint32_t home)
                 undo_mark(TDRUM, ui.step_sess ? ui.step_sess : (ui.step_sess = (undo_sess += 4u) | 3u));
                 fm1_irq_off();
                 if (k == 2) {
-                    if (s > 0) dstep_set(st, drum_lane, LV_NORM, 0);
-                    else dstep_clr(st, drum_lane);
+                    uint32_t mode = (uint32_t)clamp((int32_t)drum_hit_mode(st, drum_lane) + (s > 0 ? 1 : -1), 0, 7);
+                    if (mode == 0) {
+                        dstep_clr(st, drum_lane);
+                    } else {
+                        uint32_t lvl = dstep_has(st, drum_lane) ? dstep_lvl(st, drum_lane) : LV_NORM;
+                        if (mode == 1u) {
+                            dstep_set(st, drum_lane, lvl, 0);           /* certain, no ratchet */
+                        } else if (mode <= 4u) {
+                            dstep_set_prb(st, drum_lane, mode - 1u);    /* P75=2→rat=1, P50=3→rat=2, P25=4→rat=3 */
+                            /* preserve level for probabilistic hits */
+                            { uint32_t sh = (drum_lane & 3u) * 2u, b = (drum_lane >> 2) & 3u;
+                              st->lvl[b] = (uint8_t)((st->lvl[b] & ~(3u << sh)) | (lvl & 3u) << sh); }
+                        } else {
+                            dstep_set(st, drum_lane, lvl, mode - 4u);   /* x2=5→rat=1, x3=6→rat=2, x4=7→rat=3 */
+                        }
+                    }
                 } else if (dstep_has(st, drum_lane)) {
                     uint32_t r = (uint32_t)clamp((int32_t)lvl_rank(dstep_lvl(st, drum_lane)) + (s > 0 ? 1 : -1), 0, 3);
-                    dstep_set(st, drum_lane, LV_UP[r], dstep_rat(st, drum_lane));
+                    if (dstep_certain(st, drum_lane)) {
+                        dstep_set(st, drum_lane, LV_UP[r], dstep_rat(st, drum_lane));
+                    } else {
+                        uint32_t sh = (drum_lane & 3u) * 2u, b = (drum_lane >> 2) & 3u;
+                        st->lvl[b] = (uint8_t)((st->lvl[b] & ~(3u << sh)) | (LV_UP[r] & 3u) << sh);
+                    }
                 }
                 fm1_irq_on();
                 sync_reload = 1;

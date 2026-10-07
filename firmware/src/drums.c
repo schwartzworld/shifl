@@ -86,16 +86,32 @@ static uint32_t key_of_lane(uint32_t l)
 }
 
 /* drum steps: a lane's bit, level, ratchet */
-static int dstep_has(const dstep_t *s, uint32_t l) { return (s->on[(l >> 3) & 1u] >> (l & 7u)) & 1u; }
+/* on=1,rat=0: certain hit; on=1,rat=1-3: ratchet x2/x3/x4; on=0,rat=1-3: probabilistic hit 75%/50%/25% */
+static int dstep_certain(const dstep_t *s, uint32_t l) { return (s->on[(l >> 3) & 1u] >> (l & 7u)) & 1u; }
+static int dstep_has(const dstep_t *s, uint32_t l) { return dstep_certain(s, l) || ((s->rat[(l >> 2) & 3u] >> ((l & 3u) * 2u)) & 3u) > 0u; }
 static uint32_t dstep_lvl(const dstep_t *s, uint32_t l) { return (s->lvl[(l >> 2) & 3u] >> ((l & 3u) * 2u)) & 3u; }
 static uint32_t dstep_rat(const dstep_t *s, uint32_t l) { return (s->rat[(l >> 2) & 3u] >> ((l & 3u) * 2u)) & 3u; }
 static uint32_t dstep_mask(const dstep_t *s) { return (uint32_t)s->on[0] | (uint32_t)s->on[1] << 8; }
-static void dstep_set(dstep_t *s, uint32_t l, uint32_t lvl, uint32_t rat)   /* lane on, with its level and ratchet */
+static uint32_t dstep_full_mask(const dstep_t *s)                            /* certain + probabilistic lanes */
+{
+    uint32_t m = dstep_mask(s), l;
+    for (l = 0; l < DRUM_LANES; l++)
+        if (!dstep_certain(s, l) && dstep_rat(s, l))
+            m |= 1u << l;
+    return m;
+}
+static void dstep_set(dstep_t *s, uint32_t l, uint32_t lvl, uint32_t rat)   /* certain hit: on=1, level, ratchet */
 {
     uint32_t sh = (l & 3u) * 2u, b = (l >> 2) & 3u;
     s->on[(l >> 3) & 1u] |= (uint8_t)(1u << (l & 7u));
     s->lvl[b] = (uint8_t)((s->lvl[b] & ~(3u << sh)) | (lvl & 3u) << sh);
     s->rat[b] = (uint8_t)((s->rat[b] & ~(3u << sh)) | (rat & 3u) << sh);
+}
+static void dstep_set_prb(dstep_t *s, uint32_t l, uint32_t prb)             /* probabilistic hit: on=0, rat=prb */
+{
+    uint32_t sh = (l & 3u) * 2u, b = (l >> 2) & 3u;
+    s->on[(l >> 3) & 1u] &= (uint8_t)~(1u << (l & 7u));
+    s->rat[b] = (uint8_t)((s->rat[b] & ~(3u << sh)) | (prb & 3u) << sh);
 }
 static void dstep_clr(dstep_t *s, uint32_t l)                                /* lane off */
 {

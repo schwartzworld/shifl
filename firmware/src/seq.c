@@ -431,7 +431,7 @@ static int track_empty(const track_t *t)
 {
     uint32_t k;
     for (k = 0; k < NSTEP; k++)
-        if (is_drum(t) ? dstep_mask(&t->dstep[k]) != 0u : step_fires(t->step[k].time) && t->step[k].n)
+        if (is_drum(t) ? dstep_full_mask(&t->dstep[k]) != 0u : step_fires(t->step[k].time) && t->step[k].n)
             return 0;
     return 1;
 }
@@ -597,7 +597,7 @@ static void erase_step(track_t *t, uint32_t idx)
 {
     if (is_drum(t)) {
         dstep_t *s = &t->dstep[idx];
-        uint32_t l, m = dstep_mask(s) & er_lanes;
+        uint32_t l, m = dstep_full_mask(s) & er_lanes;
         for (l = 0; m; l++, m >>= 1)
             if (m & 1u) {
                 dstep_clr(s, l);
@@ -1425,10 +1425,31 @@ static void seq_step(track_t *t, const step_t *s, uint32_t slen, uint32_t skip)
 /* play one drum step: each lane a hit (skip: lanes already played by live recording, or rolling) */
 static void drum_step(track_t *t, const dstep_t *s, uint32_t skip)
 {
-    uint32_t l, m = dstep_mask(s) & ~skip & ~roll_lanes(t);
-    for (l = 0; m; l++, m >>= 1)
-        if (m & 1u)
-            trk_note_on(t, LANE_NOTE[l], lvl_vel(dstep_lvl(s, l), 100));
+    uint32_t l, m;
+    t->drum_fired = 0;
+    /* certain hits (on=1): always fire, may have ratchets */
+    m = dstep_mask(s) & ~skip & ~roll_lanes(t);
+    for (l = 0; m; l++, m >>= 1) {
+        if (!(m & 1u)) continue;
+        t->drum_fired |= 1u << l;
+        trk_note_on(t, LANE_NOTE[l], lvl_vel(dstep_lvl(s, l), 100));
+    }
+    /* probabilistic hits (on=0, rat=1-3): fire at 75%/50%/25% */
+    for (l = 0; l < DRUM_LANES; l++) {
+        uint32_t prb;
+        if ((skip >> l) & 1u) continue;
+        if ((roll_lanes(t) >> l) & 1u) continue;
+        if (dstep_certain(s, l)) continue;
+        prb = dstep_rat(s, l);
+        if (!prb) continue;
+        {
+            uint32_t thresh = prb == 1u ? 96u : prb == 2u ? 64u : 32u;
+            if ((rng() & 127u) < thresh) {
+                t->drum_fired |= 1u << l;
+                trk_note_on(t, LANE_NOTE[l], lvl_vel(dstep_lvl(s, l), 100));
+            }
+        }
+    }
 }
 
 /* ratchets: the further hits of the playing step's notes / lanes, each at its share of the step */
@@ -1437,7 +1458,7 @@ static void seq_ratchets(track_t *t, uint32_t into, uint32_t slen)
     uint32_t i;
     if (is_drum(t)) {
         const dstep_t *s = &t->dstep[t->seq_idx % NSTEP];
-        uint32_t m = dstep_mask(s) & ~roll_lanes(t);
+        uint32_t m = t->drum_fired & dstep_mask(s) & ~roll_lanes(t);   /* only certain hits */
         for (i = 0; m; i++, m >>= 1) {
             uint32_t hits = 1u + dstep_rat(s, i), h, done;
             if (!(m & 1u) || hits == 1u)
@@ -1496,6 +1517,7 @@ static void seq_tick(track_t *t, uint32_t adv)
         t->seq_idx = (uint16_t)idx;
         t->rat_done[0] = t->rat_done[1] = t->rat_done[2] = t->rat_done[3] = 0;
         t->rat_lanes = 0;
+        t->drum_fired = 0;
         if (!idx)
             t->pass++;                               /* a new pass of the loop (recording: one undo) */
         if (erasing(t))
