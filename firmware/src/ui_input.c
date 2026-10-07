@@ -294,12 +294,12 @@ static void step_edit(uint32_t slot, int32_t steps)
         last_note = st->note[0];
         break;
     case 2:
-        st->time = (uint8_t)clamp((int32_t)st->time + (steps > 0 ? 1 : -1), ST_NOTE, ST_REST);
+        st->time = (uint8_t)clamp((int32_t)st->time + (steps > 0 ? 1 : -1), ST_NOTE, ST_P25);
         break;
-    default: {                                            /* FLAG: - / ACC / SLD / A+S */
-        uint32_t f = (st->flags & SF_ACCENT ? 1u : 0u) | (st->flags & SF_SLIDE ? 2u : 0u);
-        f = (uint32_t)clamp((int32_t)f + (steps > 0 ? 1 : -1), 0, 3);
-        st->flags = (uint8_t)((st->flags & ~(SF_ACCENT | SF_SLIDE)) | (f & 1u ? SF_ACCENT : 0u) | (f & 2u ? SF_SLIDE : 0u));
+    default: {                                            /* FLAG: - / ACC / SLD / A+S / A75..S25 */
+        uint32_t f = st->flags < SF_N ? st->flags : 0u;
+        f = (uint32_t)clamp((int32_t)f + (steps > 0 ? 1 : -1), 0, (int32_t)SF_N - 1);
+        st->flags = (uint8_t)f;
         break;
     }
     }

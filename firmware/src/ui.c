@@ -119,7 +119,7 @@ static void page_entered(void)
     ui.force = 1;
 }
 
-static int step_on(const step_t *st) { return st->time == ST_NOTE && st->n; }
+static int step_on(const step_t *st) { return step_fires(st->time) && st->n; }
 /* step i of track t has something to play (synth: notes, drums: a lane) */
 static int trk_step_on(const track_t *t, uint32_t i)
 {

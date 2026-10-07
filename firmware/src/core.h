@@ -140,16 +140,32 @@ typedef struct {
 } engine_t;
 
 /* ------------------------------------------------------------ track --- */
-enum { ST_NOTE, ST_TIE, ST_REST };
+enum { ST_NOTE, ST_TIE, ST_REST, ST_P75, ST_P50, ST_P25 };
 #define SF_ACCENT 1u
-#define SF_SLIDE 2u
+#define SF_SLIDE  2u
+/* flag index values 4-9: probabilistic accent / slide */
+#define SF_ACC75  4u
+#define SF_ACC50  5u
+#define SF_ACC25  6u
+#define SF_SLD75  7u
+#define SF_SLD50  8u
+#define SF_SLD25  9u
+#define SF_N      10u
+/* true if step type plays notes (definite or probabilistic) */
+static inline int step_fires(uint8_t time) { return time == ST_NOTE || time >= ST_P75; }
+/* true if flags value includes accent or slide (handles both 100% and probabilistic) */
+static inline int flags_is_accent(uint8_t f) { return f == SF_ACCENT || f == (SF_ACCENT | SF_SLIDE) || (f >= SF_ACC75 && f <= SF_ACC25); }
+static inline int flags_is_slide(uint8_t f)  { return f == SF_SLIDE  || f == (SF_ACCENT | SF_SLIDE) || (f >= SF_SLD75 && f <= SF_SLD25); }
+/* fire threshold (0-127): fires if (rng()&127u) < threshold; 128 = always */
+static inline uint32_t flags_acc_thresh(uint8_t f) { return f == SF_ACC75 ? 96u : f == SF_ACC50 ? 64u : f == SF_ACC25 ? 32u : 128u; }
+static inline uint32_t flags_sld_thresh(uint8_t f) { return f == SF_SLD75 ? 96u : f == SF_SLD50 ? 64u : f == SF_SLD25 ? 32u : 128u; }
 /* the dynamics of a note or a drum hit (2 bits each in the steps): played without velocity
  * (OCT- / OCT+ held on the drum track, the step page) or from a MIDI velocity */
 enum { LV_NORM, LV_GHOST, LV_SOFT, LV_HARD };
 typedef struct {                 /* a step of a synth part (10 bytes): up to 4 notes (POLY), time, accent, slide */
     uint8_t note[4];
     uint8_t n;                   /* notes in use, 0 = empty */
-    uint8_t time;                /* ST_NOTE / ST_TIE / ST_REST */
+    uint8_t time;                /* ST_NOTE / ST_TIE / ST_REST / ST_P75 / ST_P50 / ST_P25 */
     uint8_t flags;               /* SF_ACCENT | SF_SLIDE */
     uint8_t vel;
     uint8_t lvl;                 /* 2 bits per note (note k: bits 2k..2k+1): LV_* */
@@ -196,6 +212,7 @@ typedef struct track {
     uint8_t seq_notes[4];        /* sounding seq notes */
     uint8_t seq_n;
     uint8_t seq_hold;            /* last step slides: keep the notes until the next step */
+    uint8_t seq_accent;          /* accent resolved at seq_step (used by sub-beat ratchet hits) */
     uint8_t slide_glide;         /* next legato note glides (slide) */
     uint32_t seq_off;            /* units to the note-off of the step's notes */
     uint8_t seq_active;          /* any step programmed */

@@ -352,7 +352,7 @@ static void rec_hold(track_t *t, uint32_t idx, uint32_t len, uint32_t abs)
     if (idx == t->rh_start)
         return;                                     /* (recorded ahead into the step now starting) */
     s = &t->step[idx];
-    if (s->time == ST_NOTE && s->n) {
+    if (step_fires(s->time) && s->n) {
         t->rh_n = 0;                                /* a step with notes: the hold ends before it */
         return;
     }
@@ -431,7 +431,7 @@ static int track_empty(const track_t *t)
 {
     uint32_t k;
     for (k = 0; k < NSTEP; k++)
-        if (is_drum(t) ? dstep_mask(&t->dstep[k]) != 0u : t->step[k].time == ST_NOTE && t->step[k].n)
+        if (is_drum(t) ? dstep_mask(&t->dstep[k]) != 0u : step_fires(t->step[k].time) && t->step[k].n)
             return 0;
     return 1;
 }
@@ -545,7 +545,7 @@ static void ft_close(void)
             uint32_t steps = (d * len * 2u + T) / (2u * T);
             for (k = 1; k < steps && k < len; k++) {
                 step_t *s = &t->step[(idx + k) % len];
-                if (s->time == ST_NOTE && s->n)
+                if (step_fires(s->time) && s->n)
                     break;
                 memset(s, 0, sizeof *s);
                 s->time = ST_TIE;
@@ -606,7 +606,7 @@ static void erase_step(track_t *t, uint32_t idx)
     } else {
         step_t *s = &t->step[idx];
         uint32_t i, k = 0, lv = 0, rt = 0;
-        if (s->time != ST_NOTE)
+        if (!step_fires(s->time))
             return;
         for (i = 0; i < s->n; i++)
             if (!er_has(s->note[i])) {
@@ -1323,10 +1323,10 @@ static void seq_stop(void)
 #endif
 }
 
-/* the velocity of note i of synth step s */
-static uint32_t step_vel(const step_t *s, uint32_t i)
+/* the velocity of note i of synth step s; accented: resolved at seq_step (may be probabilistic) */
+static uint32_t step_vel(const step_t *s, uint32_t i, uint32_t accented)
 {
-    uint32_t base = (s->flags & SF_ACCENT) ? 127u : (s->vel ? s->vel : 96u);
+    uint32_t base = accented ? 127u : (s->vel ? s->vel : 96u);
     return lvl_vel((s->lvl >> (2u * i)) & 3u, base);
 }
 
@@ -1349,14 +1349,29 @@ static void seq_step(track_t *t, const step_t *s, uint32_t slen, uint32_t skip)
     uint32_t i, j, gate = slen * (uint32_t)t->p[P_SGATE] / 128u;
     uint32_t slide_in = t->seq_hold && t->seq_n;
     uint32_t next_tie = t->step[(t->seq_idx + 1u) % trk_len(t)].time == ST_TIE;
-    if (s->time == ST_TIE) {
+    uint32_t step_time = s->time, do_accent, do_slide;
+    uint32_t acc_t, sld_t;
+
+    /* resolve time probability */
+    if (step_time >= ST_P75) {
+        uint32_t thresh = step_time == ST_P75 ? 96u : step_time == ST_P50 ? 64u : 32u;
+        step_time = ((rng() & 127u) < thresh) ? ST_NOTE : ST_REST;
+    }
+    /* resolve flag probabilities (128 threshold = always fires) */
+    acc_t = flags_acc_thresh(s->flags);
+    sld_t = flags_sld_thresh(s->flags);
+    do_accent = flags_is_accent(s->flags) && (acc_t >= 128u || (rng() & 127u) < acc_t);
+    do_slide  = flags_is_slide(s->flags)  && (sld_t >= 128u || (rng() & 127u) < sld_t);
+    t->seq_accent = (uint8_t)do_accent;
+
+    if (step_time == ST_TIE) {
         if (t->seq_n) {
             t->seq_off = gate + slen / 2u;
-            t->seq_hold = (s->flags & SF_SLIDE) != 0 || next_tie;   /* chains hold at any GATE / swing */
+            t->seq_hold = (uint8_t)(do_slide || next_tie);   /* chains hold at any GATE / swing */
         }
         return;
     }
-    if (s->time == ST_REST || !s->n) {
+    if (step_time == ST_REST || !s->n) {
         seq_release(t);
         return;
     }
@@ -1375,7 +1390,7 @@ static void seq_step(track_t *t, const step_t *s, uint32_t slen, uint32_t skip)
             skip |= 1u << i;                        /* (a roll plays it) */
     for (i = 0; i < s->n; i++)
         if (!((skip >> i) & 1u))
-            trk_note_on(t, seq_note_trans(t, s->note[i]), step_vel(s, i));
+            trk_note_on(t, seq_note_trans(t, s->note[i]), step_vel(s, i, do_accent));
     if (slide_in)                                   /* release what is not held over */
         for (i = 0; i < t->seq_n; i++) {
             for (j = 0; j < s->n && seq_note_trans(t, s->note[j]) != t->seq_notes[i]; j++)
@@ -1388,7 +1403,7 @@ static void seq_step(track_t *t, const step_t *s, uint32_t slen, uint32_t skip)
         if (!((skip >> i) & 1u))
             t->seq_notes[t->seq_n++] = (uint8_t)seq_note_trans(t, s->note[i]);
     t->seq_off = gate;
-    t->seq_hold = !s->rat && ((s->flags & SF_SLIDE) != 0 || next_tie);   /* next step a TIE: keep the notes to it */
+    t->seq_hold = (uint8_t)(!s->rat && (do_slide || next_tie));   /* next step a TIE: keep the notes to it */
 }
 
 /* play one drum step: each lane a hit (skip: lanes already played by live recording, or rolling) */
@@ -1422,7 +1437,7 @@ static void seq_ratchets(track_t *t, uint32_t into, uint32_t slen)
     }
     {
         const step_t *s = &t->step[t->seq_idx % NSTEP];
-        if (s->time != ST_NOTE || !s->rat)
+        if (!step_fires(s->time) || !s->rat)
             return;
         for (i = 0; i < s->n; i++) {
             uint32_t hits = 1u + ((s->rat >> (2u * i)) & 3u), h;
@@ -1434,7 +1449,7 @@ static void seq_ratchets(track_t *t, uint32_t into, uint32_t slen)
                 uint32_t tn = seq_note_trans(t, s->note[i]);
                 t->rat_done[i] = (uint8_t)h;
                 trk_note_off(t, tn);
-                trk_note_on(t, tn, step_vel(s, i));
+                trk_note_on(t, tn, step_vel(s, i, t->seq_accent));
                 t->seq_off = slen / hits * (uint32_t)t->p[P_SGATE] / 128u;
                 for (j = 0; j < t->seq_n && t->seq_notes[j] != tn; j++)
                     ;

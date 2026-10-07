@@ -29,7 +29,7 @@ static void proj_apply_track(const project_t *p, uint32_t k)
             step_t *st = &t->step[i];
             uint32_t j;
             if (st->n > 4u) st->n = 4;
-            if (st->time > ST_REST) st->time = ST_REST;
+            if (st->time > ST_P25) st->time = ST_REST;
             for (j = 0; j < 4u; j++) st->note[j] &= 127u;
         }
 }

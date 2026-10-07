@@ -276,7 +276,7 @@ static void proj_apply(const project_t *p, int all)
                 uint32_t j;
                 if (st->n > 4u)
                     st->n = 4;
-                if (st->time > ST_REST)
+                if (st->time > ST_P25)
                     st->time = ST_REST;
                 for (j = 0; j < 4u; j++)
                     st->note[j] &= 127u;

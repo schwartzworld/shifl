@@ -232,7 +232,7 @@ static void graph_steps(const track_t *t, uint16_t c)
             cv_rect(x, y + 6, 1, 8, C_DIM);
         else
             cv_rect(x, y + 13, 1, 1, C_DIM);
-        if (st->flags & SF_ACCENT)
+        if (flags_is_accent(st->flags))
             cv_rect(x - 1, y - 2, 3, 1, c);
         if ((song.playing && i == t->seq_idx) || i == ui.cursor)
             cv_rect(x - 1, y + 16, 3, 3, C_WHITE);
@@ -277,11 +277,11 @@ static void graph_roll(const track_t *t, uint16_t c)
         }
         for (j = 0; j < st->n; j++) {
             int32_t y = 80 - (st->note[j] - lo) * 74 / (hi - lo);
-            cv_rect(x + 2, y, 10, 1, (st->flags & SF_ACCENT) ? C_WHITE : c);
+            cv_rect(x + 2, y, 10, 1, flags_is_accent(st->flags) ? C_WHITE : c);
             if (j == 0)
                 prev_y = y;
         }
-        if (st->flags & SF_SLIDE)
+        if (flags_is_slide(st->flags))
             cv_line(x + 11, prev_y, x + 17, prev_y + 2, c);
     }
 }
@@ -575,7 +575,7 @@ static void draw_tracks(void)
                     h = 1;
                 if (step_on(s)) {
                     int32_t w = 2 + 6 * (int32_t)s->n;
-                    cv_rect(17 - w / 2, r0, w, h, (s->flags & SF_ACCENT) && sel ? C_WHITE : sel ? C_HI : C_GRAY);
+                    cv_rect(17 - w / 2, r0, w, h, flags_is_accent(s->flags) && sel ? C_WHITE : sel ? C_HI : C_GRAY);
                 } else if (s->time == ST_TIE) {
                     cv_rect(16, r0, 3, r1 - r0, C_DIM);
                 }
@@ -849,7 +849,7 @@ static void draw_columns(void)
         return;
     }
     if (cur_page()->scope == SC_STEP) {
-        static const char *const TIME_N[3] = {"NOTE", "TIE", "REST"};
+        static const char *const TIME_N[6] = {"NOTE", "TIE", "REST", "P75", "P50", "P25"};
         const step_t *st = &TSEL->step[ui.cursor];
         char u[8];
         if (st->n) {
@@ -864,15 +864,15 @@ static void draw_columns(void)
             u[0] = 0;
         }
         {
-            static const char *const FLAG_N[4] = {"-", "ACC", "SLD", "A+S"};
+            static const char *const FLAG_N[SF_N] = {"-", "ACC", "SLD", "A+S", "A75", "A50", "A25", "S75", "S50", "S25"};
             char sn[8], sl[8];
             fmt_int(sn, (int32_t)ui.cursor + 1);
             str_cpy(sl, "/", 8);
             fmt_int(sl + 1, TSEL->p[P_SLEN]);
             draw_column(0, "STEP", sn, sl, VAL(0u), -1, ICON_AUTO);
             draw_column(1, "NOTE", val, u, step_on(st) ? VAL(1u) : C_DIM, -1, ICON_AUTO);
-            draw_column(2, "TIME", TIME_N[st->time % 3u], "", VAL(2u), -1, ICON_AUTO);
-            draw_column(3, "FLAG", FLAG_N[(st->flags & SF_ACCENT ? 1u : 0u) | (st->flags & SF_SLIDE ? 2u : 0u)], "",
+            draw_column(2, "TIME", TIME_N[st->time < 6u ? st->time : 0u], "", VAL(2u), -1, ICON_AUTO);
+            draw_column(3, "FLAG", FLAG_N[st->flags < SF_N ? st->flags : 0u], "",
                         VAL(3u), -1, ICON_AUTO);
         }
         return;

@@ -499,7 +499,7 @@ static void layer_screen_draw(void)
                 } else {
                     note_name(tl[i].lab, n);
                     for (j = 0; j < trk_len(t); j++)
-                        if (t->step[j].time == ST_NOTE) {
+                        if (step_fires(t->step[j].time)) {
                             uint32_t q;
                             for (q = 0; q < t->step[j].n; q++)
                                 present |= t->step[j].note[q] == n;

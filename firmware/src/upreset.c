@@ -97,8 +97,11 @@ static void up_pat_from(up_rec_t *r, const step_t *st)   /* the first 16 steps -
 {
     uint32_t i;
     for (i = 0; i < 16u; i++) {
-        r->note[i] = st[i].time == ST_NOTE && st[i].n ? st[i].note[0] : 0u;
-        r->flags[i] = st[i].time == ST_TIE ? 4u : st[i].flags;
+        uint8_t fl = st[i].flags;
+        /* upreset format only encodes 0-3; map probability variants to their base flag */
+        if (fl > 3u) fl = (uint8_t)(flags_is_accent(fl) ? SF_ACCENT : flags_is_slide(fl) ? SF_SLIDE : 0u);
+        r->note[i] = step_fires(st[i].time) && st[i].n ? st[i].note[0] : 0u;
+        r->flags[i] = st[i].time == ST_TIE ? 4u : fl;
         up_pat_norm(&r->note[i], &r->flags[i]);
     }
 }
