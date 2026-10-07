@@ -53,6 +53,8 @@ static void arrangement_apply(uint32_t entry_index)
         trk_clear_state(&trk[k]);
         if (e->track[k] == ARR_MUTE) {
             trk[k].p[P_LEVEL] = 0;     /* P_LEVEL=0 silences the track in the mixer */
+            if (k == TRK_DRUM)
+                trk[k].p[P_MUTE] = 1;  /* drum track uses trk_silent/att, not P_LEVEL */
         } else {
             proj_apply_track(&proj_slot[e->track[k]], k);
         }
