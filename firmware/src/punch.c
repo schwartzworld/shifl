@@ -18,6 +18,7 @@ static int16_t punch_ring[PUNCH_N] __attribute__((section(".pool")));
 static struct {
     volatile int8_t req;          /* effect asked for by the keys (-1 none), ISR keyboard_block */
     volatile uint8_t hold;        /* FX button held (UI main loop) */
+    volatile uint8_t cc_hold;     /* FX active via MIDI CC (independent of physical button) */
     int8_t song;                  /* punch FX queued by the active arrangement entry (-1 none) */
     uint32_t keybit;              /* the key that started it */
     int8_t cur;                   /* effect playing (fading out when req differs) */
@@ -126,7 +127,7 @@ static int punch_owns(int32_t fx, uint32_t w)
 static void punch_process(int32_t *l, int32_t *r, uint32_t n)
 {
     uint32_t i;
-    int32_t want = punch.hold ? punch.req : punch.song;
+    int32_t want = (punch.hold || punch.cc_hold) ? punch.req : punch.song;
     uint32_t beat, step, echo_d;
     tsvf_t c1, c2;
     if (punch.cur < 0 && want < 0) {                   /* idle: only the ring */

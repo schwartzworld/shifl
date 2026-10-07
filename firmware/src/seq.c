@@ -1655,12 +1655,12 @@ static void midi_cc(uint32_t ch, uint32_t cc, uint32_t val) {
     if (cc >= 102u && cc <= 117u) {
         int idx = (int)cc - 102;
         if (val > 0u) {
-            punch.req  = (int8_t)idx;
-            punch.hold = 1u;
+            punch.req     = (int8_t)idx;
+            punch.cc_hold = 1u;
         } else {
             if (punch.req == idx) {
-                punch.hold = 0u;
-                punch.req  = -1;
+                punch.cc_hold = 0u;
+                punch.req     = -1;
             }
         }
         return;
