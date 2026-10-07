@@ -1613,6 +1613,40 @@ static uint32_t mclk_adv(uint32_t n)               /* units to advance this bloc
     return adv;
 }
 
+static void midi_cc(uint32_t ch, uint32_t cc, uint32_t val) {
+    if (cc >= 102u && cc <= 117u) {
+        int idx = (int)cc - 102;
+        if (val > 0u) {
+            punch.req  = (int8_t)idx;
+            punch.hold = 1u;
+        } else {
+            if (punch.req == idx) {
+                punch.hold = 0u;
+                punch.req  = -1;
+            }
+        }
+        return;
+    }
+    if (ch < NPART) {
+        track_t *t = &trk[ch];
+        if (cc == 74u) t->p[P_E4] = (int16_t)val;
+        else if (cc == 71u) t->p[P_E5] = (int16_t)val;
+    } else if (ch == 15u) {
+        switch (cc) {
+        case 20u: song.g[G_SWING]  = (int16_t)(val > 100u ? 100u : val); break;
+        case 24u: song.g[G_DFDBK]  = (int16_t)val; break;
+        case 25u: song.g[G_DCOLOR] = (int16_t)val; break;
+        case 26u: song.g[G_DMIX]   = (int16_t)val; break;
+        case 27u: song.g[G_RSIZE]  = (int16_t)val; break;
+        case 28u: song.g[G_RDAMP]  = (int16_t)val; break;
+        case 29u: song.g[G_CRATE]  = (int16_t)val; break;
+        case 30u: song.g[G_CDEPTH] = (int16_t)val; break;
+        case 71u: song.g[G_DUST]   = (int16_t)val; break;
+        case 74u: song.g[G_FILT]   = (int16_t)((int32_t)val - 64); break;
+        }
+    }
+}
+
 /* everything that happens between two rendered blocks: transport, input, the steps of every
  * track at the clock, the click, the rolls and the arps; then the clock moves on by n samples */
 static void events_block(uint32_t n)
@@ -1719,8 +1753,12 @@ static void events_block(uint32_t n)
             mclk_event((pkt >> 8) & 0xFFu, ((pkt >> 4) & 15u) ? 2u : 1u);
             continue;
         }
-        if (st != 0x90u && st != 0x80u)
+        if (st == 0xB0u) {
+            midi_cc(ch, d1, d2);
             continue;
+        } else if (st != 0x90u && st != 0x80u) {
+            continue;
+        }
         t = midi_route(ch, d1, st == 0x90u && d2);
         if (is_drum(t)) {
             if (st == 0x90u && d2)
