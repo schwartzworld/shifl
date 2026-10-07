@@ -427,10 +427,14 @@ typedef struct {
     uint32_t lights;                               /* SLOOP 2.3: the backlight (panel.c lights_word); appended,
                                                     * so 2.2 still reads its part (st_load cuts at its size) */
 } persist_t;
-#define PERSIST_SIZE_V22 __builtin_offsetof(persist_t, lights)   /* the settings as 2.2 wrote them (no lights) */
-_Static_assert(sizeof(persist_t) == PERSIST_SIZE_V22 + 4u, "lights: the last word, no padding before it");
+/* V22 = before lights; defined via offsetof(arr_config_t, patch) so it stays correct if entry[] grows */
+#define PERSIST_SIZE_V22 (__builtin_offsetof(persist_t, arrangement) + __builtin_offsetof(arr_config_t, patch))
+/* V44 = V22 + lights word (PER4 format, before patch[] was added) */
+#define PERSIST_SIZE_V44 (PERSIST_SIZE_V22 + 4u)
+_Static_assert(sizeof(persist_t) == PERSIST_SIZE_V22 + ARR_STEPS * sizeof(arr_patch_t) + 4u,
+               "lights: last word; patch[] appended after entry[]");
 #if FELUCCA_ARRANGER
-#define PERSIST_MAGIC 0x50455234u                  /* "PER4": per-track song sections */
+#define PERSIST_MAGIC 0x50455234u                  /* "PER4": per-track song sections + patch overrides */
 #else
 #define PERSIST_MAGIC 0x50455232u
 #endif
@@ -461,7 +465,15 @@ static void persist_boot(void)                    /* before settings_init / pane
         int n = st_load(OBJ_SETTINGS, &p, sizeof p);
         if (n == (int)PERSIST_SIZE_V22 && p.magic == PERSIST_MAGIC)
             p.lights = 0;                          /* from 2.2: backlight off */
-        if (((n == (int)sizeof p || n == (int)PERSIST_SIZE_V22) && p.magic == PERSIST_MAGIC)
+#if FELUCCA_ARRANGER
+        if (n == (int)PERSIST_SIZE_V44 && p.magic == PERSIST_MAGIC) {
+            /* PER4 without patch[]: lights sit at old position (now inside patch[0]) — recover them */
+            uint32_t old_lights;
+            memcpy(&old_lights, (const uint8_t *)&p + PERSIST_SIZE_V22, 4);
+            p.lights = old_lights;
+        }
+#endif
+        if (((n == (int)sizeof p || n == (int)PERSIST_SIZE_V44 || n == (int)PERSIST_SIZE_V22) && p.magic == PERSIST_MAGIC)
 #if FELUCCA_ARRANGER
             || (n == (int)(16u + sizeof(panel_t)) && p.magic == 0x50455232u)
 #endif
@@ -477,10 +489,20 @@ static void persist_boot(void)                    /* before settings_init / pane
             else
                 p.lights = 0;
 #if FELUCCA_ARRANGER
-            if (p.magic == PERSIST_MAGIC && arr_valid(&p.arrangement, 15u))
+            if (p.magic == PERSIST_MAGIC && arr_valid(&p.arrangement, 15u)) {
+                if (n < (int)sizeof p) {
+                    /* Old format: patch[] not in flash — init to no-override */
+                    uint32_t mi, mk;
+                    for (mi = 0; mi < ARR_STEPS; mi++)
+                        for (mk = 0; mk < ARR_TRACKS; mk++) {
+                            p.arrangement.patch[mi].engine[mk] = ARR_PATCH_NONE;
+                            p.arrangement.patch[mi].preset[mk] = ARR_PATCH_NONE;
+                        }
+                }
                 arrangement = p.arrangement;
-            else
+            } else {
                 p.arrangement = arrangement;
+            }
 #endif
             persist_saved = p;
         } else if (n == (int)(8u + sizeof(panel_t)) && p.magic == 0x50455231u) {   /* "PER1": palette, panel */
@@ -568,7 +590,7 @@ static int panel_valid(const panel_t *q)           /* a permutation of the butto
 static uint32_t settings_restore(const void *raw, uint32_t n)
 {
     persist_t p;
-    if (n != sizeof p && n != PERSIST_SIZE_V22)
+    if (n != sizeof p && n != PERSIST_SIZE_V44 && n != PERSIST_SIZE_V22)
         return 2;
     memset(&p, 0, sizeof p);
     memcpy(&p, raw, n);
@@ -577,6 +599,14 @@ static uint32_t settings_restore(const void *raw, uint32_t n)
 #if FELUCCA_ARRANGER
     if (!arr_valid(&p.arrangement, 15u))
         return 2;
+    if (n < (uint32_t)sizeof p) {
+        uint32_t mi, mk;
+        for (mi = 0; mi < ARR_STEPS; mi++)
+            for (mk = 0; mk < ARR_TRACKS; mk++) {
+                p.arrangement.patch[mi].engine[mk] = ARR_PATCH_NONE;
+                p.arrangement.patch[mi].preset[mk] = ARR_PATCH_NONE;
+            }
+    }
 #endif
     if (!flash_ok || st_save(OBJ_SETTINGS, &p, sizeof p))
         return 4;

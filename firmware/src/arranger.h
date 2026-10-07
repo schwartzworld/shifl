@@ -12,11 +12,16 @@
 #define ARR_NONE    (-1)
 #define ARR_DONE    (-2)
 #define ARR_INVALID (-3)
+#define ARR_PATCH_NONE 0xFFu  /* engine/preset override: use whatever the scene set */
+#define ARR_FLAG_INKEY 0x01u  /* rsv[2] bit 0: chromatic transpose snapped to track's scale */
 /* Each entry independently selects a scene (A-F = 0-5) or ARR_MUTE per track. */
 typedef struct { uint8_t track[ARR_TRACKS]; uint8_t bars; uint8_t rsv[3]; } arr_entry_t;
+/* Per-entry per-track patch override; 0xFF in either field = use the scene's engine/preset. */
+typedef struct { uint8_t engine[ARR_TRACKS]; uint8_t preset[ARR_TRACKS]; } arr_patch_t;
 typedef struct {
     uint8_t count, loop, reserved[2];
     arr_entry_t entry[ARR_STEPS];
+    arr_patch_t patch[ARR_STEPS];   /* patch overrides, appended last for backward compat */
 } arr_config_t;
 typedef struct {
     uint32_t phase;
@@ -28,8 +33,11 @@ static void arr_defaults(arr_config_t *c)
     uint32_t i, k;
     c->count = 4; c->loop = 0; c->reserved[0] = c->reserved[1] = 0;
     for (i = 0; i < ARR_STEPS; i++) {
-        for (k = 0; k < ARR_TRACKS; k++)
+        for (k = 0; k < ARR_TRACKS; k++) {
             c->entry[i].track[k] = (uint8_t)(i % ARR_SCENES);
+            c->patch[i].engine[k] = ARR_PATCH_NONE;
+            c->patch[i].preset[k] = ARR_PATCH_NONE;
+        }
         c->entry[i].bars = 8;
         c->entry[i].rsv[0] = 0xFFu;  /* 0xFF = no punch FX */
         c->entry[i].rsv[1] = c->entry[i].rsv[2] = 0;

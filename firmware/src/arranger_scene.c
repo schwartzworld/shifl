@@ -49,6 +49,7 @@ static void arrangement_apply(uint32_t entry_index)
 {
     uint32_t k;
     const arr_entry_t *e = &arrangement.entry[entry_index];
+    const arr_patch_t *pa = &arrangement.patch[entry_index];
     for (k = 0; k < NTRK; k++) {
         trk_clear_state(&trk[k]);
         if (e->track[k] == ARR_MUTE) {
@@ -57,6 +58,11 @@ static void arrangement_apply(uint32_t entry_index)
                 trk[k].p[P_MUTE] = 1;  /* drum track uses trk_silent/att, not P_LEVEL */
         } else {
             proj_apply_track(&proj_slot[e->track[k]], k);
+            if (k < NPART && pa->engine[k] != ARR_PATCH_NONE) {
+                trk[k].eng_req = (uint8_t)(pa->engine[k] % NENGINES);
+                if (pa->preset[k] != ARR_PATCH_NONE)
+                    apply_preset_to(&trk[k], pa->preset[k]);
+            }
         }
     }
     sync_reload = 1;

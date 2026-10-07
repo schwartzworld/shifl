@@ -1318,6 +1318,7 @@ static void seq_stop(void)
         arrangement_clock.running = 0;
         punch.song = -1;
         arr_song_transpose = 0;
+        arr_song_trans_inkey = 0;
         song_restore();                            /* back to the loop you were making */
     }
 #endif
@@ -1332,10 +1333,25 @@ static uint32_t step_vel(const step_t *s, uint32_t i, uint32_t accented)
 
 /* Apply per-fragment transpose from song mode to a sequencer note (synth parts only). */
 #if FELUCCA_ARRANGER
+static uint32_t seq_snap_scale(uint32_t n, const track_t *t)
+{
+    uint32_t mask = scale_mask(t), d, pc;
+    int32_t root = t->p[P_ROOT];
+    if (mask == 0xFFFu) return n;   /* CHR: all notes in scale, nothing to snap */
+    pc = (uint32_t)((int32_t)n - root + 120) % 12u;
+    if (mask & (1u << pc)) return n;
+    for (d = 1; d <= 6u; d++) {
+        if (mask & (1u << ((pc + d) % 12u))) return (uint32_t)clamp((int32_t)n + (int32_t)d, 0, 127);
+        if (mask & (1u << ((pc - d + 12u) % 12u))) return (uint32_t)clamp((int32_t)n - (int32_t)d, 0, 127);
+    }
+    return n;
+}
 static uint32_t seq_note_trans(const track_t *t, uint32_t n)
 {
     if (is_drum(t) || !arr_song_transpose) return n;
-    return (uint32_t)clamp((int32_t)n + arr_song_transpose, 0, 127);
+    n = (uint32_t)clamp((int32_t)n + arr_song_transpose, 0, 127);
+    if (arr_song_trans_inkey) n = seq_snap_scale(n, t);
+    return n;
 }
 #else
 static uint32_t seq_note_trans(const track_t *t, uint32_t n) { (void)t; return n; }
@@ -1712,6 +1728,7 @@ static void events_block(uint32_t n)
             arrangement_apply((uint32_t)scene);
             punch.song = arrangement.entry[scene].rsv[0] == 0xFFu ? (int8_t)-1 : (int8_t)arrangement.entry[scene].rsv[0];
             arr_song_transpose = (int8_t)arrangement.entry[scene].rsv[1];
+            arr_song_trans_inkey = arrangement.entry[scene].rsv[2] & ARR_FLAG_INKEY;
             seq_reset_tracks(arrangement_clock.phase);   /* (the remainder: exactly on the bar) */
         }
     } else if (song.playing) {
