@@ -3,7 +3,9 @@
 The firmware side is `firmware/src/editor.c` (SHIFL is based on Felucca: the frames keep its "FL"
 header). Commands 16-26 (user presets and live sync) form protocol v2; commands 27-30 (tracks) form
 protocol v3; commands 31-32 (any track's parameters) form protocol v4; command 33 and the extra step,
-`INFO` and `TRACK` bytes form protocol v5 (SHIFL 2.0).
+`INFO` and `TRACK` bytes form protocol v5 (SHIFL 2.0); commands 34-36 (backup / restore) form protocol v6
+(SHIFL 2.3); commands 37-40 (the steps' nudges and parameter locks) form protocol v7, commands 41-42 (the
+steps' fill conditions) protocol v8 and commands 68-71 (the FM6 engine's patches) protocol v9 (all SHIFL 2.4).
 
 **v3 (four tracks):** the device has four tracks: 1..3 are synth parts, 4 is the drum track. One
 of them is *selected* (the TRACKS page on the device, or `TRACK`). Every v1 / v2 command acts on the
@@ -67,10 +69,10 @@ An absent status byte retains the original reply format.
 | 15 SMP_INFO | — | slots, slot KiB, then per slot: zone count (0 = empty), name string, data KiB |
 | 16 UP_LIST | start, count (1..16) | start, count, total slots, then per slot: used (0/1), engine, name string ("" if unused) |
 | 17 UP_GET | slot | slot, used, engine, name, P_COUNT × v14, 16 × (note, flags) |
-| 18 UP_PUT | slot, engine, name, P_COUNT × v14, 16 × (note, flags) | slot, rc (0 ok, 1 args, 2 flash). Writes flash: allow 1 s |
-| 19 UP_STORE | slot, name | slot, rc. Stores the current sound: engine, parameters, the first 16 sequencer steps as the pattern (TIE steps → flag 4) |
+| 18 UP_PUT | slot, engine, name, P_COUNT × v14, 16 × (note, flags) | slot, rc (0 ok, 1 args, 2 flash, 3 stop the song first). Writes flash: allow 1 s |
+| 19 UP_STORE | slot, name | slot, rc (3: stop the song first). Stores the current sound: engine, parameters, the first 16 sequencer steps as the pattern (TIE steps → flag 4) |
 | 20 UP_LOAD | slot | slot, rc (0 ok, 1 empty/invalid). Applies it |
-| 21 UP_ERASE | slot | slot, rc |
+| 21 UP_ERASE | slot | slot, rc (3: stop the song first) |
 | 22 WATCH | on (0/1; v4: 3 = also `TRACK_CHANGED`) | on (0/1; v4 firmware: 3 when 3 was asked for). While on, the device pushes cmds 23, 24, 26 (and 32 with bit 1) |
 | 23 CHANGED (push) | — | scope, id, v14 |
 | 24 RELOAD (push) | — | engine, preset, then (v3) the selected track |
@@ -93,10 +95,30 @@ An absent status byte retains the original reply format.
 | --- | --- | --- |
 | 33 DRUM_STEP | index (get), or index, on (3 bytes), lvl (5 bytes), rat (5 bytes) (set) | index, on (3 bytes), lvl (5 bytes), rat (5 bytes): the drum track's step, whichever track is selected |
 
+| cmd (v7) | Request args | Reply args |
+| --- | --- | --- |
+| 37 LOCK_GET | track | track, n, then n × (step, param, v14 value): the track's parameter locks (n ≤ 24, unsorted) |
+| 38 LOCK_SET | track, step, param [, v14 value] (no value: delete the lock of that step and parameter) | track, step, param, rc, has (0/1), v14 (the lock's value after clamping; 0 when there is none). rc: 0 ok, 1 step ≥ NSTEP or param ≥ P_COUNT, 2 the parameter cannot be locked, 3 no free slot (24 a track) |
+| 39 MICRO_GET | track | track, then NSTEP bytes: each step's nudge + 64 (so 32..95; 64 = on the grid) |
+| 40 MICRO_SET | track, step, nudge + 64 | track, step, nudge + 64 (after clamping to −32..31) |
+
+| cmd (v8) | Request args | Reply args |
+| --- | --- | --- |
+| 41 FILL_GET | track | track, then the track's 16 condition bytes as stored (2 bits per step, step i in byte i / 4 at bits 2 (i mod 4)..+1), **pack7** (19 bytes on the wire) |
+| 42 FILL_SET | track, step, cond (0 normal, 1 fill only, 2 no fill; 3 = 0) | track, step, cond (as stored) |
+
+| cmd (v9) | Request args | Reply args |
+| --- | --- | --- |
+| 68 FM6_GET | target, index | target, index, rc, then (rc 0) the 128-byte packed patch |
+| 69 FM6_PUT | target, index, the 128-byte packed patch | target, index, rc |
+| 70 FM6_LIST | — | factory count, bank count, then per slot (factory first): used (0/1), name string ("" if empty) |
+| 71 FM6_ERASE | bank index | index, rc |
+
 **pack7:** groups of up to 7 bytes, each preceded by one byte holding their top bits
 (bit j = bit 7 of byte j).
 
-**User sample slot** (80 KiB each, SAMPLE engine sets USR1..USR3; reference uploader
+**User sample slot** (80 KiB each: USR1..USR3 at flash 0xA0000, 0xB4000, 0xC8000 and, from SHIFL 2.4, USR4 at
+0xE7000 — SMP_INFO says how many; SAMPLE / GRAIN sets USR1..USR4, the drum track's KIT USR1..USR4 and USR3+4; reference uploader
 `tools/fm1_sample_upload.py`, slot builder `sampleio.user_slot`; the editor's port of it is
 checked byte for byte by `web/test_web.mjs`): header at 0, ADPCM data at 512.
 
@@ -192,9 +214,9 @@ editor takes them from `INFO`; older records load with the SLICER off and CHORD 
 - Level and mute are also `P_LEVEL` / `P_MUTE` of the selected track (`SET`); `TRACK_MIX` reaches the
   others. Presets and user presets change a part's sound but keep its mix (`P_LEVEL`, `P_PAN`,
   `P_MUTE`), its pattern parameters (`LEN DIV SWG GATE`) and its key (`ROOT SCL QNT`, `CHORD`).
-- Projects (`PROJECT`) save and load all four tracks and the selection (SHIFL 2.0: project format 4,
-  "FUN4", with the drum lanes, levels and ratchets; formats 3, 2 and 1 from older firmware are converted
-  when loaded, a format 1 project into track 1).
+- Projects (`PROJECT`) save and load all four tracks and the selection (SHIFL 2.4: project format 5,
+  "FUN5", format 4 + nudges and locks; formats 4 ("FUN4", SHIFL 2.0: the drum lanes, levels and ratchets),
+  3, 2 and 1 from older firmware are converted when loaded, a format 1 project into track 1).
 - Older firmware (no NTRK in `INFO`): one instrument; skip the track UI.
 
 ## v4: any track's parameters
@@ -244,16 +266,17 @@ editor takes them from `INFO`; older records load with the SLICER off and CHORD 
 ## v6: backup / restore (SHIFL 2.3)
 
 `INFO` ends with 6. Objects: **0** the working project (a `project_t`, as the autosave), **1** the settings
-(`persist_t`: colours, low cut, zoom, the panel calibration, the song order, the lights and SYNC word),
+(`persist_t`: colours, low cut, zoom, the panel calibration, the song order, the lights word: lights, SYNC,
+the REC screen's mode and start, USB AUDIO and, since 2.4, MIDI OUT = SEQ (bit 14) and IN = CLOCK (bit 15)),
 **2..5** the projects 1..4 (song sections A..D; length 0 = empty), **6..7** the user preset banks (`up_bank_t`,
-16 records each; 0 = empty), **32..34** the user sample slots USR1..3 (header + ADPCM data, as in flash; 0 =
+16 records each; 0 = empty), **32..35** the user sample slots USR1..4 (35: SHIFL 2.4) (header + ADPCM data, as in flash; 0 =
 empty). Numbers are 5 × 7 bit (u35, LSB first); data is pack7.
 
 | cmd | Request args | Reply args |
 | --- | --- | --- |
 | 34 BK_LIST | — | rc (0 ok, 4 no flash), count, then per object: id, length u35, CRC-32 u35 (zlib). Takes a snapshot of the working project and the settings for GET |
 | 35 BK_GET | id, offset u35, count (2 × 7 bit, 1..256) | id, rc (0 ok, 1 arguments, 5 the snapshot is gone: LIST again), offset u35, count, pack7 data |
-| 36 BK_PUT | op 0 begin: id 0..7, length u35, CRC-32 u35 · op 1 data: id, offset u35, pack7 (≤ 256 bytes, in order) · op 2 commit: id · op 3 abort: id | op, id, rc: 0 ok, 1 arguments, 2 not a valid object (CRC, magic, sizes, ranges), 3 stop the song first (projects), 4 flash, 5 no begin for this object (or more than 15 s ago) |
+| 36 BK_PUT | op 0 begin: id 0..7, length u35, CRC-32 u35 · op 1 data: id, offset u35, pack7 (≤ 256 bytes, in order) · op 2 commit: id · op 3 abort: id | op, id, rc: 0 ok, 1 arguments, 2 not a valid object (CRC, magic, sizes, ranges), 3 stop the song first (projects and preset banks), 4 flash, 5 no begin for this object (or more than 15 s ago) |
 
 A restore stages one object in RAM (the project load buffer), checks it at the commit as a load checks it
 (projects: magic, size and sum, older formats converted; banks: magic, record size, slot count; settings:
@@ -263,6 +286,94 @@ A/B commit; the working project is loaded at once (the song must be stopped). Sa
 512), an empty slot with `SMP_ERASE`. The editor's file is JSON: `{format: "shifl-backup", version: 1,
 firmware, date, objects: [{id, len, crc, data (base64)}]}`; it is checked (lengths, CRCs) before anything is
 written.
+
+## v7: step nudge and parameter locks (SHIFL 2.4)
+
+`INFO` ends with 7. Each step of a track has a **nudge** (micro timing, `track_t.micro`): −32..31 in 1/64 of the
+step's length, negative = early (the step fires inside the previous grid step), positive = late, 0 = on the grid.
+On the drum track it moves the whole step (every lane). Sent as one 7-bit byte offset by 64 (−32 → 32, 0 → 64,
+31 → 95). Each track also holds up to 24 **parameter locks** (`plock_t`: step, param, value): on that step the
+track's `P_*` parameter takes the lock's value, and goes back to what it was at the next step that does not lock
+it (Elektron style; notes still ringing follow, the engines read the parameters every block). A knob turned on the
+device while a lock is in force wins: the value found is kept as the new base. Several locks may share a step
+(different parameters); one lock per (step, parameter).
+
+- **Lockable parameters** (firmware `seq.c p_lockable`): `P_LEVEL` .. `P_LD_AMP` (ids 0..16: level, the envelope,
+  its destinations, the LFO and its destinations), `P_SGATE` (32), the sends `P_DIST` .. `P_REV` (33..36),
+  `P_GLIDE` (38), `P_PAN` (39), `P_DETUNE` (44), the SLICER `P_SLCR` .. `P_SLDEPTH` (45..48) and the engine's
+  `P_E0` .. `P_E7` (50..57). Not lockable: the pattern (`LEN DIV SWG`), the arp, the key (`ROOT SCL QNT TRN CHORD`),
+  the voice mode and its options (`VCE GLMOD PRIO ALLOC`), `MUTE`. `LOCK_SET` on one answers rc 2 and writes nothing.
+- **Values** are clamped to the parameter's range on that track (the engine parameters to the engine's; the drum
+  track's `P_E0` to the kits), as `TRACK_PARAM`. A load clamps them again and frees locks on a parameter that is
+  not lockable or a step past 63.
+- **Pushes:** a nudge or a lock changed on the device (SEQ + a step held + KNOB 4 / PRESETS, OCT− to clear) is a
+  change of that step: `STEP_CHANGED` (index) for the selected track; re-read `MICRO_GET` / `LOCK_GET` (two
+  requests) with the step. The editor's own `LOCK_SET` / `MICRO_SET` push nothing. While a lock is in force the
+  parameter's live value is what `GET` / `DUMP` return and `CHANGED` reports (coalesced, as any knob).
+- **Projects** (`PROJECT`, the backup object 0 and 2..5) are format 5 ("FUN5", 3816 bytes): format 4 plus, per
+  track, 64 nudge bytes, 24 × 4-byte locks and 16 bytes of fill conditions (v8, below). Format 4 projects (SHIFL
+  2.0 .. 2.3) load with no nudge, no lock and no condition.
+- A device that does not know these commands (v6 and older) sends no reply: use `INFO`'s version byte.
+- **On the device:** SEQ held + a step key held: KNOB 1 sound / note, KNOB 2 LEVEL, KNOB 3 RATCHET, KNOB 4 the
+  step's nudge; PRESETS a lock of the lock parameter (the sound parameter last touched on a page, ENV > FLT at
+  power-on; ALGORITHM steps through the lockable ones), made at the track's value, then moved; the title shows it
+  ("lock dst 14"); OCT− clears the held steps' nudges and locks. A tile with a nudge or a lock carries a dot in its corner.
+
+## v8: fill conditions and quick chain (SHIFL 2.4)
+
+`INFO` ends with 8. Each step of a track has a **fill condition** (`track_t.fill`, 2 bits per step, `core.h FC_*`):
+0 **normal** (plays always), 1 **FILL ONLY** (plays only during a fill), 2 **NO FILL** (silent during a fill); 3 is read
+as 0. A fill is on while the player holds GLO + white key 9 (*fill*), or for one whole bar after GLO + key 10 (*bar*:
+armed, the next bar plays as a fill, then off; pressed again before the bar: cancelled). A step whose condition fails is
+skipped whole: no note, no MIDI OUT, no ratchet, no parameter lock of its own (the bases come back, as at a step without
+locks); it still ends the previous step's notes as a REST would, and the pattern position moves on. On the drum track the
+condition is the whole step (every lane). The arp and the rolls are not conditions' business. STOP ends a held and an
+armed fill.
+
+- `FILL_GET` returns the 16 bytes as stored, pack7 (16 bytes do not fit 7-bit SysEx bytes: three groups of a top-bits
+  byte and up to 7 bytes, 19 bytes); `FILL_SET` writes one step's condition and answers it as stored. Neither pushes.
+- **Pushes:** a condition changed on the device (SEQ + a step held + OCT+ cycles normal → fill only → no fill; OCT− resets
+  it with the nudge and locks) is a change of that step: `STEP_CHANGED` (index) for the selected track; re-read
+  `FILL_GET` with `MICRO_GET` / `LOCK_GET`.
+- **Projects:** the 16 bytes sit after the locks in each track of format 5 (3816 bytes in all; the format kept its
+  magic, 2.4 being unreleased: a FUN5 image of a 2.4 development build without the field, 3752 bytes, reads as empty).
+- **On the screen:** a FILL ONLY step's tile carries a small **F** in its top left corner, a NO FILL step's an **×**; the
+  nudge / lock dot stays in the top right. The GLO layer's row 3 reads *fill* (lit while a fill plays) and *bar* (framed
+  while armed, lit during its bar).
+- **Quick chain** (no protocol: on the device only): SAVE held while playing, two or more section keys (1–4) tapped in any
+  order, up to 8 (repeats allowed), then SAVE let go: the first section starts on the next bar as before, then each next
+  one after the previous one has played its **pattern length** (the longest track: ceil(LEN × step / bar) bars, at least
+  1, from the section's project in RAM), round and round until a single section tap, STOP or PLAY in song mode. The SAVE
+  layer's sub line reads *chain A B B C*; the section playing is lit, the next one framed. SONG REC records what the chain
+  plays as it records any section change. A device that does not know these commands (v7 and older) sends no reply:
+  use `INFO`'s version byte.
+
+## v9: FM6 patches (SHIFL 2.4)
+
+`INFO` ends with 9; the engine list gains **FM6** (engine 9, after GRAIN; SLICE, when built, is 10). The commands keep
+Felucca 1.0's numbers (68–71) so the two editors stay close; firmware `editor_fm6.c`.
+
+- **The patch** is the DX7 single-voice layout of 155 bytes (six operators of 21 bytes, the sixth first, then the voice:
+  pitch envelope, algorithm 0–31, feedback, oscillator key sync, the LFO, transpose, the 10-character name). On the wire it
+  is the **128-byte packed record** of a DX7 32-voice bank (every byte already 7-bit: no pack7). The editor's `FM6` object
+  (`unpack`, `pack`, `sanitize`) is the reference; `web/test_web.mjs` checks it against the firmware's factory patches
+  (`build/gen/felucca_fm6.h`).
+- **Targets:** **0** a synth track's own patch (index 0–2; the drum track has none), **1** a bank slot (0–26, in flash),
+  **2** a factory patch (0–7, read only).
+- **rc:** 0 ok, 1 bad arguments or index, 2 an empty bank slot (GET) or a flash error (PUT / ERASE), 3 stop the song first
+  (bank writes only: a flash erase silences the audio for ~50 ms).
+- A **PUT to a track** plays at once and is that track's patch until the track loads another (a project, a preset, a user
+  preset, PTCH turned). A project keeps PTCH (P_E7: F1–F8 = 0–7, B1–B27 = 8–34), not the patch: to keep an edited patch,
+  PUT it to a bank slot and set PTCH to it. User presets work the same way.
+- **The bank:** 27 packed records, one flash object (A/B sectors at 0xE5000 / 0xE6000, as every SHIFL object); in the
+  backup it is object **8** (27 × 128 bytes; 0 = empty), restored before the projects. A backup from 2.3 has no object 8:
+  the bank is left as it is.
+- **SysEx files** are the editor's business, not the device's: a single voice (`F0 43 0n 00 01 1B`, 155 bytes, checksum,
+  `F7`: 163 bytes) or a bank (`F0 43 0n 09 20 00`, 32 × 128, checksum, `F7`: 4104 bytes). Import unpacks, sanitizes every
+  value into its range and PUTs the record; export packs. A wrong checksum is read but reported.
+- No pushes: after a PTCH change on the device (a `CHANGED` of P_E7) the editor re-reads the track's patch.
+- A device that does not know these commands (v8 and older) sends no reply: use `INFO`'s version byte (the editor hides
+  its FM6 panel).
 
 ## Notes for the editor
 
@@ -277,4 +388,6 @@ written.
   ("Felucca", 44.1 kHz stereo; bcdDevice 3.11): the MIDI port and this protocol are unchanged, and both
   work while the computer records.
 - **Safety.** Only `PROJECT` save, the sample-slot commands and `UP_PUT` / `UP_STORE` / `UP_ERASE` write flash, and only in
-  Felucca's own storage; never the app or the update area.
+  Felucca's own storage; never the app or the update area. Since SHIFL 2.4 every one of them, and
+  `BK_PUT` of a preset bank, answers rc 3 while the song plays (as the panel refuses to save then): a
+  flash erase silences the audio for about 50 ms.
