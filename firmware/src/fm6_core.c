@@ -48,8 +48,8 @@ enum {
 /* 2^(x / 2^24), Q24 (msfa Exp2::lookup): the Q30 mantissa from FM6_EXP2, shifted by the integer part */
 static inline uint32_t fm6_mant(int32_t x)
 {
-    uint32_t f = (uint32_t)x & 0xFFFFFFu, k = f >> 14, a = FM6_EXP2[k];
-    return (1u << 30) + a + (uint32_t)(((uint64_t)(FM6_EXP2[k + 1u] - a) * (f & 0x3FFFu)) >> 14);
+    uint32_t f = (uint32_t)x & 0xFFFFFFu, k = f >> 17, a = FM6_EXP2[k];
+    return (1u << 30) + a + (uint32_t)(((uint64_t)(FM6_EXP2[k + 1u] - a) * (f & 0x1FFFFu)) >> 17);
 }
 static inline int32_t fm6_exp2(int32_t x)
 {
@@ -234,7 +234,7 @@ typedef struct {
 static void fm6_lfo_reset(fm6_lfo_t *l, const uint8_t *p)   /* the patch's LFO (msfa Lfo::reset); phase kept */
 {
     int32_t a = 99 - (p[FP_LFD] % 100u);
-    l->delta = FM6_LFO_DELTA[p[FP_LFS] % 100u];
+    l->delta = (uint32_t)FM6_LFO_DELTA[p[FP_LFS] % 100u] << 16;
     if (a == 99) {
         l->dinc = l->dinc2 = ~0u;
     } else {
@@ -457,8 +457,8 @@ static int32_t fm6_osc_base(const uint8_t *op, int32_t note, int32_t extra)
 {
     int32_t det = op[FP_DET];
     if (!op[FP_MODE]) {
-        int32_t lf = (int32_t)FM6_DETUNE[note] * (det - 7) + FM6_COARSE[op[FP_FC] & 31u] + extra;
-        return op[FP_FF] ? lf + FM6_FINE[op[FP_FF] % 100u] : lf;
+        int32_t lf = (((int32_t)FM6_DETUNE[note] * (det - 7)) << 6) + FM6_COARSE[op[FP_FC] & 31u] + extra;
+        return op[FP_FF] ? lf + ((int32_t)FM6_FINE[op[FP_FF] % 100u] << 10) : lf;
     }
     return ((4458616 * ((op[FP_FC] & 3) * 100 + op[FP_FF] % 100u)) >> 3) + (det > 7 ? 13457 * (det - 7) : 0);
 }
@@ -527,9 +527,11 @@ static int fm6_note_compute(fm6_note_t *n, const uint8_t *p, int32_t *out, int32
         n->op[k].freq = fm6_freq((n->fixed >> k) & 1u ? n->base[k] : logfreq + n->base[k] + pitch_mod + dt[k]);
         if (ams) {                                 /* msfa: pt = exp(sensamp / 262144 * 0.07 + 12.2) */
             uint32_t sensamp = (uint32_t)(((uint64_t)amod * ams) >> 24);
-            int32_t lg = FM6_AMS_C0 + (int32_t)(((uint64_t)sensamp * FM6_AMS_K) >> 10);
-            uint32_t pt = fm6_mant(lg) << ((lg >> 24) - 16);   /* (2^17.6 .. 2^24.1: shift 1..8) */
-            level -= (int32_t)(((uint64_t)(uint32_t)level * ((uint64_t)pt << 4)) >> 28);
+            if (sensamp) {                         /* guard: amod=0 → sensamp=0, skip to avoid noise floor */
+                int32_t lg = FM6_AMS_C0 + (int32_t)(((uint64_t)sensamp * FM6_AMS_K) >> 10);
+                uint32_t pt = fm6_mant(lg) << ((lg >> 24) - 16);   /* (2^17.6 .. 2^24.1: shift 1..8) */
+                level -= (int32_t)(((uint64_t)(uint32_t)level * ((uint64_t)pt << 4)) >> 28);
+            }
         }
         if (!((car >> k) & 1u))
             level += modlvl;

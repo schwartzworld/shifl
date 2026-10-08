@@ -22,8 +22,9 @@ enum { ED_INFO = 1, ED_GET, ED_SET, ED_DUMP, ED_DESC, ED_STEP_GET, ED_STEP_SET, 
        ED_DRUM_STEP,                                                            /* v5: the 16 drum lanes */
        ED_BK_LIST, ED_BK_GET, ED_BK_PUT,                                        /* v6: backup / restore */
        ED_LOCK_GET, ED_LOCK_SET, ED_MICRO_GET, ED_MICRO_SET,                    /* v7: parameter locks, nudges */
-       ED_FILL_GET, ED_FILL_SET };                                              /* v8: fill conditions */
-#define ED_PROTO 8u                                   /* the protocol version INFO ends with */
+       ED_FILL_GET, ED_FILL_SET,                                               /* v8: fill conditions */
+       ED_FM6_GET, ED_FM6_PUT, ED_FM6_LIST, ED_FM6_ERASE };                   /* v9: FM6 patch bank */
+#define ED_PROTO 9u                                   /* the protocol version INFO ends with */
 
 static uint8_t ed_out[600];
 static uint32_t ed_n;
@@ -386,6 +387,8 @@ static const param_desc_t *ed_desc(uint32_t scope, uint32_t id, int16_t **vp)
  * LIST takes a snapshot of the working project and the settings; GET reads 1..256 bytes of an object.
  * PUT stages one object in RAM (begin: id, length, CRC-32; data; commit), checks it as a load would,
  * then writes it through the usual A/B commit: a cut-off restore never leaves half an object. */
+static int ed_flash_busy(void) { return song.playing || transport_req != 0; }
+
 #if FELUCCA_FLASH
 #define ED_BK_RAW ((uint8_t *)&proj_tmp)                  /* the staging RAM (main loop, as the project loads) */
 _Static_assert(sizeof proj_tmp >= sizeof(project_t) && sizeof proj_tmp >= sizeof(up_bank_t) &&
@@ -877,7 +880,8 @@ static void ed_handle(const uint8_t *f, uint32_t n)   /* f: the bytes between F0
                 ed_w.v[P_COUNT + G_DRLVL] = *lv;
             else
                 ed_known(a[0], P_LEVEL);
-            ed_known(a[0], P_MUTE);
+            if (a[0] != TRK_DRUM)
+                ed_known(a[0], P_MUTE);
             ui.force = 1;
         }
         ed_b(a[0]);

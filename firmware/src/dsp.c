@@ -3,6 +3,7 @@
 /* Shared DSP building blocks for the Felucca engines (all fixed point).
  * Voice output convention: add sample * amp to out[], where a full-scale
  * oscillator at amp = 1.0 (Q15 32767) contributes VOICE_FS. */
+#define NELEM(a) ((uint32_t)(sizeof(a) / sizeof(a[0])))
 #define VOICE_FS 24000           /* per-voice level: one voice peaks near -6 dBFS before the master */
 
 static inline int32_t mulq15(int32_t a, int32_t b) { return (a * b) >> 15; }

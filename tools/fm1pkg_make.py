@@ -21,7 +21,7 @@ import os
 import struct
 from pathlib import Path
 
-APP_SLOT = 0x8DFBC
+APP_SLOT = 0x8EA92
 FLASH_SIZE = 0x93000
 KEY = 0x980F
 # flash header: JieLi SDK defaults (burner_size 544, VID "0.01", flash_size 0xFF000,

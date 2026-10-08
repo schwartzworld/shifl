@@ -493,7 +493,11 @@ static void rec_release(track_t *t, uint32_t note)
             t->rh_note[k++] = t->rh_note[i];
     if (k == t->rh_n || (t->rh_n = (uint8_t)k))
         return;                                     /* not one of them, or others still held */
-    if (!t->rh_ties || trk_grid(t, &into, &slen) != t->rh_last_abs)
+    if (!t->rh_ties) {
+        t->rh_n = 0;
+        return;
+    }
+    if (trk_grid(t, &into, &slen) != t->rh_last_abs)
         return;
     half = slen / 2u;
     lat = REC_LAT * (uint32_t)song.g[G_BPM];
@@ -812,6 +816,8 @@ static uint32_t arp_next(track_t *t)
         for (i = 0; i < cnt && len < 64u; i++)
             list[len++] = (uint32_t)clamp((int32_t)list[i] + 12 * (int32_t)o, 0, 127);
     t->arp_idx++;
+    if (!len)
+        return 60u;
     switch (t->p[P_AMODE]) {
     case 2:
         j = len - 1u - t->arp_idx % len;

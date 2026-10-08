@@ -59,6 +59,36 @@ def main(path):
     L += arr("DECAY_K", "uint16_t", [min(65535, int(65536 * math.exp(-6.9 / (m / 1000 * FS)))) for m in dms])
     # soft clip curve for |x| in 0..2 (Q12 in, Q15 out): tanh
     L += arr("TANH_Q15", "int16_t", [int(32767 * math.tanh(i / 256 * 2)) for i in range(257)])
+    # FM6 tables (msfa / Dexed integer port) ------------------------------------------------
+    FM6_LG_N = 5   # log2(CTL) = log2(32)
+    # FM6_EXP2: Q30 excess of 2^(k/128) for k=0..128 (129 entries; k+1 used for interpolation, 7-bit indexing)
+    L += arr("FM6_EXP2", "uint32_t",
+             [int(round((2 ** (k / 128) - 1) * (1 << 30))) for k in range(129)], 8)
+    # FM6_FREQ_R: phase-increment constant (2^40 / FS); fm6_freq multiplies fm6_mant by this
+    FM6_FREQ_R = int(round(2 ** 40 / FS))
+    L += [f"#define FM6_FREQ_R {FM6_FREQ_R}u"]
+    # FM6_PENV_UNIT: pitch-envelope rate unit; rate * unit = per-block level increment (msfa inc = r << (6+LG_N))
+    FM6_PENV_UNIT = 1 << (FM6_LG_N + 6)
+    L += [f"#define FM6_PENV_UNIT {FM6_PENV_UNIT}"]
+    # FM6_LFO_DELTA: per-block phase increment for LFO speeds 0..99, >>16 (uint16_t); restore with <<16
+    # From msfa Lfo::init: freq_hz = (1/128) * 2^((speed+10)/10)
+    L += arr("FM6_LFO_DELTA", "uint16_t",
+             [int(round((1 / 128) * 2 ** ((s + 10) / 10.0) * CTL / FS * (1 << 32))) >> 16 for s in range(100)], 10)
+    # FM6_LFO_UNIT: per-block LFO delay phase unit (CTL * 2^32 / FS)
+    FM6_LFO_UNIT = int(round(CTL * (1 << 32) / FS))
+    L += [f"#define FM6_LFO_UNIT {FM6_LFO_UNIT}u"]
+    # FM6_AMS_C0, FM6_AMS_K: AMS exp constants; from msfa pt=exp(sensamp/2^24*0.07/2^-6+12.2)
+    # log2(pt) = (12.2 + sensamp*0.07*64/2^24) / ln2; sensamp is Q24 (0..2^24)
+    FM6_AMS_C0 = int(round(12.2 / math.log(2) * (1 << 24)))
+    FM6_AMS_K  = int(round(0.07 * 64 / math.log(2) * (1 << 24) * (1 << 10) / (1 << 24)))
+    L += [f"#define FM6_AMS_C0 {FM6_AMS_C0}", f"#define FM6_AMS_K {FM6_AMS_K}u"]
+    # FM6_DETUNE: per-note Q24/64 log2-freq increment for 1 Hz detune (uint16_t); restore with <<6
+    def note_hz(n): return 440.0 * 2 ** ((n - 69) / 12.0)
+    L += arr("FM6_DETUNE", "uint16_t",
+             [int(round(1.0 / (note_hz(n) * math.log(2)) * (1 << 24) / 64)) for n in range(128)], 8)
+    # FM6_FINE: log2 ratio shift for fine frequency (Q14 int16_t); restore with <<10
+    L += arr("FM6_FINE", "int16_t",
+             [0] + [int(round(math.log2(1 + k / 100.0) * (1 << 14))) for k in range(1, 100)], 10)
     Path(path).write_text("\n".join(L) + "\n")
     print(f"tables: {path}")
 

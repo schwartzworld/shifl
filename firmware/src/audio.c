@@ -72,7 +72,7 @@ void fm1_alnk0_irq(void)                       /* via isr_alnk0 (hal/fm1_isr.S) 
              * figures the render alone (after Felucca 1.0) */
             uint32_t all = fm1_ticks() - t0;
             us = (all - t5_nested_ticks) / FM1_TICKS_PER_US;
-            shed_over = (uint8_t)(shed_over << 1 | (all / FM1_TICKS_PER_US * 100u > (HALF_FRAMES * 1000000u / FS) * 85u));
+            shed_over = (uint8_t)(shed_over << 1 | ((all * 100u) / FM1_TICKS_PER_US > (HALF_FRAMES * 1000000u / FS) * 85u));
         }
         if (us > audio_max_us)
             audio_max_us = us;

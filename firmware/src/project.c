@@ -296,7 +296,9 @@ static union {
     project_v3_t v3;
     project_v2_t v2;
     project_v1_t v1;
+    uint8_t fm6[3472];                             /* fm6_bank_t staging (fm6_bank.c): 16 + 27*128 */
 } proj_tmp;
+#include "fm6_bank.c"                              /* FM6 patch bank (uses proj_tmp as staging buffer) */
 static void proj_fetch(uint32_t slot)
 {
     project_t *q = &proj_slot[slot & 7u];
@@ -332,6 +334,8 @@ static void project_apply(const project_t *p)
     proj_apply(p, 1);
     song.sel = (uint8_t)(p->sel < NTRK ? p->sel : 0u);
     fm1_irq_on();
+    for (k = 0; k < NPART; k++)
+        fm6_track_loaded(&trk[k]);                      /* FM6 tracks: reload patch from PTCH */
     for (k = 0; k < NPART; k++)                         /* a format 1 project: the default sounds of tracks 2, 3 */
         if (p->t[k].preset == 0xFFu) {
             apply_preset_to(&trk[k], TRK_DEF[k][1]);
@@ -413,6 +417,8 @@ static void autosave_resume(void)              /* power-on: the project as it wa
     song.sel = (uint8_t)(q->sel < NTRK ? q->sel : 0u);
     for (n = 0; n < NPART; n++)
         trk[n].engine = trk[n].eng_req;        /* (nothing sounds yet: no fade) */
+    for (n = 0; n < NPART; n++)
+        fm6_track_loaded(&trk[n]);              /* FM6 tracks: reload patch from PTCH */
 #endif
 }
 
@@ -461,6 +467,7 @@ static void persist_boot(void)                    /* before settings_init / pane
         for (k = 0; k < SMP_USER_SLOTS; k++)
             smp_user_scan(k);
     }
+    fm6_bank_boot();                               /* FM6 patch bank: scan flash, set fm6_bank_read */
     {
         int n = st_load(OBJ_SETTINGS, &p, sizeof p);
         if (n == (int)PERSIST_SIZE_V22 && p.magic == PERSIST_MAGIC)

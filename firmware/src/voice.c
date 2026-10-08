@@ -640,10 +640,25 @@ static uint32_t track_render(track_t *t, int32_t *out, uint32_t n)
         if (!v->active)
             continue;
         {
-            env = env_tick(t, v);
-            if (e->amp)                                 /* the engine's own amplitude curve */
-                env = e->amp(t, v, env);
-            m.envq15 = env;
+            if (e->ownenv) {
+                if (v->stage == 4u) {                   /* budget takeover: ramp to 0, then drop */
+                    env = 0;
+                    if (v->kill > 1u)
+                        v->kill--;
+                    else {
+                        v->env = 0; v->env_out = 0;
+                        v->stage = 0; v->active = 0;
+                    }
+                } else {
+                    env = 32767;                        /* FM6 owns its own amplitude envelope */
+                }
+                m.envq15 = env;
+            } else {
+                env = env_tick(t, v);
+                if (e->amp)                             /* the engine's own amplitude curve */
+                    env = e->amp(t, v, env);
+                m.envq15 = env;
+            }
             m.amp1 = mulq15(env, v->vel * 258);
             if (p[P_LD_AMP])
                 m.amp1 = mulq15(m.amp1, 32767 - mulq15((lfo + 32768) >> 1, p[P_LD_AMP] * 258));
@@ -672,8 +687,9 @@ static uint32_t track_render(track_t *t, int32_t *out, uint32_t n)
             m.pitch16 = clamp(pitch, 0, 2047);
             m.inc = PITCH_INC[m.pitch16];
             q = (q & 255) * 3792 >> 16;                 /* the fraction, as fine (1/16 st = 14.8) */
-            if (v->fine + tune_fine + q)                /* unison detune, fine tune and the fraction */
-                m.inc += (uint32_t)((int32_t)(m.inc >> 12) * (v->fine + tune_fine + q));
+            m.fine = v->fine + tune_fine + q;
+            if (m.fine)                                 /* unison detune, fine tune and the fraction */
+                m.inc += (uint32_t)((int32_t)(m.inc >> 12) * m.fine);
         }
         m.cutoff = ((lfo * p[P_LD_FLT]) >> 7) + ((m.envq15 * p[P_ED_FLT]) >> 7);
         if (v->vel > 110)                               /* accent opens the filter with the env */
@@ -681,6 +697,10 @@ static uint32_t track_render(track_t *t, int32_t *out, uint32_t n)
         m.shape = (64 << 8) + ((lfo * p[P_LD_SHP]) >> 7) + ((m.envq15 * p[P_ED_SHP]) >> 7);
         e->render(t, v, out, n, &m);
         nr++;
+        if (e->ownenv && v->active && e->done && e->done(t, v)) {
+            v->active = 0;
+            v->stage = 0;
+        }
     }
     if (fade) {
         for (i = 0; i < 8u; i++)
