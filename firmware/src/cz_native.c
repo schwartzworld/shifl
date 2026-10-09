@@ -120,6 +120,13 @@ static __attribute__((noinline)) void cz_native_render(track_t *t, voice_t *v, i
     cz_voice_t *c = cz_voice(t, v); cz_env_def_t defs[2][3]; cz_hw_pd_t pd[2];
     uint32_t inc[2], ph[2] = {v->ph[0],v->ph[1]}, tg[2] = {(uint32_t)v->s[0],(uint32_t)v->s[1]};
     int32_t amp[2][2], dc[2] = {v->s[2],v->s[3]}, step[2];
+    int32_t ic1 = v->s[5], ic2 = v->s[6];
+    tsvf_t flt;
+    tsvf_coef(&flt, clamp((t->p[P_E2] << 8) + m->cutoff, 0, 127 << 8), t->p[P_E3]);
+    int32_t phsr_depth = t->p[P_E7] * 258;
+    uint32_t pph = c->phaser_ph;
+    int32_t ap_c = (pd_cos(pph >> 21) * 19661) >> 15;
+    int32_t s0x = c->phaser_s[0], s0y = c->phaser_s[1], s1x = c->phaser_s[2], s1y = c->phaser_s[3];
     uint32_t ls = b[0]&3u, first = ls == 1u ? 1u : 0u, last = ls >= 2u ? 1u : first;
     int32_t vib = cz_native_vibrato(c,b), oct = (b[0]>>2) == 1u ? 192 : (b[0]>>2) == 2u ? -192 : 0;
     cz_native_defs(t,v,defs);
@@ -162,7 +169,17 @@ static __attribute__((noinline)) void cz_native_render(track_t *t, voice_t *v, i
             line[l]=mulq15(raw,amp[l][0]+((step[l]*(int32_t)i)>>8));
         }
         int32_t sample=first==last ? line[first] : (modulation==4u) ? mulq15(line[0],line[1])*2 : (line[0]+line[1])>>1;
+        if (t->p[P_E4]) { int32_t carrier=pd_cos((ph[first]>>20)&2047u),d=t->p[P_E4]*258; sample=mulq15(sample,32767-d)+mulq15(mulq15(sample,carrier),d); }
+        if (t->p[P_E5]) { int32_t s=mulq15(sample,32768+t->p[P_E5]*520); if(s>16384)s=32768-s;else if(s<-16384)s=-32768-s; if(s>16384)s=32768-s;else if(s<-16384)s=-32768-s; if(s>16384)s=32768-s;else if(s<-16384)s=-32768-s; sample=s; }
+        if (t->p[P_E6]) { int32_t bits=1+(t->p[P_E6]*14/127); sample=(sample>>bits)<<bits; }
+        {
+            int32_t y = tsvf_lp(&flt, sample >> 1, &ic1, &ic2), a = y < 0 ? -y : y;
+            if (a > 16000) { a = 16000 + (softclip((a - 16000) * 2) >> 1); y = y < 0 ? -a : a; }
+            sample = y << 1;
+        }
+        if (phsr_depth) { int32_t y0=((ap_c*(sample-s0y))>>15)+s0x; s0x=sample; s0y=y0; int32_t y1=((ap_c*(y0-s1y))>>15)+s1x; s1x=y0; s1y=y1; sample=sample+((phsr_depth*(y1-sample))>>15); }
         out[i]+=voice_amp(sample,m,i)*4;
     }
-    v->ph[0]=ph[0];v->ph[1]=ph[1];v->s[0]=(int32_t)tg[0];v->s[1]=(int32_t)tg[1];v->s[2]=dc[0];v->s[3]=dc[1];
+    v->ph[0]=ph[0];v->ph[1]=ph[1];v->s[0]=(int32_t)tg[0];v->s[1]=(int32_t)tg[1];v->s[2]=dc[0];v->s[3]=dc[1];v->s[5]=ic1;v->s[6]=ic2;
+    c->phaser_ph=pph+859400u; c->phaser_s[0]=s0x;c->phaser_s[1]=s0y;c->phaser_s[2]=s1x;c->phaser_s[3]=s1y;
 }

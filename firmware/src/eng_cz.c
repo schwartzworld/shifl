@@ -8,7 +8,7 @@
 static void cz_factory_loaded(track_t *t)
 {
     uint32_t k = (uint32_t)t->p[P_E0] * 16u + (uint32_t)t->p[P_E1] - 1u;
-    if (t->eng_req != ENGI_CZ || t->p[P_E7] != CZ_NATIVE)
+    if (t->eng_req != ENGI_CZ)
         return;
     if (t->p[P_E1] > 0 && k < CZ_FACTORY_N)
         memcpy(cz_patch[(uint32_t)(t - trk) % NTRK].raw, CZ_FACTORY[k], CZ_BYTES);
@@ -29,7 +29,20 @@ static void cz_compare_take(uint32_t tr)
     cz_compare=cz_patch[tr%NTRK];cz_compare_tr=(uint8_t)(tr%NTRK+1u);
 }
 static void cz_track_accept(track_t *t){uint32_t tr=(uint32_t)(t-trk)%NTRK;cz_user_pick[tr]=(uint16_t)(t->p[P_E0]*17+t->p[P_E1]);cz_compare_drop(tr);}
-static void cz_bank_poll(void) {}   /* user bank browsing: stubbed until cz_bank.c is integrated */
+static void cz_note_on(track_t *t, voice_t *v)
+{
+    phase_note_on(t, v);
+    v->s[5] = v->s[6] = 0;
+}
+static void cz_block(track_t *t)
+{
+    uint32_t tr = (uint32_t)(t - trk) % NTRK;
+    uint16_t pick = (uint16_t)((uint32_t)t->p[P_E0] * 17u + (uint32_t)t->p[P_E1]);
+    if (pick != cz_user_pick[tr]) {
+        cz_factory_loaded(t);
+        cz_user_pick[tr] = pick;
+    }
+}
 static int cz_native_done(track_t *t, voice_t *v)
 {
     cz_voice_t *c = cz_voice(t, v);
@@ -40,23 +53,24 @@ static int cz_native_done(track_t *t, voice_t *v)
         c->eg[z][2].stage > (b[CZ_ENV_END[ls == 2u ? 0u : z][2]] & 7u);
 }
 #define CZ_FACTORY_PRESET(n, bank, ptch, pat) \
-    {n, {bank, ptch, 0, 0, 0, 0, 0, CZ_NATIVE}, {0, 70, 127, 60}, 0, 0, FX(0, 0, 0, 0), PAT(pat)},
+    {n, {bank, ptch, 0, 0, 0, 0, 0, 0}, {0, 70, 127, 60}, 0, 0, FX(0, 0, 0, 0), PAT(pat)},
 static const preset_t CZ_PRESETS[] = {
-    {"INIT TONE", {0, 0, 0, 0, 0, 0, 0, CZ_NATIVE}, {0, 70, 127, 60}, 0, 0, FX(0, 0, 0, 0), PAT(1)},
+    {"INIT TONE", {0, 0, 0, 0, 0, 0, 0, 0}, {0, 70, 127, 60}, 0, 0, FX(0, 0, 0, 0), PAT(1)},
     CZ_FACTORY_PRESETS(CZ_FACTORY_PRESET)   /* Casio's, dry as the CZ-1 (no effects) */
 };
 static const engine_t ENG_CZ = {
-    .name = "CZ-1", .page_title = {"CZ-1", "TONE"},
+    .name = "CZ-1", .page_title = {"CZ-1", "CZ-1"},
     .edit = {
-        {"-", F_INT, 0, 7, 0, 0, 0}, {"-", F_INT, 0, 16, 0, 0, 0},
-        {"-", F_INT, 0, 0, 0, 0, 0}, {"-", F_INT, 0, 0, 0, 0, 0},
-        {"-", F_INT, 0, 0, 0, 0, 0}, {"-", F_INT, 0, 0, 0, 0, 0},
-        {"-", F_INT, 0, 0, 0, 0, 0}, {"TONE", F_INT, CZ_NATIVE, CZ_NATIVE, CZ_NATIVE, 0, 0},
+        {"BANK", F_ENUM, 0, 7, 0, N_CZ_BANK, 0}, {"PTCH", F_INT, 0, 16, 0, 0, 0},
+        {"CUT", F_CUTOFF, 0, 127, 90, 0, 0}, {"RES", F_PCT, 0, 127, 0, 0, 0},
+        {"RING", F_PCT, 0, 127, 0, 0, 0}, {"FOLD", F_PCT, 0, 127, 0, 0, 0},
+        {"BITS", F_PCT, 0, 127, 0, 0, 0}, {"PHSR", F_PCT, 0, 127, 0, 0, 0},
     },
     .presets = CZ_PRESETS, .npresets = NELEM(CZ_PRESETS),
     .ownenv = 1, .done = cz_native_done, .keep = 0x0fu,
-    .note_on = phase_note_on, .render = cz_native_render,
-    .knob = {P_LEVEL, P_DLY, P_REV, P_GLIDE},
+    .note_on = cz_note_on, .render = cz_native_render, .block = cz_block,
+    .fil_page = 0,
+    .knob = {P_LEVEL, P_E2, P_E3, P_GLIDE},
 };
 
 /* USB interrupt only collects bytes; the main loop validates and publishes. */

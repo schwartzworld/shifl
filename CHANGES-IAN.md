@@ -6,6 +6,33 @@ All committed changes by Ian Schwartz, plus current uncommitted work-in-progress
 
 ## Committed Changes
 
+### CZ-1 sound design effects (`2026-10-09`)
+
+Four sound design effects added to CZ-1 EDIT 2 (P_E4–P_E7), signal chain runs before the existing resonant filter then a post-filter phaser:
+
+- **RING** (P_E4) — ring modulator. Multiplies the CZ output against a cosine carrier running at double the first oscillator's frequency. Dry/wet depth 0–127. At low depths adds shimmer and upper harmonics; at max gives full ring mod character.
+- **FOLD** (P_E5) — wavefolder. Amplifies the signal 1×–3× then folds it at ±16384 (up to three reflections), adding progressively more complex harmonics as depth increases.
+- **BITS** (P_E6) — bit crush. Removes 1–15 bits from the sample word. Low values give light quantisation noise; high values give extreme lo-fi digital grit.
+- **PHSR** (P_E7) — phaser. A 2-stage first-order allpass phaser with a fixed ~0.3 Hz LFO (sweeps ±0.6 of the allpass coefficient). State persists across notes for a continuous slow sweep. Depth 0–127 blends dry/wet.
+
+P_E7 was previously a hidden fixed `CZ_NATIVE` sentinel used to detect "is this still a factory preset?". That check is now removed from `cz_factory_loaded` (the engine is always CZ-native; the check was vestigial). All factory preset P_E7 values updated from `CZ_NATIVE` to 0. Phaser state (`phaser_ph`, `phaser_s[4]`) added to `cz_voice_t` in `eng_phase.c`.
+
+**Bumped to FM-1_938.**
+
+---
+
+### CZ-1 EDIT page fix (`2026-10-09`)
+
+**CZ-1 EDIT 1 now shows BANK and PTCH** — P_E0 and P_E1 had label `"-"` which the UI renders as blank columns, so EDIT 1 was entirely empty for the CZ-1 engine. P_E0 is now labelled `BANK` (F_ENUM, shows A–H) and P_E1 is `PTCH` (0 = INIT TONE, 1–16 = factory patch).
+
+**Live BANK/PTCH switching** — changing BANK or PTCH from the EDIT page now reloads the factory tone immediately via a new `cz_block` callback (replaces the empty `cz_bank_poll` stub). The tone data updates before each audio block's voices render, so there is no glitch.
+
+**EDIT 2 TONE param hidden** — P_E7 was labelled `TONE` but was fixed at `CZ_NATIVE` with no way to change it, appearing as an uneditable `2` on EDIT 2. Label changed to `"-"` so it is hidden. Page title changed from `"TONE"` to `"CZ-1"` for consistency.
+
+**Bumped to FM-1_937.**
+
+---
+
 ### Save layer key mapping fix + quick-patch save (`2026-10-09`)
 
 **Save layer key mapping corrected** — the SAVE layer tile display was placing "save A–F" at tiles 8–13 (with two empty tiles at 6–7), but the key input handler was triggering save at w=6 (mapping to section A without the empty gap). Fixed so keys 7–8 are truly empty before the save bank, and save A–F now maps correctly to keys 9–14. (`ui_layers.c`)
