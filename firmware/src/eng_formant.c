@@ -227,6 +227,6 @@ static const engine_t ENG_FORMANT = {
     .npresets = NELEM(FORMANT_PRESETS),
     .note_on = formant_note_on,
     .render = formant_render,
-    .knob = {P_E0, P_E4, P_E5, P_E2},
+    .knob = {P_LEVEL, P_E0, P_E1, P_E2},
     .poly = 4,
 };

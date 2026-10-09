@@ -394,12 +394,22 @@ static const struct { uint8_t kind, e; const char *name; } BANK[] = {
     {BK_STAB, 0, "BRASS"},
     {BK_STAB, 3, "BRASS 1"}, {BK_STAB, 3, "BRASS 2"}, {BK_STAB, 3, "BRASS 3"}, {BK_STAB, 3, "BRASS 4"},
     {BK_STAB, 3, "SAXOPHONE"},
+    {BK_STAB, 4, "SYN BRASS"},
     /* FX */
     {BK_FX, 0, "INIT VOICE"},
     {BK_FX, 3, "AFRO PERC"}, {BK_FX, 3, "METALLIC"},
     {BK_FX, 3, "SYN DRUMS 1"}, {BK_FX, 3, "SYN DRUMS 2"}, {BK_FX, 3, "CONGA"},
     {BK_FX, 3, "MOTORCYCLE"},
     {BK_FX, 3, "INIT TONE"},
+    /* ANALOG (engine 4) */
+    {BK_BASS, 4, "808 BOOM"}, {BK_BASS, 4, "808 DIRTY"}, {BK_BASS, 4, "SUB BASS"},
+    {BK_BASS, 4, "808 SLIDE"}, {BK_BASS, 4, "ACID 303"}, {BK_BASS, 4, "PLUGG BASS"},
+    {BK_BASS, 4, "REESE"}, {BK_BASS, 4, "WOBBLE"}, {BK_BASS, 4, "FUNK BASS"},
+    {BK_BASS, 4, "MONO BASS"}, {BK_BASS, 4, "SAW BASS"},
+    {BK_PAD, 4, "WARM PAD"}, {BK_PAD, 4, "DARK STR"}, {BK_PAD, 4, "ATMOS PAD"}, {BK_PAD, 4, "SINE PAD"},
+    {BK_LEAD, 4, "SUPERSAW"}, {BK_LEAD, 4, "G-FUNK LD"}, {BK_LEAD, 4, "FAT LEAD"},
+    {BK_LEAD, 4, "PWM LEAD"}, {BK_LEAD, 4, "PAN FLUTE"},
+    {BK_PLUCK, 4, "TRAP PLUCK"},
 };
 #define NBANK (sizeof BANK / sizeof BANK[0])
 static uint8_t bank_pi[NBANK];                       /* the preset index of each entry in its engine */

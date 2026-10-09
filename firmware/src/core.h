@@ -17,11 +17,12 @@ enum { V_POLY, V_MONO, V_LEGATO, V_UNISON };   /* P_VOICE */
 #ifndef FELUCCA_SLICE
 #define FELUCCA_SLICE 0          /* the SLICE engine (eng_slice.c): kept in the tree, not built by default */
 #endif
-#define NENGINES 4               /* DX7, LOFI, VOICE, CZ-1 (engines.c) */
+#define NENGINES 5               /* DX7, LOFI, VOICE, CZ-1, ANALOG (engines.c) */
 #define ENGI_DX7 0
 #define ENGI_LOFI 1
 #define ENGI_FORMANT 2
 /* ENGI_CZ 3 is defined in cz_patch.h */
+#define ENGI_ANALOG 4
 /* sloopDX 2.0 put three factory voices before INIT VOICE: a DX7 VOICE saved before (a project, a user preset)
  * from 16 on (INIT VOICE, the bank) moves up by three. The same for the preset index of INIT VOICE. And the
  * DX7's CUT (P_E6, unused before: saved as 0) loads open */

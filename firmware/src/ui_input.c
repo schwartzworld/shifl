@@ -272,30 +272,11 @@ static int32_t accel(uint32_t role, int32_t s, int32_t range)
  * editor): the first turn of KNOB 2 unmutes it */
 static void tracks_edit(uint32_t slot, int32_t steps)
 {
-    track_t *t = TSEL;
     int16_t *vp;
-    const param_desc_t *d;
-    switch (slot) {
-    case 0:
-        vp = &song.g[G_SWING];
-        d = &GP[G_SWING];
-        break;
-    case 1:
-        if (t->p[P_MUTE]) {
-            t->p[P_MUTE] = 0;
-            return;
-        }
-        vp = is_drum(t) ? &song.g[G_DRLVL] : &t->p[P_LEVEL];
-        d = is_drum(t) ? &GP[G_DRLVL] : &TP[P_LEVEL];
-        break;
-    case 2:
-        vp = &t->p[P_SLEN];
-        d = &TP[P_SLEN];
-        break;
-    default:
-        vp = &t->p[P_PAN];
-        d = &TP[P_PAN];
-        break;
+    const param_desc_t *d = home_param(slot, &vp);
+    if (slot == 0 && !is_drum(TSEL) && TSEL->p[P_MUTE]) {
+        TSEL->p[P_MUTE] = 0;
+        return;
     }
     *vp = (int16_t)clamp(*vp + accel(EN_K1 + slot, steps, d->max - d->min), d->min, d->max);
 }
@@ -584,7 +565,6 @@ static void layer_unlock(void)
 {
     if (ly_lock != LY_PLAY) {
         ly_lock = LY_PLAY;
-        punch.latch = -1;
         ui.force = 1;
     }
 }
@@ -700,15 +680,25 @@ static int layers_input(uint32_t note_edges, uint32_t *pressed, uint32_t home)
                 ui_message(undo_swap(1) ? "REDO" : "NOTHING TO REDO");
         }
     }
-    if (held == LY_FX) {                                  /* FX + OCT- / OCT+: toggle effects page */
+    if (held == LY_FX) {                                  /* FX + OCT-: toggle effects page; FX + OCT+: toggle latch */
         uint32_t ob = 1u << panel.btn[B_OCTDN], pb = 1u << panel.btn[B_OCTUP];
         static uint32_t prev_fx_oct;
         uint32_t b = fm1_in.buttons & (ob | pb), press = b & ~prev_fx_oct;
         prev_fx_oct = b;
-        if (press) {
+        if (press & ob) {
             used[held] = 1;
             punch.page ^= 1u;
             ui_message(punch.page ? "FX PAGE 2" : "FX PAGE 1");
+        }
+        if (press & pb) {
+            used[held] = 1;
+            if (punch.latch >= 0) {
+                punch.latch = -1;
+                ui_message("FX LATCH OFF");
+            } else if (punch.req >= 0) {
+                punch.latch = punch.req;
+                ui_message("FX LATCHED");
+            }
         }
     }
     if (held == LY_STEP) {                                /* SEQ + OCT- / OCT+: the page; a step held: OCT- its nudge, locks and

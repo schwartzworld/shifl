@@ -123,7 +123,7 @@ The layers are **FX** (punch-in effects), **EDIT** (erase), **ARP** (note repeat
 
 **Landmarks:** while a layer is held (and always on the drum track) keys 1, 5, 9 and 13 glow dimly — the first key of each row of tiles — so you can find a tile without looking. Keys at full light are what is on.
 
-**Lock a layer:** hold its button and **tap HOME**. The layer stays open with the button let go (*LOCK* on the screen, the button blinks): both hands free, one on the keys, one on the knobs. Any other button lets it go (HOME, the layer's own button, ENV…) and does only that; **PLAY, REC and OCT− / OCT+ keep working** inside a locked layer.
+**Lock a layer:** hold its button and **tap HOME**. The layer stays open with the button let go (*LOCK* on the screen, the button blinks): both hands free, one on the keys, one on the knobs. Any other button lets it go (HOME, the layer's own button, ENV…) and does only that; **PLAY, REC and OCT− / OCT+ keep working** inside a locked layer. On the FX layer specifically, **OCT+** also toggles the lock, so you can lock and unlock with one hand while keeping the other on the keys.
 
 **Inside any layer:** PLAY still starts and stops, **SELECT** is always the tempo, and the ALGORITHM / PRESETS knobs wait (no jump when you let go).
 
@@ -328,7 +328,9 @@ All seven layers at a glance:
 | **FX + KNOB 2** | master **DUST** (old sampler and vinyl) |
 | **FX + KNOB 3** | master **DUCK** (sidechain pump from the kick) |
 | **FX + KNOB 4** | **TRK FILT**: the same one-knob filter on the **selected track only** (any track, the drums too) |
-| **FX + HOME** | lock the FX layer open (both hands free) |
+| **FX + OCT−** | toggle between FX page 1 (keys 1–16) and **page 2** (keys 17–32: more effects) |
+| **FX + OCT+** | toggle the FX lock: the layer stays open when you let go (*FX LOCKED* / *FX UNLOCKED*) |
+| **FX + HOME** | same as FX + OCT+: lock the FX layer open (both hands free) |
 
 Keys pressed while FX is held never play or record notes.
 
@@ -1007,7 +1009,7 @@ On the installer page, open **Return to the official firmware (V15)**: save a ba
 
 | Hold + | Keys | KNOB 1 | KNOB 2 | KNOB 3 | KNOB 4 | Other |
 | --- | --- | --- | --- | --- | --- | --- |
-| **FX** | punch-in effects 1–16 | master FILTER | DUST | DUCK | track FILTER | + HOME: lock |
+| **FX** | punch-in effects 1–16 | master FILTER | DUST | DUCK | track FILTER | OCT−: page 2 · OCT+: lock · HOME: lock |
 | **EDIT** | erase sound / note | SHIFT | LENGTH ×2 / ½ | TRANSPOSE | — | OCT− undo · OCT+ redo |
 | **ARP** | note repeat | RATE | — | — | — | OCT− / OCT+: ghost / hard (drums) |
 | **SEQ** | steps · black keys 1–4: page | SOUND / NOTE | DIV | SWING | LENGTH | OCT− / OCT+: page |

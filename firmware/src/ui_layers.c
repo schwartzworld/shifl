@@ -337,12 +337,12 @@ static void layer_key(uint32_t layer, uint32_t k, uint32_t down)
         ui_say("KEY ", N_NOTE[root]);
         return;
     }
-    case LY_SONG: {                                     /* sections A..H: 0-7 play, 8-15 store */
+    case LY_SONG: {                                     /* sections A..F: 0-5 play, 6=patch, 7=empty, 8-13 store */
         char b[2] = {0, 0};
         if (w < 0)
             return;
-        b[0] = (char)('A' + (w < (int)ARR_SCENES ? w : w - (int)ARR_SCENES));
         if (w < (int)ARR_SCENES) {
+            b[0] = (char)('A' + w);
             if (arrangement_clock.running) {
                 ui_message("SONG PLAYS");
             } else if (!((arrangement_ready() >> w) & 1u)) {
@@ -363,16 +363,21 @@ static void layer_key(uint32_t layer, uint32_t k, uint32_t down)
                 section_load((uint32_t)w);
                 ui_say("LOADED ", b);
             }
-        } else {
-            uint32_t s = (uint32_t)w - ARR_SCENES;
-            if (((arrangement_ready() >> s) & 1u) && !(sec_armed == s + 1u && fm1_ms - sec_armed_ms < 3000u)) {
-                sec_armed = (uint8_t)(s + 1u);
-                sec_armed_ms = fm1_ms;
-                ui_say("AGAIN: ", b);
-            } else {
-                sec_armed = 0;
-                section_store(s);
-                ui_say("SAVED ", b);
+        } else if (w == (int)ARR_SCENES) {
+            up_ui(2u, ui.uslot);                        /* quick save: overwrite current user preset slot */
+        } else if (w > (int)ARR_SCENES + 1) {
+            uint32_t s = (uint32_t)w - ((uint32_t)ARR_SCENES + 2u);
+            if (s < (uint32_t)ARR_SCENES) {
+                b[0] = (char)('A' + s);
+                if (((arrangement_ready() >> s) & 1u) && !(sec_armed == s + 1u && fm1_ms - sec_armed_ms < 3000u)) {
+                    sec_armed = (uint8_t)(s + 1u);
+                    sec_armed_ms = fm1_ms;
+                    ui_say("AGAIN: ", b);
+                } else {
+                    sec_armed = 0;
+                    section_store(s);
+                    ui_say("SAVED ", b);
+                }
             }
         }
         return;
@@ -802,7 +807,7 @@ static void layer_screen_draw(void)
         }
         break;
     }
-    case LY_SONG: {                                     /* A..H (playing lit): 0-7 play, 8-15 store */
+    case LY_SONG: {                                     /* A..F: 0-5 play, 6=patch, 7=empty, 8-13 store */
         uint32_t ready = arrangement_ready();
         static const char *const SL[ARR_SCENES] = {"A", "B", "C", "D", "E", "F"};
         col = C_WHITE;
@@ -832,6 +837,9 @@ static void layer_screen_draw(void)
             tl[8 + i].fg = sec_armed == i + 1u ? C_BLACK : TE_G4;
             tl[8 + i].top = TE_DIM[i & 3u];
         }
+        str_cpy(tl[6].lab, "patch", 8);               /* quick save current preset to user slot */
+        tl[6].bg = TE_G2;
+        tl[6].fg = TE_G4;
         break;
     }
     default:

@@ -13,7 +13,7 @@ Free and open source (GPL-3.0), based on <a href="https://github.com/hugelton/Fe
 
 ---
 
-SHIFL turns the FM-1 into a six-track groovebox you play live: **five synths and a drum machine** with 16 sounds on the white keys, 94 sounds across four engines — DX7 FM, Phase Distortion (CZ-1), formant voice and lo-fi chip — three drum kits, your own samples, a song mode you play with your hands — and **USB audio**, a **MIDI keyboard on the jack**, **MIDI CC control**, **MIDI clock**, **lights for playing in the dark** and a **full backup**. House, techno, hip-hop, trap, drum & bass, amapiano, synthwave, lo-fi, ambient, chiptune — it does not pick a style for you. No factory patterns, nothing to load: everything you hear, you play.
+SHIFL turns the FM-1 into a six-track groovebox you play live: **five synths and a drum machine** with 16 sounds on the white keys, 116 sounds across five engines — DX7 FM, virtual analogue, Phase Distortion (CZ-1), formant voice and lo-fi chip — three drum kits, your own samples, a song mode you play with your hands — and **USB audio**, a **MIDI keyboard on the jack**, **MIDI CC control**, **MIDI clock**, **lights for playing in the dark** and a **full backup**. House, techno, hip-hop, trap, drum & bass, amapiano, synthwave, lo-fi, ambient, chiptune — it does not pick a style for you. No factory patterns, nothing to load: everything you hear, you play.
 
 > **Status:** 2.4. Still a beta: install at your own risk, and please [report](../../issues) what you find. Your projects, presets, samples and settings are kept when you update, and you can go back at any time (see [Going back](#going-back)).
 
@@ -45,7 +45,7 @@ SHIFL turns the FM-1 into a six-track groovebox you play live: **five synths and
 
 | | |
 | --- | --- |
-| **New sound engine** | Replaced the internal audio engines with fmsloop's sound engine. All presets are rebuilt around it: 94 sounds across four engines (DX7 FM, Phase Distortion, formant voice, lo-fi chip) and three drum kits with 17 voices each. |
+| **New sound engine** | Replaced the internal audio engines with fmsloop's sound engine. All presets are rebuilt around it: 116 sounds across five engines (DX7 FM, virtual analogue, Phase Distortion, formant voice, lo-fi chip) and three drum kits with 17 voices each. |
 | **CZ-1 presets** | 65 Casio Phase Distortion presets: one init tone and the 64 Casio factory tones across banks A–D (BRASS, STRINGS, PIANO, ORGAN, SYNTH.LEAD and more), faithful to the original CZ-1. |
 | **32 punch-in effects** | The PUNCH FX page now has two pages of 16 effects. Page 1 is on the physical white keys as before. Page 2 (LPF sweeps, retrigger, shuffle, octave down, scratch, vibrato, glitch, feedback, distort, blinds) is accessible via MIDI CC. |
 | **MIDI CC control** | A hardware controller can now drive the FM-1 in real time: per-track filter cutoff and resonance (CC 74 / 71 on channels 1–3), global effects (swing, delay, reverb, chorus on channel 16), master DJ filter and DUST, and all 32 PUNCH effects as momentary pads (CC 102–133 on channel 16). See [MIDI CC reference](#midi-cc-reference). |
@@ -104,8 +104,8 @@ Keys 1, 5, 9 and 13 glow dimly while a layer is held: the first key of each row 
 
 ### Synths and sounds
 
-- **Four engines:** DX7 FM synthesis, Casio CZ-1 Phase Distortion, formant voice, lo-fi chip.
-- **94 sounds, browsed by kind** — all level-matched. **32 slots** for your own presets.
+- **Five engines:** DX7 FM synthesis, virtual analogue (two oscillators, filter, drive), Casio CZ-1 Phase Distortion, formant voice, lo-fi chip.
+- **116 sounds, browsed by kind** — all level-matched. **32 slots** for your own presets.
 - Envelopes (with a pitch punch for 808-style kicks), LFO, arpeggiator, glide and voice modes (POLY, MONO, LEGATO, UNISON), per-track drive and slicer, sends to a **stereo chorus**, a **tempo delay** and a **stereo reverb**.
 - **Key and chords (SCL):** the key of the song for all synths, 16 scales, one-key chords (triad, 7th, 9th, sus4, power), keys snapped to the scale or the scale on the white keys.
 
@@ -170,6 +170,10 @@ Every button can glow so its label is readable on a black FM-1; the C keys or ev
 ---
 
 ## Presets
+
+### ANALOG — virtual analogue (22 presets)
+
+808 BOOM, 808 DIRTY, SUB BASS, 808 SLIDE, ACID 303, PLUGG BASS, REESE, WOBBLE, FUNK BASS, G-FUNK LD, TRAP PLUCK, SYN BRASS, SUPERSAW, WARM PAD, DARK STR, ATMOS PAD, PAN FLUTE, FAT LEAD, MONO BASS, PWM LEAD, SAW BASS, SINE PAD
 
 ### DX7 — FM synthesis (20 presets)
 
@@ -434,7 +438,7 @@ Something else? [Open an issue](../../issues): what you did, what you expected, 
 | | |
 | --- | --- |
 | Tracks | 5 synth parts (voices shared) + drums (17 sounds, polyphonic) |
-| Sounds | 94 presets on 4 engines — DX7 FM (20), CZ-1 Phase Distortion (65), formant voice (4), lo-fi chip (5) — all level-matched; 3 user sample slots; 32 user presets |
+| Sounds | 116 presets on 5 engines — ANALOG (22), DX7 FM (20), CZ-1 Phase Distortion (65), formant voice (4), lo-fi chip (5) — all level-matched; 3 user sample slots; 32 user presets |
 | Drum kits | 3 FM-synthesised kits (808 FM, ELECTRO, METAL), 17 sounds each, level-matched |
 | Sequencer | 64 steps per track, own length and division each; dotted step sizes (1/32 … 2m•); chords with level, ratchet and probability per note; drums with level, ratchet and probability per sound; ties, slide; MPC swing 50–75 %; one sample-accurate clock (no drift) |
 | Step probability | 100 % / 75 % / 50 % / 25 % per step (synth and drums) |

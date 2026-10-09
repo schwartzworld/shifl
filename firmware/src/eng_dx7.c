@@ -496,7 +496,7 @@ static const engine_t ENG_DX7 = {
     .note_on = dx7_note_on,
     .render = dx7_render,
     .color = 0x05DF,
-    .knob = {P_E1, P_E2, P_E4, P_E5},
+    .knob = {P_LEVEL, P_E5, P_E6, P_REV},
     .poly = 0,
     .amp = dx7_amp,
 };

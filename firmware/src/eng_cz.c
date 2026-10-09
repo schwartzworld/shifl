@@ -56,7 +56,7 @@ static const engine_t ENG_CZ = {
     .presets = CZ_PRESETS, .npresets = NELEM(CZ_PRESETS),
     .ownenv = 1, .done = cz_native_done, .keep = 0x0fu,
     .note_on = phase_note_on, .render = cz_native_render,
-    .knob = {P_E0, P_E1, P_E7, P_E7},
+    .knob = {P_LEVEL, P_DLY, P_REV, P_GLIDE},
 };
 
 /* USB interrupt only collects bytes; the main loop validates and publishes. */

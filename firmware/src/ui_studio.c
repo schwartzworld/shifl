@@ -268,21 +268,25 @@ static void studio_tracks_draw(void)
             cv_rect(198, 23, (int32_t)level * 38 / 127, 5, selected ? col : TE_G3);
         cv_blit(0, 40 + i * 36);
     }
-    {   /* KNOB 1 swing (the global groove), 2 level, 3 steps, 4 pan of the selected track */
-        track_t *t = TSEL;
-        static char v[4][8];
-        static const char *const lab[4] = {"swing", "level", "steps", "pan"};
+    {   /* KNOB 1..4: the engine's home parameters */
+        static char v[4][8], l[4][8];
         const char *val[4] = {v[0], v[1], v[2], v[3]};
+        const char *lab[4] = {l[0], l[1], l[2], l[3]};
         int32_t ratio[4];
-        uint32_t lvl = is_drum(t) ? song.g[G_DRLVL] : t->p[P_LEVEL];
-        swing_str(v[0], song.g[G_SWING]);
-        fmt_int(v[1], t->p[P_MUTE] ? 0 : (int32_t)lvl * 100 / 127);
-        fmt_int(v[2], t->p[P_SLEN]);
-        fmt_int(v[3], t->p[P_PAN]);
-        ratio[0] = song.g[G_SWING] * 10;
-        ratio[1] = t->p[P_MUTE] ? 0 : (int32_t)lvl * 1000 / 127;
-        ratio[2] = (t->p[P_SLEN] - 1) * 1000 / 63;
-        ratio[3] = (t->p[P_PAN] + 64) * 1000 / 127;
+        uint32_t k;
+        for (k = 0; k < 4u; k++) {
+            int16_t *vp;
+            const char *unit;
+            const param_desc_t *d = home_param(k, &vp);
+            if (k == 0 && TSEL->p[P_MUTE]) {
+                str_cpy(v[k], "mute", 8);
+                ratio[k] = 0;
+            } else {
+                param_format(d, *vp, v[k], &unit);
+                ratio[k] = RATIO(d, *vp);
+            }
+            te_lower(l[k], d->label, 8);
+        }
         te_dials(184, lab, val, ratio, song.sel, &footer);
     }
 }

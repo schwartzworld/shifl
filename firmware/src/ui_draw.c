@@ -850,25 +850,17 @@ static void draw_columns(void)
             draw_column(c, "", "", "", C_HI, -1, ICON_AUTO);
         return;
     }
-    if (cur_page()->scope == SC_TRK) {                 /* TRACK LEVEL LEN PAN of the selected track */
-        const track_t *t = TSEL;
-        uint32_t lvl = trk_level(song.sel);
-        fmt_int(val, (int32_t)song.sel + 1);
-        draw_column(0, "TRACK", val, "/4", VAL(0u), (int32_t)song.sel * 1000 / (NTRK - 1), ICON_AUTO);
-        if (!lvl || t->p[P_MUTE]) {                    /* (MUTE: a turn of KNOB 2 unmutes, tracks_edit) */
-            str_cpy(val, "MUTE", 12);
-            unit = "";
-        } else if (is_drum(t)) {
-            fmt_int(val, (int32_t)lvl);
-            unit = "";
-        } else {
-            param_format(&TP[P_LEVEL], (int32_t)lvl, val, &unit);
+    if (cur_page()->scope == SC_TRK) {
+        for (c = 0; c < 4u; c++) {
+            int16_t *vp;
+            const param_desc_t *d = home_param(c, &vp);
+            if (c == 0 && TSEL->p[P_MUTE]) {           /* (MUTE: a turn of KNOB 1 unmutes, tracks_edit) */
+                draw_column(0, d->label, "MUTE", "", C_DIM, 0, ICON_AUTO);
+            } else {
+                param_format(d, *vp, val, &unit);
+                draw_column(c, d->label, val, unit, VAL(c), RATIO(d, *vp), param_icon(d, *vp));
+            }
         }
-        draw_column(1, "LEVEL", val, unit, lvl && !t->p[P_MUTE] ? VAL(1u) : C_DIM, (int32_t)lvl * 1000 / 127, ICON_AUTO);
-        param_format(&TP[P_SLEN], t->p[P_SLEN], val, &unit);
-        draw_column(2, "LEN", val, unit, VAL(2u), RATIO(&TP[P_SLEN], t->p[P_SLEN]), ICON_AUTO);
-        param_format(&TP[P_PAN], t->p[P_PAN], val, &unit);
-        draw_column(3, "PAN", val, unit, VAL(3u), RATIO(&TP[P_PAN], t->p[P_PAN]), param_icon(&TP[P_PAN], t->p[P_PAN]));
         return;
     }
     if (cur_page()->graph == GR_BROWSE) {

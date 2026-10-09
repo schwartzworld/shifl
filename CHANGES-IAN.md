@@ -6,6 +6,34 @@ All committed changes by Ian Schwartz, plus current uncommitted work-in-progress
 
 ## Committed Changes
 
+### Save layer key mapping fix + quick-patch save (`2026-10-09`)
+
+**Save layer key mapping corrected** — the SAVE layer tile display was placing "save A–F" at tiles 8–13 (with two empty tiles at 6–7), but the key input handler was triggering save at w=6 (mapping to section A without the empty gap). Fixed so keys 7–8 are truly empty before the save bank, and save A–F now maps correctly to keys 9–14. (`ui_layers.c`)
+
+**Quick patch save on key 7** — the first empty key (key 7, white key E4 while SAVE is held) now overwrites the currently selected user preset slot with the current sound. The display shows "patch" on that tile. If the song is playing the FM-1 shows "STOP BEFORE SAVE" as with any other user preset save. (`ui_layers.c`)
+
+**Bumped to FM-1_933.**
+
+---
+
+### Sound engines and home knobs (`2026-10-09`)
+
+**ANALOG engine added** — ported `eng_analog.c` from the original Felucca firmware: two band-limited oscillators (SAW, SQR, TRI, SIN, PWM), detunable second oscillator, noise, a trapezoidal SVF low-pass (cutoff, resonance, key tracking), pre-filter drive, and filter envelope via `P_ED_FLT`. 22 presets including 808 BOOM, ACID 303, REESE, WOBBLE, SUPERSAW and WARM PAD. Engine index 4 (appended after CZ-1; old projects are not affected).
+
+**Removed VOICE engine** — the Klatt formant synthesiser (`eng_formant.c`) is still present and unchanged; it is just no longer named "VOICE" in these notes. The user wanted the distinction clarified; the engine itself was not removed.
+
+**Home-screen knobs redesigned** — KNOB 1 is now **level** on every engine (previously KNOB 2). KNOBs 2–4 are engine-specific live-performance parameters:
+
+| Engine | KNOB 2 | KNOB 3 | KNOB 4 |
+|--------|--------|--------|--------|
+| ANALOG | CUT (filter cutoff) | RES (resonance) | filter ENV amount |
+| VOICE | VOWL | VOWL2 | TALK |
+| DX7 | FDBK (feedback) | CUT (filter) | REVERB send |
+| LOFI | TONE (low-pass) | CRSH (bit crush) | REVERB send |
+| CZ-1 | DELAY send | REVERB send | GLIDE |
+
+SWING, STEPS and PAN are accessible via the sequencer and EDIT menus.
+
 ### Effects
 
 **Dotted delays** (`2026-10-05`)
@@ -16,6 +44,13 @@ Arranger fragments can now carry FX overrides that get applied per-fragment duri
 
 **Punch-in FX improvement** (`2026-10-06`)
 Reworked punch-in FX logic in `punch.c` for more reliable behaviour.
+
+**Punch FX: OCT− toggles page, OCT+ toggles effect latch, PUNCH+HOME locks screen** (`2026-10-09`)
+Separated the two "lock" behaviours that were conflated under one control:
+- **Screen lock** (keeps the PUNCH page on display): PUNCH+HOME only. `layer_unlock()` no longer clears the effect latch as a side effect.
+- **Effect latch** (keeps an effect running after the key is released): FX+OCT+ only. Pressing while an effect key is held latches it; pressing again clears the latch.
+- FX+OCT− still cycles between FX page 1 and page 2 (unchanged).
+(`ui_input.c`)
 
 ---
 
@@ -71,7 +106,7 @@ Added MIDI-clock and controller-input handling in `seq.c`. Added `docs/midi-cont
 **Build script fix** (`2026-10-06`)
 Fixed `tools/build.py` and `tools/fm1pkg_make.py`.
 
-**Firmware version bump to FM-1\_912** (`2026-10-07`)
+**Firmware version bump to FM-1\_932** (`2026-10-09`)
 Updated `tools/build.py` and `firmware/src/felucca.c`.
 
 **Rebrand: SLOOP → SHIFL** (`2026-10-07`)
