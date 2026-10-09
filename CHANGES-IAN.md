@@ -6,6 +6,16 @@ All committed changes by Ian Schwartz, plus current uncommitted work-in-progress
 
 ## Committed Changes
 
+### Drum level and CZ-1 preset cutoff (`2026-10-09`)
+
+**Drums louder** — The global drum level multiplier in `drums_mix` was `G_DRLVL * 200`, putting drums ~2.4 dB below synth parts at their matching default levels. Changed to `* 258` (= Q15 unity at max), which aligns drums with synth parts at their respective default settings (G_DRLVL=100, P_LEVEL=104).
+
+**CZ-1 factory presets: filter open by default** — All factory presets and INIT TONE were loading with CUT=0 (= 30 Hz, filter nearly closed). The original CZ-1 has no filter; CUT is an added feature and should default to transparent. All factory presets now load with CUT=127 (= 16 kHz, effectively open).
+
+**Bumped to FM-1_939.**
+
+---
+
 ### CZ-1 sound design effects (`2026-10-09`)
 
 Four sound design effects added to CZ-1 EDIT 2 (P_E4–P_E7), signal chain runs before the existing resonant filter then a post-filter phaser:

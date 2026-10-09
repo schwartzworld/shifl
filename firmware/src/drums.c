@@ -707,8 +707,8 @@ static void drums_bus(int32_t *l, int32_t *r, int32_t *sb, uint32_t n)
 static inline void drums_mix(int32_t *ml, int32_t *mr, int32_t *rev, int32_t *dly, int32_t *mono, uint32_t n)
 {
     uint32_t k, i, any = 0;
-    int32_t lvl = song.g[G_DRLVL] * 200, send = song.g[G_DRREV] * 258, dsend = song.g[G_DRDLY] * 129, pk = drums.peak;   /* (200: -0 dB at LVL 100;
-                                                                                           * 1.9 had 142, -3 dB) */
+    int32_t lvl = song.g[G_DRLVL] * 258, send = song.g[G_DRREV] * 258, dsend = song.g[G_DRDLY] * 129, pk = drums.peak;   /* (258: -0 dB at LVL 100 to match parts;
+                                                                                           * was 200 (-2.4 dB), 1.9 had 142 (-3 dB)) */
     int32_t pan = trk[TRK_DRUM].p[P_PAN], gl = 4096 - (pan > 0 ? pan * 64 : 0), gr = 4096 + (pan < 0 ? pan * 64 : 0);
     int32_t buf[DX_N], bl[DX_N], br[DX_N], bs[DX_N];
     for (i = 0; i < n && drums.tail; i++) {         /* declick tail, ~0.4 ms */
