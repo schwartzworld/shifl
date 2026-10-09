@@ -73,10 +73,10 @@
   
   
   <h1>Firmware for the M-VAVE FM-1</h1>
-  <p class="lead">A groovebox you play live: four tracks — three synths and a drum machine — 9 synth engines, 68 sounds, 37 drum kits from 808 to techno, amapiano and ambient, your own samples, 16 punch-in effects. House, techno, hip-hop, drum &amp; bass, synthwave, lo-fi, ambient: make what you want. No factory patterns, nothing to load: everything you hear, you play.</p>
+  <p class="lead">A groovebox you play live: four tracks — three synths and a drum machine — 10 synth engines (with six-operator FM and DX7 patches), 76 sounds, 37 drum kits from 808 to techno, amapiano and ambient, your own samples and drum kits, 16 punch-in effects. House, techno, hip-hop, drum &amp; bass, synthwave, lo-fi, ambient: make what you want. No factory patterns, nothing to load: everything you hear, you play.</p>
   <div class="tiles">
-    <div class="tile" style="--c: var(--blue)"><b>68</b><span>sounds, 9 engines, your samples</span></div>
-    <div class="tile" style="--c: var(--green)"><b>37</b><span>drum kits, 909 to afro</span></div>
+    <div class="tile" style="--c: var(--blue)"><b>76</b><span>sounds, 10 engines, your samples</span></div>
+    <div class="tile" style="--c: var(--green)"><b>37</b><span>drum kits, 909 to afro, + your own</span></div>
     <div class="tile" style="--c: var(--yellow)"><b>16</b><span>punch-in fx: hold fx + key</span></div>
     <div class="tile" style="--c: var(--orange)"><b>rec</b><span>no click: the loop follows you</span></div>
   </div>
@@ -168,7 +168,7 @@ const UPGRADE = [0xF0, 0x22, 0x24, 0x35, 0x7F, 0xF7];
 const MAXDATA = 512;
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 const IS_OTA = (id) => /^ota-/i.test(id.model);
-// the update loader of SHIFL / Felucca packages ("ota-FM-1_9XX"). A device left in the update mode of another
+// the update loader of SLOOP / Felucca packages ("ota-FM-1_9XX"). A device left in the update mode of another
 // firmware (the stock updater's loader) is never written: its loader may lay the image out differently.
 const OUR_LOADER = (id) => /^ota-FM-1_9\d\d$/i.test(id.text);
 
@@ -367,7 +367,7 @@ class Updater {
     return s2;
   }
 
-  // resume: the device is already in update mode (loader) -> true when the write finished. Only SHIFL's
+  // resume: the device is already in update mode (loader) -> true when the write finished. Only SLOOP's
   // own loader is resumed, except for the return to the official firmware (opts.product: the official
   // package, its identity checked once the FM-1 is back, after Felucca 1.0): that one is the official
   // loader's own image, as M-UPGRADE would write it
@@ -479,7 +479,7 @@ const sayK = (k, arg = "") => { lastKey = k; lastArg = arg; $("status").textCont
 const say = (txt) => { lastKey = null; $("status").textContent = txt; };
 const log = (t) => { $("log").textContent += t + "\n"; };
 let image = null;
-const meta = {"version": "2.3", "product": "FM-1_900", "pkg": "../../firmware/shifl-2.3.fwsc", "sha256": "f4866903ca3304a2c2c788ef6929d3bb0dcf8468c90b61495e038e97ffb1fa00"};
+const meta = {"version": "dev", "product": "FM-1_929", "pkg": "../../firmware/shifl-dev.fwsc", "sha256": "8ad8017845414c0888b8de9741c00e3c506aaf5d9b0dd424fb53b35af6e47ad9"};
 
 let writing = false, stock = null;
 const lockAll = (on) => {

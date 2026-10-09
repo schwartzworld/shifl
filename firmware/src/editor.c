@@ -26,7 +26,7 @@ enum { ED_INFO = 1, ED_GET, ED_SET, ED_DUMP, ED_DESC, ED_STEP_GET, ED_STEP_SET, 
        ED_FM6_GET, ED_FM6_PUT, ED_FM6_LIST, ED_FM6_ERASE };                   /* v9: FM6 patch bank */
 #define ED_PROTO 9u                                   /* the protocol version INFO ends with */
 
-static uint8_t ed_out[600];
+static uint8_t ed_out[800];   /* CZ-1 NAMES reply needs ~662 B (65 presets × ~10 B each) */
 static uint32_t ed_n;
 
 static void ed_begin(uint32_t cmd)

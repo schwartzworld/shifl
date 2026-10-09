@@ -29,8 +29,10 @@ OUT = SRC / "build"
 GEN = OUT / "gen"
 LDR = OUT / "loader"
 sys.path.insert(0, str(SRC / "tools"))
+sys.path.insert(0, str(SRC / "web"))
 import fm1pkg_make  # noqa: E402
 import lz4blk  # noqa: E402
+import make_site  # noqa: E402
 
 APP_XIP = 0x02000120                # app.bin offset 0 in the XIP map; the SPL jumps here
 APP_SLOT = fm1pkg_make.APP_SLOT
@@ -47,7 +49,7 @@ SDK_SHA256 = {
     "cfg/eq_cfg_hw.bin": "41167491bffed4651750719c973d2758adeb9021a5670d02d6a53c85ed80ea7d",
 }
 
-PRODUCT = "FM-1_927"                # package identity; release builds are FM-1_9XY
+PRODUCT = "FM-1_929"                # package identity; release builds are FM-1_9XY
 VERSION = None                      # FELUCCA_VERSION for release builds (default: firmware/src/ui.c)
 
 
@@ -341,6 +343,7 @@ def main():
     print(f"app      {OUT / 'felucca.bin'}  {len(img)} B")
     print(f"loader   {LDR / 'ota.bin'}  {len(ota)} B")
     print(f"package  {OUT / name}  {len(pkg)} B, identity {PRODUCT}")
+    make_site.main(str(OUT / name), a.release or "dev", str(SRC / "docs"))
     return 0
 
 

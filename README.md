@@ -4,10 +4,9 @@
 Free and open source (GPL-3.0), based on <a href="https://github.com/hugelton/Felucca">Felucca</a> by Leo Kuroshita / Hügelton Instruments.</p>
 
 <p align="center">
-<a href="https://isod89.github.io/shifl-fm1/"><b>Install from the browser</b></a> ·
+<a href="https://shifl.netlify.app/"><b>Web editor</b></a> ·
 <a href="SHIFL.md">Manual</a> ·
 <a href="DEMARRAGE-RAPIDE-FR.md">Guide en français</a> ·
-<a href="https://isod89.github.io/shifl-fm1/webapp/editor/">Web editor</a> ·
 <a href="../../releases">Releases</a> ·
 <a href="../../issues">Report a bug</a>
 </p>
@@ -274,7 +273,7 @@ The full CC reference card is in [docs/midi-cc-plan.md](docs/midi-cc-plan.md).
 
 ### From the browser (recommended)
 
-1. Open **[the SHIFL installer](https://isod89.github.io/shifl-fm1/)** in **Chrome or Edge** on a computer.
+1. Open **[the SHIFL web editor](https://shifl.netlify.app/)** in **Chrome or Edge** on a computer.
 2. Connect the FM-1 by USB — a **data** cable, directly (no hub).
 3. Press **INSTALL**, allow MIDI access, and wait for *Done*. The FM-1 restarts on the SHIFL logo.
 
@@ -282,6 +281,7 @@ Nothing to download or compile. Your projects, user presets, samples and setting
 
 ### Other ways
 
+- **SysEx app:** download the `.fwsc` from a [release](../../releases) and send it to the FM-1 with any SysEx tool — [SysEx Librarian](https://www.snoize.com/sysexlibrarian/) (macOS), a browser-based SysEx sender, or similar. The FM-1 must be connected by USB; send to its MIDI port.
 - **Python:** the `.fwsc` of a [release](../../releases) with `python tools/fm1_install.py shifl-2.4.fwsc` (needs `pip install mido python-rtmidi`).
 - **Build it yourself:** see [Building and tests](#building-and-tests); on Windows, `INSTALL-SHIFL.bat` builds SHIFL and opens the installer locally.
 
@@ -380,7 +380,7 @@ On USB the FM-1 is also an **audio input named "Felucca"**: 44.1 kHz, 16-bit ste
 
 ## The web editor
 
-Open it from the [installer page](https://isod89.github.io/shifl-fm1/) (or the [editor link](https://isod89.github.io/shifl-fm1/webapp/editor/)) in Chrome or Edge, with the FM-1 on USB, and press **Connect**. It follows the device live: turn a knob on the FM-1 and the editor moves.
+Open **[shifl.netlify.app](https://shifl.netlify.app/)** in Chrome or Edge, with the FM-1 on USB, and press **Connect**. It follows the device live: turn a knob on the FM-1 and the editor moves.
 
 - **Sound** — every parameter of the selected track, the engines and the presets.
 - **Sequencer** — the steps; on the drum track a grid of 17 sounds × the steps, with levels, ratchets and probabilities, and the kit.
