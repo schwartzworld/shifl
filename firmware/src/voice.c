@@ -12,12 +12,7 @@
  * declicks it); one of the part's own is restarted in place. Extra UNISON
  * voices only start when there is room. The drum track has its own voices (drums.c). */
 static uint32_t vage;                                   /* voice ages: one clock for every part */
-/* engines that play recorded material (a position, not a phase): no phases kept or spread */
-#if FELUCCA_SLICE
-static int eng_sampled(const engine_t *e) { return e == &ENG_SAMPLE || e == &ENG_SLICE; }
-#else
-static int eng_sampled(const engine_t *e) { return e == &ENG_SAMPLE; }
-#endif
+static int eng_sampled(const engine_t *e) { (void)e; return 0; }   /* sloopDX: no sampled engine */
 static int32_t lfo_wave(track_t *t, uint32_t ph)
 {
     switch (t->p[P_LWAVE]) {
@@ -263,7 +258,6 @@ static void voice_start(track_t *t, voice_t *v, uint32_t note, uint32_t vel, int
     const engine_t *e = ENGINES[t->engine];
     int sounding = v->active && v->stage != 0;
     uint32_t ph0 = v->ph[0], ph1 = v->ph[1], ph2 = v->ph[2];
-    int32_t s0 = v->s[0], s1 = v->s[1], s4 = v->s[4], s5 = v->s[5], s6 = v->s[6], s7 = v->s[7];
     v->note = (uint8_t)note;
     v->vel = (uint8_t)vel;
     v->gate = 1;
@@ -278,28 +272,10 @@ static void voice_start(track_t *t, voice_t *v, uint32_t note, uint32_t vel, int
         v->env_out = 0;
     }                                                   /* sounding: the attack starts from the current level */
     e->note_on(t, v);
-    if (sounding && !eng_sampled(e)) {                 /* retrigger / steal: keep phases and filter states */
-        v->ph[0] = ph0;                                 /* (resetting them clicks) */
+    if (sounding && !eng_sampled(e)) {                 /* retrigger: keep phases (dx7_note_on handles its own keep) */
+        v->ph[0] = ph0;
         v->ph[1] = ph1;
         v->ph[2] = ph2;
-        if (e == &ENG_ANALOG) {
-            v->s[0] = s0;
-            v->s[1] = s1;
-        } else if (e == &ENG_DIGITAL) {
-            v->s[5] = s5;
-            v->s[6] = s6;
-            v->s[7] = s7;                               /* op 4 phase; the modulator envelope restarts */
-        } else if (e == &ENG_LOFI) {
-            v->s[0] = s0;
-            v->s[4] = s4;
-        } else if (e == &ENG_TRIO) {
-            v->s[0] = s0;                               /* filter */
-            v->s[1] = s1;
-            v->s[4] = s4;                               /* the sample waiting for its step corrections */
-        } else if (e == &ENG_PHASE) {
-            v->s[0] = s0;                               /* the WAVE / WAVE2 toggles go with the phases kept */
-            v->s[1] = s1;
-        }
     }
 }
 

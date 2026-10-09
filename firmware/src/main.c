@@ -115,7 +115,6 @@ static void felucca_init(void)
     TDRUM->p[P_E0] = DRUM_DEFAULT_KIT;        /* the 808 kit */
     song.sel = 0;
     song.master_q12 = 2048;
-    fm6_init();                               /* FM6: every part the init voice */
     autosave_resume();                        /* the project as it was left (project.c) */
     song.g[G_SYNC] = (int16_t)lights_sync;    /* a setting of the FM-1 (panel.c) */
     layers_init();                            /* the panel's layer buttons for the keys (ui_layers.c) */
@@ -248,6 +247,11 @@ static void fm1_main(void)
             bootguard.pending = 0;
             fm1_enter_uboot();
         }
+        if (usb.dx_bank_rx) {                           /* DX7 32-voice bulk dump received via SysEx */
+            usb.dx_bank_rx = 0;
+            dx_bank_store();
+            ui_say("DX7 BANK", "LOADED");
+        }
 #if FELUCCA_CDC
         cdc_task();
 #endif
@@ -261,7 +265,6 @@ static void fm1_main(void)
         ui_draw();
         felucca_dbg.stage = 8;
         autosave_tick();                                /* the working project into flash, when quiet */
-        fm6_poll();                                     /* FM6: reload patch if PTCH changed */
 #if FELUCCA_ARRANGER
         sections_flush();                               /* live sections / the recorded song, when quiet */
 #endif

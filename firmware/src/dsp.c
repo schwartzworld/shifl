@@ -117,3 +117,36 @@ static inline int32_t amp_at(const vmod_t *m, uint32_t i)
     int32_t x = (m->amp1 - m->amp0) * (int32_t)i;
     return m->amp0 + ((x + ((x >> 31) & (CTL - 1))) >> CTL_LOG2);
 }
+
+static inline uint32_t tuned_pitch_inc(uint32_t p)
+{
+    return PITCH_INC[clamp((int32_t)p, 0, 2047)];
+}
+
+static inline int32_t voice_amp(int32_t s, const vmod_t *m, uint32_t i)
+{
+    return mulq15(mulq15(s, amp_at(m, i)), VOICE_FS);
+}
+
+static inline int32_t soft_knee(int32_t y, int32_t k)
+{
+    int32_t a = y < 0 ? -y : y;
+    if (a <= k)
+        return y;
+    a = k + (softclip((a - k) * 2) >> 1);
+    return y < 0 ? -a : a;
+}
+
+static inline uint32_t cents_inc(int32_t pitch16, int32_t ct, int32_t fine)
+{
+    int32_t d16 = ct * 16 / 100, rem = ct * 16 - d16 * 100;
+    uint32_t inc = tuned_pitch_inc((uint32_t)clamp(pitch16 + d16, 0, 2047));
+    return inc + (uint32_t)((int32_t)(inc >> 12) * (rem * 2367 / 16000 + fine));
+}
+
+static uint32_t pow2_q16(int32_t d16)
+{
+    uint32_t u = (uint32_t)(d16 + 192 * 16), oct = u / 192u;
+    uint32_t r = PITCH_INC[1600 + u % 192u] / (PITCH_INC[1600] >> 16);
+    return oct >= 16u ? r << (oct - 16u) : r >> (16u - oct);
+}

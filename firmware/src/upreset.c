@@ -17,7 +17,7 @@
 #define UP_PER_BANK 16u
 #define UP_PMAX 72u                              /* room for P_COUNT to grow */
 #define UP_USED 0xA5u
-#define UP_VER 1u
+#define UP_VER 3u
 #define UP_BANK_MAGIC 0x31425055u                /* "UPB1" */
 typedef struct {
     uint8_t used, ver, engine, np;               /* UP_USED, UP_VER, engine, P_COUNT when stored */
@@ -38,8 +38,8 @@ static up_rec_t *up_rec(uint32_t k) { return &up_bank[k / UP_PER_BANK].r[k % UP_
 
 static int up_valid(const up_rec_t *r)
 {
-    return r->used == UP_USED && r->ver == UP_VER && r->engine < NENGINES && r->np >= 8u && r->np <= UP_PMAX &&
-           r->name[0];
+    return r->used == UP_USED && r->ver >= 1u && r->ver <= UP_VER && r->engine < NENGINES && r->np >= 8u &&
+           r->np <= UP_PMAX && r->name[0];
 }
 
 static int up_used(uint32_t k) { return k < UP_SLOTS && up_valid(up_rec(k)); }
@@ -60,6 +60,12 @@ static void up_params(const up_rec_t *r, int16_t *out, const int16_t *def)
         out[i] = i < nc ? r->p[i] : def[i];
     for (i = 0; i < 8u; i++)
         out[P_E0 + i] = r->p[nc + i];
+    if (r->ver < 2u) {
+        out[P_E0] = DX_VOICE_FROM_V1(out[P_E0]);
+        out[P_E0 + 6] = DX_CUT_OPEN;
+    }
+    if (r->ver < 3u)
+        out[P_E0 + 6] = DX_CUT_FIX(out[P_E0], out[P_E0 + 6]);
 }
 
 static int up_name_ok(const uint8_t *s, uint32_t n)   /* 1..12 printable ASCII */

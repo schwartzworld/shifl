@@ -595,14 +595,19 @@ static void layer_screen_draw(void)
     sub[6] = (char)('1' + sel);
     sub[7] = 0;
     switch (layer) {
-    case LY_FX:                                         /* the 16 punch-in effects */
+    case LY_FX: {                                       /* the 16 punch-in effects, page 1 or 2 */
+        static const char *const PSHORT[32] = {
+            "loop 4", "loop 8", "loop16", "loop32", "oct up", "stop f", "stop s", "slap",
+            "echo l", "echo 2", "echo",   "phone",  "crush",  "alias",  "gate",   "gate 2",
+            "lpf slw","lpf fst","lpf dwn","lpf up",  "retrig","retrig f","stut l","stut ll",
+            "shuf",   "oct dn", "scratch","vibrato", "glitch", "feedbk", "distort","blinds"
+        };
+        uint32_t pg = (uint32_t)punch.page * 16u;
         col = TE_DRUM;
-        str_cpy(sub, "hold + key", sizeof sub);
+        str_cpy(sub, punch.page ? "page 2 + key" : "hold + key", sizeof sub);
         for (i = 0; i < 16u; i++) {
-            static const char *const PSHORT[16] = {"loop 4", "loop 8", "loop16", "loop32", "stutt", "oct up", "stop", "slap",
-                                                   "flange", "echo 2", "phone", "crush", "alias", "gate", "echo", "wobble"};
-            int on = punch.req == (int8_t)i;
-            str_cpy(tl[i].lab, PSHORT[i], 8);
+            int on = punch.req == (int8_t)(i + pg);
+            str_cpy(tl[i].lab, PSHORT[i + pg], 8);
             tl[i].bg = on ? C_WHITE : TE_G1;
             tl[i].fg = on ? C_BLACK : TE_G4;
             tl[i].top = on ? 0 : TE_DIM[i / 4u];
@@ -619,6 +624,7 @@ static void layer_screen_draw(void)
         ratio[1] = song.g[G_DUST] * 1000 / 127;
         ratio[2] = song.g[G_DUCK] * 1000 / 127;
         break;
+    }
     case LY_ERASE:
     case LY_ROLL: {                                     /* the keys' sounds: lit = held */
         uint32_t held = fm1_in.notes;

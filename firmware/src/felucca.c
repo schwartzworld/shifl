@@ -30,7 +30,7 @@
 #define FELUCCA_OTA_DRYRUN 0     /* 1 = stage, ask "success", then undo: no record, no reset */
 #endif
 #ifndef FELUCCA_ID
-#define FELUCCA_ID "FM-1_916"    /* package identity (build.py: the .fwsc marker string) */
+#define FELUCCA_ID "FM-1_927"    /* package identity (build.py: the .fwsc marker string) */
 #endif
 #ifndef FELUCCA_CDC
 #define FELUCCA_CDC 1            /* USB CDC-ACM serial console */
@@ -56,6 +56,7 @@
 #include "ui.c"
 #include "ui_song.c"
 #include "ui_studio.c"
+#include "ui_voice.c"
 #include "icons.c"           /* parameter icons (FELUCCA_ICONS), used by ui_draw.c */
 #include "ui_draw.c"
 #include "ui_layers.c"       /* hold a function button: what the keys and knobs do (TE style) */
@@ -181,7 +182,6 @@ static void ota_commit(const uint8_t *parm)
 #endif
 #if FELUCCA_OTA
 #include "editor.c"          /* web editor SysEx (needs the OTA SysEx plumbing) */
-#include "editor_fm6.c"      /* FM6 SysEx patch upload/download */
 #endif
 #if FELUCCA_CDC
 #include "console.c"

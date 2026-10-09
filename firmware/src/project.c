@@ -296,9 +296,7 @@ static union {
     project_v3_t v3;
     project_v2_t v2;
     project_v1_t v1;
-    uint8_t fm6[3472];                             /* fm6_bank_t staging (fm6_bank.c): 16 + 27*128 */
 } proj_tmp;
-#include "fm6_bank.c"                              /* FM6 patch bank (uses proj_tmp as staging buffer) */
 static void proj_fetch(uint32_t slot)
 {
     project_t *q = &proj_slot[slot & 7u];
@@ -334,8 +332,6 @@ static void project_apply(const project_t *p)
     proj_apply(p, 1);
     song.sel = (uint8_t)(p->sel < NTRK ? p->sel : 0u);
     fm1_irq_on();
-    for (k = 0; k < NPART; k++)
-        fm6_track_loaded(&trk[k]);                      /* FM6 tracks: reload patch from PTCH */
     for (k = 0; k < NPART; k++)                         /* a format 1 project: the default sounds of tracks 2, 3 */
         if (p->t[k].preset == 0xFFu) {
             apply_preset_to(&trk[k], TRK_DEF[k][1]);
@@ -417,8 +413,6 @@ static void autosave_resume(void)              /* power-on: the project as it wa
     song.sel = (uint8_t)(q->sel < NTRK ? q->sel : 0u);
     for (n = 0; n < NPART; n++)
         trk[n].engine = trk[n].eng_req;        /* (nothing sounds yet: no fade) */
-    for (n = 0; n < NPART; n++)
-        fm6_track_loaded(&trk[n]);              /* FM6 tracks: reload patch from PTCH */
 #endif
 }
 
@@ -448,6 +442,98 @@ _Static_assert(sizeof(persist_t) == PERSIST_SIZE_V22 + ARR_STEPS * sizeof(arr_pa
 static persist_t persist_saved;
 #endif
 
+/* the DX7 user banks: 8 in flash, each two storage objects of 16 voices (both valid = a bank); the one in use is
+ * dx_user (eng_dx7.c), its number in OBJ_DXMETA. Like a DX7's cartridges: switching loads 4 KB */
+#define DX_BANK_HALF (sizeof dx_user / 2u)
+#define DX_META_MAGIC 0x31424458u                 /* "DXB1" */
+#if FELUCCA_FLASH
+static int dx_bank_read(uint32_t k)              /* bank k of flash -> dx_user: 1 a bank, 0 none */
+{
+    uint8_t *b = &dx_user[0][0];
+    uint32_t o = OBJ_DXBANK0 + 2u * (k % DX_NBANKS);
+    if (flash_ok && st_load(o, b, DX_BANK_HALF) == (int)DX_BANK_HALF &&
+        st_load(o + 1u, b + DX_BANK_HALF, DX_BANK_HALF) == (int)DX_BANK_HALF) {
+        dx_user_ok = 1;
+        dx_bank_names();
+        return 1;
+    }
+    dx_bank_clear();
+    return 0;
+}
+static void ukit_boot(void)                       /* MY KIT from flash (else DX KIT) */
+{
+    if (!(flash_ok && st_load(OBJ_DXKIT, &ukit_img, sizeof ukit_img) == (int)sizeof ukit_img && !ukit_from_img(&ukit_img)))
+        ukit_from(0);
+}
+static void dx_bank_boot(void)
+{
+    uint32_t m[2] = {0, 0};
+    dx_bank_cur = 0;
+    if (flash_ok && st_load(OBJ_DXMETA, m, sizeof m) == (int)sizeof m && m[0] == DX_META_MAGIC && m[1] < DX_NBANKS)
+        dx_bank_cur = (uint8_t)m[1];
+    dx_bank_read(dx_bank_cur);
+}
+#else
+static void ukit_boot(void) { ukit_from(0); }
+static void dx_bank_boot(void) { dx_bank_clear(); }
+#endif
+static int dx_bank_store(void)                    /* the bank in RAM -> its flash slot: 0 ok, 2 flash error / no flash */
+{
+#if FELUCCA_FLASH
+    const uint8_t *b = &dx_user[0][0];
+    uint32_t o = OBJ_DXBANK0 + 2u * dx_bank_cur;
+    if (!flash_ok)
+        return 2;
+    if (st_save(o, b, DX_BANK_HALF) || st_save(o + 1u, b + DX_BANK_HALF, DX_BANK_HALF))
+        return 2;
+    return 0;
+#else
+    return 2;
+#endif
+}
+static int ukit_store(void)                       /* MY KIT (drums.c ukit) -> flash: 0 ok, 2 flash error / no flash */
+{
+#if FELUCCA_FLASH
+    if (!flash_ok)
+        return 2;
+    ukit_to_img(&ukit_img);
+    return st_save(OBJ_DXKIT, &ukit_img, sizeof ukit_img) ? 2 : 0;
+#else
+    return 2;
+#endif
+}
+static int dx_bank_erase(void)                    /* no bank in the slot in use, in RAM and in flash: 0 ok, 2 flash error */
+{
+    dx_bank_clear();
+#if FELUCCA_FLASH
+    if (flash_ok) {
+        static const uint8_t none[4] = {0, 0, 0, 0};
+        uint32_t o = OBJ_DXBANK0 + 2u * dx_bank_cur;
+        return st_save(o, none, 4) || st_save(o + 1u, none, 4) ? 2 : 0;
+    }
+#endif
+    return 2;
+}
+static int dx_bank_select(uint32_t k)
+{
+    uint32_t m[2];
+    if (k >= DX_NBANKS)
+        return 1;
+    if (k == dx_bank_cur)
+        return 0;
+    dx_bank_cur = (uint8_t)k;
+#if FELUCCA_FLASH
+    if (!dx_bank_read(k))
+        dx_bank_clear();
+    m[0] = DX_META_MAGIC;
+    m[1] = k;
+    st_save(OBJ_DXMETA, m, sizeof m);
+#else
+    dx_bank_clear();
+#endif
+    return 0;
+}
+
 static void persist_boot(void)                    /* before settings_init / panel_init */
 {
 #if FELUCCA_ARRANGER
@@ -462,12 +548,8 @@ static void persist_boot(void)                    /* before settings_init / pane
         return;
     fl_plain_window_init();                        /* flash above 0x93000 reads as plaintext through XIP
                                                     * (user sample sets are played from there) */
-    {
-        uint32_t k;
-        for (k = 0; k < SMP_USER_SLOTS; k++)
-            smp_user_scan(k);
-    }
-    fm6_bank_boot();                               /* FM6 patch bank: scan flash, set fm6_bank_read */
+    dx_bank_boot();                                /* DX7 user bank */
+    ukit_boot();                                   /* MY KIT */
     {
         int n = st_load(OBJ_SETTINGS, &p, sizeof p);
         if (n == (int)PERSIST_SIZE_V22 && p.magic == PERSIST_MAGIC)

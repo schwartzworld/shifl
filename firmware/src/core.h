@@ -17,8 +17,19 @@ enum { V_POLY, V_MONO, V_LEGATO, V_UNISON };   /* P_VOICE */
 #ifndef FELUCCA_SLICE
 #define FELUCCA_SLICE 0          /* the SLICE engine (eng_slice.c): kept in the tree, not built by default */
 #endif
-#define NENGINES (10 + FELUCCA_SLICE)  /* SLICE, when built, comes last: the other engines keep their numbers */
-#define ENGI_FM6 9
+#define NENGINES 4               /* DX7, LOFI, VOICE, CZ-1 (engines.c) */
+#define ENGI_DX7 0
+#define ENGI_LOFI 1
+#define ENGI_FORMANT 2
+/* ENGI_CZ 3 is defined in cz_patch.h */
+/* sloopDX 2.0 put three factory voices before INIT VOICE: a DX7 VOICE saved before (a project, a user preset)
+ * from 16 on (INIT VOICE, the bank) moves up by three. The same for the preset index of INIT VOICE. And the
+ * DX7's CUT (P_E6, unused before: saved as 0) loads open */
+#define DX_VOICE_FROM_V1(v) ((v) >= 16 ? (v) + 3 : (v))
+#define DX_CUT_OPEN 127
+/* 2.0 / 2.1 loaded a bank voice (PRESETS) with every quick knob at 0, CUT too: the low-pass shut. Saved like that,
+ * a bank voice with CUT 0 comes back open */
+#define DX_CUT_FIX(voice, cut) ((voice) >= 20 && (cut) == 0 ? DX_CUT_OPEN : (cut))   /* (20: the bank then, as now) */
 #define UP_SLOTS 32u             /* user presets (upreset.c) */
 
 /* ------------------------------------------------------- parameters --- */
@@ -73,6 +84,7 @@ enum {                          /* global parameters */
     G_DUST, G_DUCK, G_FILT,     /* the master bus: lo-fi / vinyl, the kick ducking the parts, the DJ filter (fx.c) */
     G_ROLL,                     /* note repeat rate (ARP + key, seq.c) */
     G_NEWPRJ,                   /* TOOLS > NEW: a new project (GO) */
+    G_DRDLY,                    /* the drums' delay send (after SLOOP 2.5; a project keeps it in its own byte) */
     G_COUNT
 };
 
@@ -132,8 +144,11 @@ typedef struct {
     void (*note_on)(struct track *t, voice_t *v);
     void (*render)(struct track *t, voice_t *v, int32_t *out, uint32_t n, const vmod_t *m);
     uint16_t color;              /* accent colour of the engine (RGB565) */
-    uint8_t macro[4];            /* HOME: the four parameters on KNOB 1..4 */
+    uint8_t knob[4];             /* HOME: the four parameters on KNOB 1..4 */
     uint8_t poly;                /* voice cap for POLY and UNISON, 0 = NVOICE */
+    uint8_t sampled;             /* 1 = plays recorded material: voice.c keeps no phases on retrigger */
+    uint8_t keep;                /* bit k: s[k] is kept when a sounding voice is retriggered */
+    uint8_t oneshot;             /* 1 = hits: always POLY, no glide */
     /* optional (0 = none): the voice amplitude instead of the ADSR curve, once per control tick;
      * gets the ADSR value (Q15, env_tick already ran: it still gates the voice), returns Q15 */
     int32_t (*amp)(struct track *t, voice_t *v, int32_t adsr);
@@ -144,7 +159,17 @@ typedef struct {
     void (*block)(struct track *t);
     uint8_t ownenv;             /* 1 = engine owns amplitude; env_tick is bypassed, done gates the voice */
     int (*done)(struct track *t, voice_t *v);   /* optional: 1 when all carriers silent and voice may drop */
+    uint32_t (*alloc)(struct track *t, uint32_t note);
+    void (*legato)(struct track *t, voice_t *v);
+    void (*mono_key)(struct track *t, uint32_t note);
+    void (*post)(struct track *t, int32_t *out, uint32_t n, uint32_t nr);
+    uint32_t (*cap)(const struct track *t);
+    uint32_t (*units)(const struct track *t);
+    int32_t (*keys)(const struct track *t, uint32_t k);
 } engine_t;
+/* voice_start: what the voice it starts did just before (0 free, 1 released, 2 its key down: a steal or a move);
+ * engine_t.note_on may read it */
+static uint8_t voice_was;
 
 /* ------------------------------------------------------------ track --- */
 enum { ST_NOTE, ST_TIE, ST_REST, ST_P75, ST_P50, ST_P25 };
@@ -185,6 +210,14 @@ typedef struct {                 /* a step of the drum track (10 bytes, the size
     uint8_t rat[4];              /* 2 bits per lane: ratchet when on=1; probability level when on=0 (0=off, 1=75%, 2=50%, 3=25%) */
 } dstep_t;
 _Static_assert(sizeof(step_t) == 10 && sizeof(dstep_t) == 10, "a step is 10 bytes on every track");
+/* sloopDX: the drum track's lane macros and parameter locks (drums.c), kept with the project. A macro is an
+ * offset on the kit's sound (0 = as the kit): TUNE semitones, DECAY / SWEEP / BRIGHT / NOISE -40..40, LEVEL in
+ * 1/2 dB -40..20, PAN -64..63, CHOKE 0 the kit's, 1 none, 2..4 groups A..C, REV the send -64..63 (64 + REV) */
+enum { DM_TUNE, DM_DECAY, DM_SWEEP, DM_BRIGHT, DM_NOISE, DM_LEVEL, DM_PAN, DM_CHOKE, DM_REV, DM_N };
+typedef struct {
+    int8_t m[DRUM_LANES][DM_N];
+    uint16_t lock[NSTEP];        /* a step's TUNE / DECAY lock of one lane (drums.c dlock_*), 0 = none */
+} drum_ext_t;
 /* SHIFL 2.4: per-step nudge (micro timing) and parameter locks (seq.c seq_tick / lock_step) */
 #define MICRO_MIN (-32)          /* a step's nudge in 1/64 of its length: half a step early .. */
 #define MICRO_MAX 31             /* .. just under half a step late (0 = on the grid) */

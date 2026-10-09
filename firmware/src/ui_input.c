@@ -106,8 +106,15 @@ static uint32_t keys_lit(void)
     uint32_t m = 0, i, blink = (fm1_ms / 125u) & 1u;
     track_t *t = TSEL;
     switch (ui.layer) {
-    case LY_FX:
-        return punch.req >= 0 ? 1u << key_of_white((uint32_t)punch.req) : 0u;
+    case LY_FX: {
+        int32_t active = punch.req >= 0 ? punch.req : punch.latch;
+        if (active >= 0) {
+            int32_t kr = active - (int32_t)punch.page * 16;
+            if (kr >= 0 && kr < 16)
+                return 1u << key_of_white((uint32_t)kr);
+        }
+        return 0u;
+    }
     case LY_STEP: {                                /* the steps that play; the playhead blinks */
         uint32_t len = trk_len(t);
         for (i = 0; i < 16u; i++) {
@@ -524,8 +531,8 @@ static void layer_tap(uint32_t layer)
         break;
     case LY_ERASE:
     case LY_STEP:
-        if (on_drum_page()) {                             /* DRUMS: GRID <-> KIT */
-            drum_page = (uint8_t)((drum_page + 1u) % 2u);
+        if (on_drum_page()) {                             /* DRUMS: GRID / KIT / FM */
+            drum_page = (uint8_t)((drum_page + 1u) % 3u);
             ui.force = 1;
             break;
         }
@@ -577,6 +584,7 @@ static void layer_unlock(void)
 {
     if (ly_lock != LY_PLAY) {
         ly_lock = LY_PLAY;
+        punch.latch = -1;
         ui.force = 1;
     }
 }
@@ -600,6 +608,9 @@ static int layers_input(uint32_t note_edges, uint32_t *pressed, uint32_t home)
     uint32_t l, now = fm1_ms, held = LY_PLAY, eat = 0;
     if (ly_lock != LY_PLAY) {
         uint32_t keep = 1u << panel.btn[B_PLAY] | 1u << panel.btn[B_REC] | 1u << panel.btn[B_OCTDN] | 1u << panel.btn[B_OCTUP];
+        /* when the locked layer is physically held, preserve HOME so the held+HOME toggle can fire */
+        if ((fm1_in.buttons & ly_bit[ly_lock]) != 0u)
+            keep |= 1u << panel.btn[B_HOME];
         eat = *pressed & ~keep;
         if (eat) {
             layer_unlock();
@@ -624,11 +635,15 @@ static int layers_input(uint32_t note_edges, uint32_t *pressed, uint32_t home)
         if (d && held == LY_PLAY)
             held = l;
     }
-    if (held != LY_PLAY && home == BT_TAP && !home_eat) {  /* held + HOME: locked open */
-        ly_lock = (uint8_t)held;
-        used[held] = 1;
-        ui.layer = (uint8_t)held;
-        ui.force = 1;
+    if (held != LY_PLAY && home == BT_TAP && !home_eat) {  /* held + HOME: toggle lock */
+        if (ly_lock == (uint8_t)held) {
+            layer_unlock();
+        } else {
+            ly_lock = (uint8_t)held;
+            used[held] = 1;
+            ui.layer = (uint8_t)held;
+            ui.force = 1;
+        }
     }
     if (held == LY_PLAY && ly_lock != LY_PLAY) {
         held = ly_lock;
@@ -683,6 +698,17 @@ static int layers_input(uint32_t note_edges, uint32_t *pressed, uint32_t home)
                 ui_message(undo_swap(0) ? "UNDO" : "NOTHING TO UNDO");
             else
                 ui_message(undo_swap(1) ? "REDO" : "NOTHING TO REDO");
+        }
+    }
+    if (held == LY_FX) {                                  /* FX + OCT- / OCT+: toggle effects page */
+        uint32_t ob = 1u << panel.btn[B_OCTDN], pb = 1u << panel.btn[B_OCTUP];
+        static uint32_t prev_fx_oct;
+        uint32_t b = fm1_in.buttons & (ob | pb), press = b & ~prev_fx_oct;
+        prev_fx_oct = b;
+        if (press) {
+            used[held] = 1;
+            punch.page ^= 1u;
+            ui_message(punch.page ? "FX PAGE 2" : "FX PAGE 1");
         }
     }
     if (held == LY_STEP) {                                /* SEQ + OCT- / OCT+: the page; a step held: OCT- its nudge, locks and
@@ -861,7 +887,7 @@ static void ui_input(void)
         return;
     }
     if (on_drum_page()) {
-        drum_screen_input(pressed, home);
+        drum_screen_input(pressed, home, notes);
         return;
     }
 #endif
@@ -938,8 +964,8 @@ static void ui_input(void)
             int16_t *vp;
             const param_desc_t *d = home_param(k, &vp);
             *vp = (int16_t)clamp(*vp + accel(EN_K1 + k, s, d->max - d->min), d->min, d->max);
-            if (!is_drum(TSEL) && p_lockable(ENGINES[TSEL->eng_req % NENGINES]->macro[k & 3u]))
-                ui.lock_par = ENGINES[TSEL->eng_req % NENGINES]->macro[k & 3u];
+            if (!is_drum(TSEL) && p_lockable(ENGINES[TSEL->eng_req % NENGINES]->knob[k & 3u]))
+                ui.lock_par = ENGINES[TSEL->eng_req % NENGINES]->knob[k & 3u];
         } else {
             edit_param(k, s);
         }

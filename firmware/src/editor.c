@@ -63,10 +63,6 @@ static void ed_send(void)
 }
 static int32_t ed_rv(const uint8_t *p) { return (int32_t)(p[0] | p[1] << 7) - 8192; }
 
-/* ---- user sample slots (eng_sample.c): flash SMP_USER_BASE + k * SMP_USER_SIZE ----
- * BEGIN erases the header sector (the slot is invalid from then on), WRITE fills the data
- * (offset >= 512, erasing each further sector when the write reaches its start), END sends
- * the header: the device checks the data CRC and writes the header last. */
 static uint32_t ed_unpack7(const uint8_t *a, uint32_t na, uint8_t *out, uint32_t max)
 {
     uint32_t n = 0;                                 /* groups: msb byte, then up to 7 bytes */
@@ -91,53 +87,7 @@ static void ed_pack7(const uint8_t *p, uint32_t n)      /* pack7: a top-bits byt
         n -= k;
     }
 }
-static uint8_t ed_smp_buf[512] __attribute__((aligned(4)));
-static uint8_t ed_smp_open[SMP_USER_SLOTS];        /* SMP_BEGIN done, END not yet: WRITE / END may act */
-static uint32_t ed_smp_slot(uint32_t k) { return SMP_USER_BASE + k * SMP_USER_SIZE; }
-static void ed_smp_inval(uint32_t k)
-{
-    fm1_irq_off();
-    fl_inval(ed_smp_slot(k), SMP_USER_SIZE);
-    fm1_irq_on();
-}
-static int ed_smp_erase(uint32_t k, uint32_t all)  /* header sector, or the whole slot */
-{
-    uint32_t i, took;
-    int rc = 0;
-    usr_nz[k] = 0;
-    for (i = 0; i < 16u; i++)
-        usr_zone[k][i].n = 0;                     /* a sounding voice ends instead of reading 0xFF */
-    for (i = 0; i < (all ? SMP_USER_SIZE / 0x1000u : 1u) && !rc; i++) {
-        rc = fl_erase4k_quiet(ed_smp_slot(k) + i * 0x1000u, &took);
-        fm1_wdt_feed();
-    }
-    ed_smp_inval(k);
-    return rc;
-}
-static int ed_smp_end(uint32_t k, const uint8_t *a, uint32_t na)
-{
-    const smp_user_hdr_t *h = (const smp_user_hdr_t *)ed_smp_buf;
-    uint32_t i;
-    if (!ed_smp_open[k] || usr_nz[k])
-        return 6;                                  /* no BEGIN first (a header over a header: flash ANDs them) */
-    if (ed_unpack7(a, na, ed_smp_buf, sizeof(smp_user_hdr_t)) != sizeof(smp_user_hdr_t))
-        return 1;
-    if (h->magic != SMP_USER_MAGIC || h->version != 1 || !h->nz || h->nz > 16u ||
-        h->data_len > SMP_USER_SIZE - SMP_USER_DATA)
-        return 2;
-    for (i = 0; i < h->nz; i++)                    /* the zones checked before anything is written */
-        if (!smp_zone_ok(&h->zone[i], h->data_len))
-            return 2;
-    ed_smp_open[k] = 0;
-    ed_smp_inval(k);
-    if (st_crc32(smp_user_xip(k) + SMP_USER_DATA, h->data_len) != h->crc)
-        return 3;
-    if (fl_write(ed_smp_slot(k), ed_smp_buf, sizeof(smp_user_hdr_t)))
-        return 4;
-    ed_smp_inval(k);
-    smp_user_scan(k);
-    return usr_nz[k] ? 0 : 5;
-}
+static uint8_t ed_smp_buf[512] __attribute__((aligned(4)));   /* temp buffer for ED_BK_WRITE unpacking */
 
 /* the engine byte of DUMP / RELOAD / TRACK: NENGINES = the drum track (no engine) */
 static uint32_t ed_eng(const track_t *t) { return is_drum(t) ? NENGINES : t->eng_req % NENGINES; }
@@ -435,16 +385,9 @@ static const uint8_t *ed_bk_obj(uint32_t id, uint32_t *len)   /* 0 = no such obj
             *len = sizeof up_bank[0];
         return (const uint8_t *)&up_bank[id - 6u];
     }
-    if (id >= 32u && id < 32u + SMP_USER_SLOTS) {
-        const smp_user_hdr_t *h = (const smp_user_hdr_t *)smp_user_xip(id - 32u);
-        if (h->magic == SMP_USER_MAGIC && h->version == 1u && h->nz && h->nz <= 16u &&
-            h->data_len <= SMP_USER_SIZE - SMP_USER_DATA)
-            *len = SMP_USER_DATA + h->data_len;
-        return smp_user_xip(id - 32u);
-    }
     return 0;
 }
-static const uint8_t ED_BK_IDS[] = {0, 1, 2, 3, 4, 5, 6, 7, 32, 33, 34};
+static const uint8_t ED_BK_IDS[] = {0, 1, 2, 3, 4, 5, 6, 7};
 
 static uint32_t ed_bk_commit(void)
 {
@@ -687,60 +630,12 @@ static void ed_handle(const uint8_t *f, uint32_t n)   /* f: the bytes between F0
         for (i = 0; i < 2u; i++)                           /* then the two edit-page titles */
             ed_str(ENGINES[a[0]]->page_title[i], 8);
         break;
-    case ED_SMP_BEGIN:                                     /* slot -> slot, rc */
-    case ED_SMP_ERASE: {
-        uint32_t rc;
-        if (na < 1u || a[0] >= SMP_USER_SLOTS || !flash_ok)
-            return;
-        rc = ed_smp_erase(a[0], cmd == ED_SMP_ERASE) ? 1u : 0u;
-        ed_smp_open[a[0]] = (uint8_t)(cmd == ED_SMP_BEGIN && !rc);
-        ed_b(a[0]);
-        ed_b(rc);
-        break;
-    }
-    case ED_SMP_WRITE: {                                   /* slot, off (3 x 7 bit), pack7 data -> slot, off, rc */
-        uint32_t off, len, rc = 0, took;
-        if (na < 5u || a[0] >= SMP_USER_SLOTS || !flash_ok)
-            return;
-        off = (uint32_t)a[1] | (uint32_t)a[2] << 7 | (uint32_t)a[3] << 14;
-        len = ed_unpack7(a + 4, na - 4u, ed_smp_buf, 256u);
-        if (off < SMP_USER_DATA || (off & 0xFFu) || !len || off + len > SMP_USER_SIZE)
-            rc = 1;
-        else if (usr_nz[a[0]] || !ed_smp_open[a[0]])
-            rc = 4;                                        /* slot in use: SMP_BEGIN first (voices read it) */
-        else {
-            if (!(off & 0xFFFu))                           /* first write into a sector: erase it */
-                rc = fl_erase4k_quiet(ed_smp_slot(a[0]) + off, &took) ? 2u : 0u;
-            if (!rc && fl_write(ed_smp_slot(a[0]) + off, ed_smp_buf, len))
-                rc = 3;
-        }
-        ed_b(a[0]);
-        ed_b(off);
-        ed_b(off >> 7);
-        ed_b(off >> 14);
-        ed_b(rc);
-        break;
-    }
-    case ED_SMP_END:                                       /* slot, pack7 header -> slot, rc */
-        if (na < 2u || a[0] >= SMP_USER_SLOTS || !flash_ok)
-            return;
-        ed_b(a[0]);
-        ed_b((uint32_t)ed_smp_end(a[0], a + 1, na - 1u));
-        break;
-    case ED_SMP_INFO:                                      /* -> per slot: zones (0 = empty), name, data KiB */
-        ed_b(SMP_USER_SLOTS);
-        ed_b(SMP_USER_SIZE / 1024u);
-        for (i = 0; i < SMP_USER_SLOTS; i++) {
-            const smp_user_hdr_t *h = (const smp_user_hdr_t *)smp_user_xip(i);
-            char nm[9] = {0};
-            uint32_t j;
-            ed_b(usr_nz[i]);
-            for (j = 0; usr_nz[i] && j < 8u; j++)
-                nm[j] = h->name[j] >= 32 && h->name[j] < 127 ? h->name[j] : 0;
-            ed_str(nm, 8);
-            ed_b(usr_nz[i] ? (h->data_len + 1023u) / 1024u : 0u);
-        }
-        break;
+    case ED_SMP_BEGIN:
+    case ED_SMP_ERASE:
+    case ED_SMP_WRITE:
+    case ED_SMP_END:
+    case ED_SMP_INFO:
+        break;                                             /* sample engine removed */
     case ED_UP_LIST: {                                     /* start, count -> start, count, total, per slot: used, engine, name */
         uint32_t s0, cnt;
         if (na < 2u)

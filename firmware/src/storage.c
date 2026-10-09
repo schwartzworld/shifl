@@ -21,8 +21,8 @@
  * (upreset.c); the working project (autosave, project.c): copy A 0x9F000, copy B 0xFE000 (the two sectors
  * left: A/B needs no two neighbours) */
 enum { OBJ_SETTINGS, OBJ_PROJECT0, OBJ_UPRESET0 = OBJ_PROJECT0 + 8, OBJ_AUTOSAVE = OBJ_UPRESET0 + 2,
-       OBJ_FM6BANK,                               /* FM6 patch bank: 0xE5000 / 0xE6000 */
-       OBJ_COUNT };
+       OBJ_DXBANK0, OBJ_DXMETA = OBJ_DXBANK0 + 16, OBJ_DXKIT, OBJ_COUNT };   /* 8 DX7 banks x 2 halves,
+                                                                              * the bank in use, MY KIT */
 
 typedef struct {
     uint32_t magic;
@@ -56,10 +56,10 @@ static uint32_t st_sector(uint32_t obj, uint32_t copy)  /* flash offset of copy 
         return 0xFC000u + copy * ST_SECTOR;
     if (obj == OBJ_AUTOSAVE)
         return copy ? 0xFE000u : 0x9F000u;
-    if (obj == OBJ_FM6BANK)
-        return 0xE5000u + copy * ST_SECTOR;
     if (obj >= OBJ_UPRESET0 && obj < OBJ_AUTOSAVE)
         return 0xDC000u + (obj - OBJ_UPRESET0) * 2u * ST_SECTOR + copy * ST_SECTOR;
+    if (obj >= OBJ_DXBANK0 && obj <= OBJ_DXKIT)      /* 0xA0000..0xC3FFF: the banks, the bank in use, MY KIT */
+        return 0xA0000u + (obj - OBJ_DXBANK0) * 2u * ST_SECTOR + copy * ST_SECTOR;
     return 0x97000u + (obj - OBJ_PROJECT0) * 2u * ST_SECTOR + copy * ST_SECTOR;
 }
 

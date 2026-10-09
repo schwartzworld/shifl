@@ -109,9 +109,6 @@ static uint32_t kb_map(const track_t *t, uint32_t k)
     int32_t n = 53 + (int32_t)k;
     if (is_drum(t))
         return LANE_NOTE[lane_of_key(k)];
-    if (ENGINES[t->eng_req % NENGINES] == &ENG_SAMPLE && drum_set() >= 0 &&   /* (the engine it switches to) */
-        (uint32_t)t->p[P_E0] % SMP_NSETS == (uint32_t)drum_set())   /* GM KIT: lowest key = kick (C2), no scale */
-        return (uint32_t)clamp(36 + 12 * song.octave + (int32_t)k, 0, 127);
 #if FELUCCA_SLICE
     if (ENGINES[t->eng_req % NENGINES] == &ENG_SLICE)   /* SLICE: lowest key = slice 0 (C4 + ROOT), no scale */
         return (uint32_t)clamp(SLC_BASE + t->p[P_ROOT] + 12 * song.octave + (int32_t)k, 0, 127);
@@ -1205,6 +1202,7 @@ static void key_down(uint32_t k)
         int32_t fx = punch_key(k);
         kb_kind[k] = KS_FX;
         if (fx >= 0 && fx < (int32_t)PUNCH_NFX) {
+            punch.latch = (punch.latch == (int8_t)fx) ? (int8_t)-1 : (int8_t)fx;  /* tap to latch; tap same to unlatch */
             punch.req = (int8_t)fx;
             punch.keybit = 1u << k;
         }
@@ -2165,15 +2163,17 @@ static uint32_t mclk_adv(uint32_t n)               /* units to advance this bloc
 }
 
 static void midi_cc(uint32_t ch, uint32_t cc, uint32_t val) {
-    if (cc >= 102u && cc <= 117u) {
+    if (cc >= 102u && cc <= 133u) {
         int idx = (int)cc - 102;
-        if (val > 0u) {
-            punch.req     = (int8_t)idx;
-            punch.cc_hold = 1u;
-        } else {
-            if (punch.req == idx) {
-                punch.cc_hold = 0u;
-                punch.req     = -1;
+        if (idx < (int)PUNCH_NFX) {
+            if (val > 0u) {
+                punch.req     = (int8_t)idx;
+                punch.cc_hold = 1u;
+            } else {
+                if (punch.req == idx) {
+                    punch.cc_hold = 0u;
+                    punch.req     = -1;
+                }
             }
         }
         return;

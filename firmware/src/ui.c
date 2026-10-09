@@ -301,6 +301,8 @@ static void apply_preset_to(track_t *t, uint32_t pi)
         }
         preset_extras(t->p, pr);                     /* glide, pitch / LFO modulation, voice mode */
     }
+    if ((uint32_t)(t->eng_req % NENGINES) == ENGI_CZ)
+        cz_factory_loaded(t);
 }
 
 /* the engine's defaults and its first preset. With the audio IRQ off: the ISR sees the old engine with
@@ -346,26 +348,58 @@ static void select_engine(uint32_t e)
 enum { BK_BASS, BK_KEYS, BK_ORGAN, BK_PAD, BK_LEAD, BK_PLUCK, BK_STAB, BK_FX };
 static const char *const BANK_KIND[] = {"BASS", "KEYS", "ORGN", "PAD", "LEAD", "PLCK", "STAB", "FX"};
 static const struct { uint8_t kind, e; const char *name; } BANK[] = {
-    {BK_BASS, 0, "808 BOOM"}, {BK_BASS, 0, "808 DIRTY"}, {BK_BASS, 0, "808 SLIDE"}, {BK_BASS, 0, "SUB BASS"},
-    {BK_BASS, 0, "PLUGG BASS"}, {BK_BASS, 0, "REESE"}, {BK_BASS, 0, "WOBBLE"}, {BK_BASS, 0, "ACID 303"},
-    {BK_BASS, 1, "FM BASS"}, {BK_BASS, 2, "CZ BASS"}, {BK_BASS, 6, "FAT BASS"}, {BK_BASS, 0, "FUNK BASS"},
-    {BK_BASS, 5, "WOW BASS"}, {BK_BASS, 3, "GB BASS"}, {BK_BASS, 4, "UP BASS"}, {BK_BASS, 4, "DEEP BASS"},
-    {BK_KEYS, 1, "RHODES"}, {BK_KEYS, 1, "DX RHODES"}, {BK_KEYS, 1, "WURLI"}, {BK_KEYS, 1, "M1 PIANO"},
-    {BK_KEYS, 1, "AFRO KEYS"}, {BK_KEYS, 4, "GRAND PNO"}, {BK_KEYS, 4, "DUSTY PNO"}, {BK_KEYS, 4, "LOFI KEYS"}, {BK_KEYS, 2, "SOFT KEYS"},
-    {BK_KEYS, 1, "CLAV"},
-    {BK_ORGAN, 7, "SOUL ORGAN"}, {BK_ORGAN, 7, "GOSPEL"}, {BK_ORGAN, 7, "JAZZ ORGAN"}, {BK_ORGAN, 7, "DIRTY B3"},
-    {BK_ORGAN, 7, "HOUSE ORGN"},
-    {BK_PAD, 0, "WARM PAD"}, {BK_PAD, 6, "SAW PAD"}, {BK_PAD, 1, "GLASS PAD"}, {BK_PAD, 0, "DARK STR"},
-    {BK_PAD, 2, "CZ STRING"}, {BK_PAD, 0, "ATMOS PAD"}, {BK_PAD, 8, "LOFI CLOUD"}, {BK_PAD, 8, "VIBE HAZE"},
-    {BK_PAD, 5, "CHOIR AAH"}, {BK_PAD, 5, "SOUL OOH"},
-    {BK_LEAD, 0, "SUPERSAW"}, {BK_LEAD, 0, "G-FUNK LD"}, {BK_LEAD, 6, "SYNC LEAD"}, {BK_LEAD, 6, "HOOVER"},
-    {BK_LEAD, 5, "TALKBOX"}, {BK_LEAD, 3, "GAME LEAD"}, {BK_LEAD, 4, "LOFI FLUTE"}, {BK_LEAD, 8, "FLUTE DUST"},
-    {BK_PLUCK, 0, "TRAP PLUCK"}, {BK_PLUCK, 2, "RESO PLUCK"}, {BK_PLUCK, 1, "PLUGG BELL"}, {BK_PLUCK, 1, "TRAP BELL"},
-    {BK_PLUCK, 1, "MUSIC BOX"}, {BK_PLUCK, 1, "KALIMBA"}, {BK_PLUCK, 1, "MARIMBA"}, {BK_PLUCK, 4, "VIBES"},
-    {BK_PLUCK, 3, "8BIT ARP"},
-    {BK_STAB, 6, "MIN STAB"}, {BK_STAB, 6, "MIN7 STAB"}, {BK_STAB, 6, "RAVE STAB"}, {BK_STAB, 6, "DUB CHORD"},
-    {BK_STAB, 0, "SYN BRASS"}, {BK_STAB, 2, "CZ BRASS"}, {BK_STAB, 4, "HORN STAB"}, {BK_STAB, 4, "STRING STB"},
-    {BK_FX, 4, "SCRATCH"}, {BK_FX, 4, "GM KIT"},
+    /* BASS */
+    {BK_BASS, 0, "FM BASS"}, {BK_BASS, 0, "SLAP BASS"}, {BK_BASS, 0, "SUB BASS"},
+    {BK_BASS, 0, "DEEP SUB"}, {BK_BASS, 0, "808 SUB"}, {BK_BASS, 0, "REESE"},
+    {BK_BASS, 1, "WAVE BASS"},
+    {BK_BASS, 2, "WOW BASS"},
+    {BK_BASS, 3, "SLAP BASS"}, {BK_BASS, 3, "SYNTH.BASS"},
+    {BK_BASS, 3, "ELEC.BASS 1"}, {BK_BASS, 3, "ELEC.BASS 2"},
+    /* KEYS */
+    {BK_KEYS, 0, "EPIANO 1"}, {BK_KEYS, 0, "EPIANO 2"}, {BK_KEYS, 0, "CLAV"},
+    {BK_KEYS, 1, "ARP 8BIT"},
+    {BK_KEYS, 3, "PIANO 1"}, {BK_KEYS, 3, "PIANO 2"}, {BK_KEYS, 3, "PIANO 3"},
+    {BK_KEYS, 3, "ELEC.PIANO"}, {BK_KEYS, 3, "HONKY-TONK"},
+    {BK_KEYS, 3, "FUNKY CLAV 1"}, {BK_KEYS, 3, "FUNKY CLAV 2"}, {BK_KEYS, 3, "HARPSICHORD"},
+    /* ORGAN */
+    {BK_ORGAN, 0, "ORGAN"},
+    {BK_ORGAN, 3, "JAZZ ORGAN 1"}, {BK_ORGAN, 3, "JAZZ ORGAN 2"},
+    {BK_ORGAN, 3, "PIPE ORGAN 1"}, {BK_ORGAN, 3, "PIPE ORGAN 2"},
+    {BK_ORGAN, 3, "ACCORDION"},
+    /* PAD */
+    {BK_PAD, 0, "GLASS PAD"}, {BK_PAD, 0, "STRINGS"},
+    {BK_PAD, 2, "CHOIR AAH"}, {BK_PAD, 2, "WHISPER"},
+    {BK_PAD, 3, "STRINGS 1"}, {BK_PAD, 3, "STRINGS 2"}, {BK_PAD, 3, "STRINGS 3"}, {BK_PAD, 3, "STRINGS 4"},
+    {BK_PAD, 3, "ORCHESTRA"}, {BK_PAD, 3, "SYN STRINGS"}, {BK_PAD, 3, "FAT ENSEMBLE"},
+    {BK_PAD, 3, "CELLO"},
+    {BK_PAD, 3, "VOICE 1"}, {BK_PAD, 3, "VOICE 2"}, {BK_PAD, 3, "VOICE 3"},
+    {BK_PAD, 3, "SWEEP 1"}, {BK_PAD, 3, "SWEEP 2"},
+    {BK_PAD, 3, "JET ROAR"}, {BK_PAD, 3, "TYPHOON"},
+    /* LEAD */
+    {BK_LEAD, 0, "SAW LEAD"}, {BK_LEAD, 0, "FLUTE"},
+    {BK_LEAD, 1, "PULSE LD"}, {BK_LEAD, 1, "WAVE LEAD"}, {BK_LEAD, 1, "STEP LEAD"},
+    {BK_LEAD, 2, "VOX LEAD"},
+    {BK_LEAD, 3, "SYNTH.LEAD 1"}, {BK_LEAD, 3, "SYNTH.LEAD 2"},
+    {BK_LEAD, 3, "SYNTH.LEAD 3"}, {BK_LEAD, 3, "SYNTH.LEAD 4"},
+    {BK_LEAD, 3, "FLUTE"}, {BK_LEAD, 3, "WHISTLE"},
+    {BK_LEAD, 3, "HARMONICA"}, {BK_LEAD, 3, "RECORDER"},
+    /* PLUCK */
+    {BK_PLUCK, 0, "PLUCK"}, {BK_PLUCK, 0, "BELLS"}, {BK_PLUCK, 0, "MARIMBA"}, {BK_PLUCK, 0, "KOTO"},
+    {BK_PLUCK, 3, "ACO.GUITAR"}, {BK_PLUCK, 3, "JAZZ GUITAR"}, {BK_PLUCK, 3, "ELEC.GUITAR"},
+    {BK_PLUCK, 3, "HARP"}, {BK_PLUCK, 3, "KOTO"}, {BK_PLUCK, 3, "SITAR"},
+    {BK_PLUCK, 3, "MUSIC BOX"}, {BK_PLUCK, 3, "VIBRAPHONE"},
+    {BK_PLUCK, 3, "XYLOPHONE"}, {BK_PLUCK, 3, "MARIMBA"}, {BK_PLUCK, 3, "MALLET LOG"},
+    {BK_PLUCK, 3, "BELLS"}, {BK_PLUCK, 3, "STEEL DRUM"},
+    /* STAB */
+    {BK_STAB, 0, "BRASS"},
+    {BK_STAB, 3, "BRASS 1"}, {BK_STAB, 3, "BRASS 2"}, {BK_STAB, 3, "BRASS 3"}, {BK_STAB, 3, "BRASS 4"},
+    {BK_STAB, 3, "SAXOPHONE"},
+    /* FX */
+    {BK_FX, 0, "INIT VOICE"},
+    {BK_FX, 3, "AFRO PERC"}, {BK_FX, 3, "METALLIC"},
+    {BK_FX, 3, "SYN DRUMS 1"}, {BK_FX, 3, "SYN DRUMS 2"}, {BK_FX, 3, "CONGA"},
+    {BK_FX, 3, "MOTORCYCLE"},
+    {BK_FX, 3, "INIT TONE"},
 };
 #define NBANK (sizeof BANK / sizeof BANK[0])
 static uint8_t bank_pi[NBANK];                       /* the preset index of each entry in its engine */
@@ -388,7 +422,7 @@ static uint32_t preset_pos(uint32_t *total)          /* list index of the select
     if (!bank_ready)
         bank_resolve();
     for (i = 0; i < NBANK; i++)
-        if (BANK[i].e == TSEL->eng_req && bank_pi[i] == TSEL->preset)
+        if (BANK[i].e % NENGINES == TSEL->eng_req && bank_pi[i] == TSEL->preset)
             cur = i;
     if (user_of(TSEL) < UP_SLOTS)
         cur = NBANK + up_rank(user_of(TSEL));
@@ -406,7 +440,7 @@ static uint32_t preset_at(uint32_t n, uint32_t *k)
         return NENGINES;
     }
     *k = bank_pi[n] == 0xFF ? 0u : bank_pi[n];
-    return BANK[n].e;
+    return BANK[n].e % NENGINES;
 }
 static const char *preset_kind(uint32_t n) { return n < NBANK ? BANK_KIND[BANK[n].kind] : "USER"; }
 
@@ -440,7 +474,7 @@ static const param_desc_t *home_param(uint32_t k, int16_t **vp)
         *vp = &TSEL->p[id];
         return &TP[id];
     }
-    id = ENGINES[TSEL->eng_req % NENGINES]->macro[k & 3u];
+    id = ENGINES[TSEL->eng_req % NENGINES]->knob[k & 3u];
     *vp = &TSEL->p[id];
     return track_desc(TSEL, id);
 }

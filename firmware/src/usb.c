@@ -102,6 +102,7 @@ static struct {
     uint8_t sx_len, sx_on;
     volatile uint8_t uboot_req;
     volatile uint8_t ota_req;    /* F0 22 24 35 7F F7: M-UPGRADE upgrade command (FELUCCA_OTA) */
+    volatile uint8_t dx_bank_rx; /* a DX7 32-voice bulk dump was received and loaded into dx_user */
     uint8_t rx_pend;             /* EP1 OUT packet seen, not yet taken (the MIDI ring was too full) */
     uint32_t rx_held, rx_bad;    /* packets held back (NAK) for room, malformed events ignored */
 } usb;
@@ -564,12 +565,65 @@ stall:
     sie_wr(S_CSR0, 0x60);
 }
 
-/* SysEx assembly: only short commands matter here */
+/* Streaming DX7 32-voice bulk dump receiver (F0 43 0ch 09 20 00 [4096] chk F7 = 4104 bytes).
+ * Pipes data to dx_bank_begin/write/end in 64-byte chunks — no large RAM buffer needed.
+ * Not compiled into the update loader (which has no engine layer). */
+#ifndef FELUCCA_LOADER
+static struct {
+    uint32_t pos;           /* 0 = idle; 1-5 = header; 6-4101 = data; 4102 = checksum; 4103 = await F7 */
+    uint8_t  buf[64];
+    uint32_t bn, off;
+    uint8_t  chk_rx;
+} dx_sx;
+
+static void dx_sx_reset(void) { dx_sx.pos = 0; dx_sx.bn = 0; dx_sx.off = 0; }
+
+static void dx_sx_byte(uint8_t b)
+{
+    /* header bytes 1-5: 43, 0ch (upper nibble 0), 09, 20, 00 */
+    static const uint8_t DX_HDR[6] = {0xF0, 0x43, 0x00, 0x09, 0x20, 0x00};
+    if (b == 0xF0) { dx_sx_reset(); dx_sx.pos = 1; return; }
+    if (!dx_sx.pos) return;
+    if (b == 0xF7) {
+        if (dx_sx.pos == 4103u) {
+            if (dx_sx.bn) { dx_bank_write(dx_sx.off, dx_sx.buf, dx_sx.bn); dx_sx.bn = 0; }
+            if (dx_bank_end(dx_sx.chk_rx) == 0)
+                usb.dx_bank_rx = 1;
+        } else if (dx_sx.pos > 5u) {
+            dx_bank_clear();            /* partial dump: discard */
+        }
+        dx_sx_reset();
+        return;
+    }
+    if (dx_sx.pos < 6u) {
+        int ok = (dx_sx.pos == 2u) ? ((b & 0xF0u) == 0x00u) : (b == DX_HDR[dx_sx.pos]);
+        if (!ok) { dx_sx_reset(); return; }
+        if (dx_sx.pos == 5u) dx_bank_begin();
+        dx_sx.pos++;
+    } else if (dx_sx.pos < 4102u) {
+        dx_sx.buf[dx_sx.bn++] = b;
+        if (dx_sx.bn == 64u) {
+            dx_bank_write(dx_sx.off, dx_sx.buf, 64u);
+            dx_sx.off += 64u;
+            dx_sx.bn = 0;
+        }
+        dx_sx.pos++;
+    } else if (dx_sx.pos == 4102u) {
+        dx_sx.chk_rx = b;
+        dx_sx.pos++;
+    }
+}
+#endif /* FELUCCA_LOADER */
+
+/* SysEx assembly: short commands and DX7 bank dumps */
 static void sysex_byte(uint8_t b)
 {
     static const uint8_t UBOOT_KEY[6] = {0xF0, 0x22, 0x24, 0x35, 0x7D, 0xF7};
     if (b >= 0xF8u)
         return;                                        /* realtime may occur anywhere in SysEx */
+#ifndef FELUCCA_LOADER
+    dx_sx_byte(b);
+#endif
     if ((b & 0x80u) && b != 0xF0u && b != 0xF7u) {
         usb.sx_on = 0;
 #if FELUCCA_OTA

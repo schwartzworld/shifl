@@ -1238,8 +1238,8 @@ function b64dec(s) {
   return out.subarray(0, o);
 }
 /* object ids (firmware editor.c ED_BK_IDS): 0 the working project, 1 the settings, 2..5 projects A..D,
-   6..7 the user preset banks, 32..34 the sample slots USR1..3 */
-const BK = { FORMAT: "shifl-backup", VERSION: 1, SAMPLES: [32, 33, 34], RESTORE: [6, 7, 2, 3, 4, 5, 0, 1] };
+   6..7 the user preset banks, 32..35 the sample slots USR1..4 */
+const BK = { FORMAT: "shifl-backup", VERSION: 1, SAMPLES: [32, 33, 34, 35], RESTORE: [6, 7, 2, 3, 4, 5, 0, 1] };
 class BackupError extends Error { constructor(code, msg) { super(msg); this.code = code; } }
 /* read everything; progress(done, total bytes) */
 async function backupCapture(rq, info, progress = () => {}) {
@@ -1535,7 +1535,7 @@ function makeMockDevice(opt = {}) {
     tracks: [0, 1, 2, 3].map(newTrack), sel: 0, rec: 0, solo: 0,
     g: GP.map((d) => d.def),
     slots: [null, null, null, null],
-    smp: [0, 1, 2].map(() => ({ flash: new Uint8Array(SMP.SLOT_SIZE).fill(0xFF), zones: 0, name: "", len: 0, next: SMP.DATA_OFF })),
+    smp: [0, 1, 2, 3].map(() => ({ flash: new Uint8Array(SMP.SLOT_SIZE).fill(0xFF), zones: 0, name: "", len: 0, next: SMP.DATA_OFF })),
     bank: new Array(opt.slots || 32).fill(null),     /* user presets: {engine, name, p, pattern} */
     settings: Uint8Array.from({ length: 88 }, (_, i) => (i * 37 + 5) & 0xFF),   /* v6: the settings object (opaque here) */
     bkSnap: null, bkPut: null,
@@ -1842,7 +1842,7 @@ function makeMockDevice(opt = {}) {
         const enc = (o) => Uint8Array.from(Array.from(JSON.stringify(o), (c) => c.charCodeAt(0) & 0x7F));
         const bankOf = (h) => { const x = st.bank.slice(h * 16, h * 16 + 16); return x.some(Boolean) ? enc(x) : new Uint8Array(0); };
         st.bkSnap = new Map([[0, enc(project())], [1, st.settings.slice()], ...[0, 1, 2, 3].map((k) => [2 + k, st.slots[k] ? enc(st.slots[k]) : new Uint8Array(0)]),
-          [6, bankOf(0)], [7, bankOf(1)], ...[0, 1, 2].map((k) => [32 + k, st.smp[k].zones ? st.smp[k].flash.slice(0, SMP.DATA_OFF + st.smp[k].len) : new Uint8Array(0)])]);
+          [6, bankOf(0)], [7, bankOf(1)], ...st.smp.map((u, k) => [32 + k, u.zones ? u.flash.slice(0, SMP.DATA_OFF + u.len) : new Uint8Array(0)])]);
         st.bkPut = null;
         b(0); b(st.bkSnap.size);
         for (const [id, d] of st.bkSnap) { b(id); out.push(...u35enc(d.length), ...u35enc(crc32(d))); }
@@ -1884,7 +1884,7 @@ function makeMockDevice(opt = {}) {
         break;
       }
       case CMD.SMP_INFO:
-        b(3); b(SMP.SLOT_SIZE / 1024);
+        b(st.smp.length); b(SMP.SLOT_SIZE / 1024);
         st.smp.forEach((u) => { b(u.zones); s(u.zones ? u.name : ""); b(u.zones ? Math.ceil(u.len / 1024) : 0); });
         break;
       default:
@@ -2972,7 +2972,7 @@ $("clearseq").addEventListener("click", async () => {
 });
 
 /* ---------------------------------------------------------- samples --- */
-const smpDraft = [0, 1, 2].map(() => ({ name: "", files: [] }));
+const smpDraft = [0, 1, 2, 3].map(() => ({ name: "", files: [] }));
 let smpBusy = false;
 const SMP_RC = { 1: "size", 2: "header", 3: "data CRC", 4: "flash", 5: "zones" };
 const kib = (n) => (n / 1024).toFixed(1);

@@ -485,13 +485,13 @@ static void mix_block(int32_t *out, uint32_t n)
     drums.a0 = TDRUM->att;                              /* the drum track's mute / solo fade */
     drums.a1 = 32767 - gain_next(TDRUM);
     {
-        static int32_t dl[CTL], dr[CTL], dv[CTL];
+        static int32_t dl[CTL], dr[CTL], dv[CTL], dd[CTL];
         tsvf_t fc;
         djf_t *f = &tflt[TRK_DRUM];
         if (n <= CTL && djf_block(f, TDRUM->p[P_TFLT], &fc)) {   /* the drum track's FILTER: left, right, reverb */
             for (i = 0; i < n; i++)
-                dl[i] = dr[i] = dv[i] = 0;
-            slicer_drums(dl, dr, dv, n);
+                dl[i] = dr[i] = dv[i] = dd[i] = 0;
+            slicer_drums(dl, dr, dv, dd, n);
             tflt_run(f, &fc, dl, n, 0);
             tflt_run(f, &fc, dr, n, 1);
             tflt_run(f, &fc, dv, n, 2);
@@ -499,9 +499,10 @@ static void mix_block(int32_t *out, uint32_t n)
                 mix_l[i] += dl[i];
                 mix_r[i] += dr[i];
                 send_r[i] += dv[i];
+                send_d[i] += dd[i];
             }
         } else {
-            slicer_drums(mix_l, mix_r, send_r, n);      /* drums_render, through the SLICER when on */
+            slicer_drums(mix_l, mix_r, send_r, send_d, n);      /* drums_render, through the SLICER when on */
         }
     }
     fx_buses(send_c, send_d, send_r, wet_l, wet_r, n);
