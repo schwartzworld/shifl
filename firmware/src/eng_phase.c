@@ -10,7 +10,7 @@ static void cz_init(void) { for (uint32_t k = 0; k < NTRK; k++) cz_patch_init(cz
 /* Eight rate/target points, with explicit sustain/end. Rates are Q24 per control tick. */
 typedef struct { uint32_t rate[8]; int32_t level[8]; uint8_t sustain, end; } cz_env_def_t;
 typedef struct { int32_t level; uint8_t stage, gate; } cz_env_t;
-typedef struct { cz_env_t eg[2][3]; uint32_t vib_phase, vib_ticks, noise, phaser_ph; int32_t phaser_s[4]; } cz_voice_t;
+typedef struct { cz_env_t eg[2][3]; uint32_t vib_phase, vib_ticks, noise, phaser_ph; int32_t phaser_s[8]; } cz_voice_t;
 typedef struct { cz_voice_t v[NPOLY]; } cz_part_t;
 static cz_part_t *cz_part(uint32_t part);              /* engines.c: static array */
 static cz_voice_t *cz_voice(track_t *t, voice_t *v)

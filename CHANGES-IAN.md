@@ -6,6 +6,19 @@ All committed changes by Ian Schwartz, plus current uncommitted work-in-progress
 
 ## Committed Changes
 
+### CZ-1 sound design effects — more drastic (`2026-10-09`)
+
+Fixed all four CZ-1 EDIT 2 effects (P_E4–P_E7) that were barely audible:
+
+- **RING** (P_E4) — carrier was `pd_cos((ph>>20)&2047u)`, which only swept 3% of the cosine range and sat near −1, causing cancellation instead of ring modulation. Fixed to `pd_cos(ph>>15)`, which sweeps the full cosine range at double the oscillator frequency.
+- **FOLD** (P_E5) — gain was capped at ~3× (520 multiplier) which hits the destructive fold zone for typical CZ amplitudes, going quiet rather than folding. Raised to ~6× (1536 multiplier). Added dry/wet blend (was fully wet) and output rescale ×2 after folding to restore perceived level.
+- **BITS** (P_E6) — bit range was 1–15; at low values (1 bit) the effect was inaudible on a ~15-bit signal, and at max (15 bits) the signal was silenced entirely. Changed to range 3–13 for a musically useful span from light quantisation grit to heavy lo-fi.
+- **PHSR** (P_E7) — expanded from 2 allpass stages (1 notch) to 4 stages (2 notches) for a fuller phaser character. LFO speed tripled from 859400→2578200 (≈0.28 Hz → ≈0.85 Hz). `phaser_s` array in `cz_voice_t` expanded from 4 to 8 to hold the new state.
+
+**Bumped to FM-1_940.**
+
+---
+
 ### Drum level and CZ-1 preset cutoff (`2026-10-09`)
 
 **Drums louder** — The global drum level multiplier in `drums_mix` was `G_DRLVL * 200`, putting drums ~2.4 dB below synth parts at their matching default levels. Changed to `* 258` (= Q15 unity at max), which aligns drums with synth parts at their respective default settings (G_DRLVL=100, P_LEVEL=104).
