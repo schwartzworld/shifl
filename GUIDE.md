@@ -329,8 +329,8 @@ All seven layers at a glance:
 | **FX + KNOB 3** | master **DUCK** (sidechain pump from the kick) |
 | **FX + KNOB 4** | **TRK FILT**: the same one-knob filter on the **selected track only** (any track, the drums too) |
 | **FX + OCT−** | toggle between FX page 1 (keys 1–16) and **page 2** (keys 17–32: more effects) |
-| **FX + OCT+** | toggle the FX lock: the layer stays open when you let go (*FX LOCKED* / *FX UNLOCKED*) |
-| **FX + HOME** | same as FX + OCT+: lock the FX layer open (both hands free) |
+| **FX + OCT+** | toggle **latch mode** (*FX LATCH ON* / *FX LATCH OFF*): when on, pressing a key latches the effect (stays after release); press again to unlatch · turning off also clears any active latch |
+| **FX + HOME** | lock the FX layer open (both hands free for keys and knobs) |
 
 Keys pressed while FX is held never play or record notes.
 
@@ -1009,7 +1009,7 @@ On the installer page, open **Return to the official firmware (V15)**: save a ba
 
 | Hold + | Keys | KNOB 1 | KNOB 2 | KNOB 3 | KNOB 4 | Other |
 | --- | --- | --- | --- | --- | --- | --- |
-| **FX** | punch-in effects 1–16 | master FILTER | DUST | DUCK | track FILTER | OCT−: page 2 · OCT+: lock · HOME: lock |
+| **FX** | punch-in effects 1–16 | master FILTER | DUST | DUCK | track FILTER | OCT−: page 2 · OCT+: latch mode · HOME: lock |
 | **EDIT** | erase sound / note | SHIFT | LENGTH ×2 / ½ | TRANSPOSE | — | OCT− undo · OCT+ redo |
 | **ARP** | note repeat | RATE | — | — | — | OCT− / OCT+: ghost / hard (drums) |
 | **SEQ** | steps · black keys 1–4: page | SOUND / NOTE | DIV | SWING | LENGTH | OCT− / OCT+: page |

@@ -44,6 +44,7 @@ static struct {
     int32_t f1l, f2l, f1r, f2r, f3l, f4l, f3r, f4r;   /* filter states */
     int32_t cut;                  /* sweep, 0..127 << 8 */
     int8_t latch;                 /* latched effect index (-1 = none) */
+    uint8_t latch_mode;           /* 1 = latch mode on (FX + OCT+ to toggle) */
     uint8_t page;                 /* 0 = effects 0-15 on keys, 1 = effects 16-31 */
 } punch = {.req = -1, .cur = -1, .song = -1, .latch = -1};
 

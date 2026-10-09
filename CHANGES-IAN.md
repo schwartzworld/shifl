@@ -52,6 +52,12 @@ Separated the two "lock" behaviours that were conflated under one control:
 - FX+OCT− still cycles between FX page 1 and page 2 (unchanged).
 (`ui_input.c`)
 
+**Punch FX: latch requires explicit LATCH MODE; keys are momentary by default** (`2026-10-09`)
+Previously every key press unconditionally set `punch.latch`, so all FX were latched by default — including on a locked screen. Now:
+- **Keys are momentary by default**: hold a key → effect on; release → effect off.
+- **FX + OCT+** toggles **LATCH MODE** (*FX LATCH ON* / *FX LATCH OFF*). When on, pressing a key latches it (stays on after release); pressing the same key unlatches it. Turning latch mode off also clears any active latch.
+(`punch.c`, `seq.c`, `ui_input.c`)
+
 ---
 
 ### Sequencer Step Sizes

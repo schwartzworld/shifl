@@ -692,12 +692,13 @@ static int layers_input(uint32_t note_edges, uint32_t *pressed, uint32_t home)
         }
         if (press & pb) {
             used[held] = 1;
-            if (punch.latch >= 0) {
+            if (punch.latch_mode) {
+                punch.latch_mode = 0;
                 punch.latch = -1;
                 ui_message("FX LATCH OFF");
-            } else if (punch.req >= 0) {
-                punch.latch = punch.req;
-                ui_message("FX LATCHED");
+            } else {
+                punch.latch_mode = 1;
+                ui_message("FX LATCH ON");
             }
         }
     }

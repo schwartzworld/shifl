@@ -110,11 +110,11 @@ Every function button has two lives. **Tap** it (press and let go, touching noth
 
 The tiles are four rows of four, keys 1–4, 5–8, 9–12, 13–16. To find them without looking at the screen, the first key of each row (1, 5, 9, 13) glows dimly while a layer is held, and on the drum track; the keys at full light are what is on.
 
-**Lock a layer:** hold its button and tap **HOME** — the layer stays open when you let the button go, both hands free for the keys and the knobs (*LOCK* on the screen, the button blinks). Any other button lets it go (HOME, the layer's own button, ENV…) and does only that; PLAY, REC and OCT− / OCT+ keep working inside it. On the **FX layer**, **OCT+** also toggles the lock — handy with one hand on the keys.
+**Lock a layer:** hold its button and tap **HOME** — the layer stays open when you let the button go, both hands free for the keys and the knobs (*LOCK* on the screen, the button blinks). Any other button lets it go (HOME, the layer's own button, ENV…) and does only that; PLAY, REC and OCT− / OCT+ keep working inside it.
 
 | Hold | Keys | KNOB 1 · 2 · 3 · 4 | Tap |
 | --- | --- | --- | --- |
-| **FX** — *punch* | a punch-in effect while the key is held · OCT−: page 2 (16 more FX) · OCT+: lock | FILTER · DUST · DUCK · — | FX pages |
+| **FX** — *punch* | a punch-in effect while the key is held · OCT−: page 2 (16 more FX) · OCT+: latch mode (effects stay on after release) | FILTER · DUST · DUCK · — | FX pages |
 | **EDIT** — *erase* | erase that sound / note from the pattern | SHIFT · LENGTH ×2 / ½ · TRANSPOSE · — | EDIT pages (drums: grid / kit) |
 | **ARP** — *roll* | note repeat on the grid | RATE · — · — · — | ARP pages |
 | **SEQ** — *steps* | steps 1–16 of the page | SOUND / NOTE · DIV · SWING · LENGTH | SEQ pages (drums: grid / kit) |

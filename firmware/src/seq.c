@@ -1202,7 +1202,8 @@ static void key_down(uint32_t k)
         int32_t fx = punch_key(k);
         kb_kind[k] = KS_FX;
         if (fx >= 0 && fx < (int32_t)PUNCH_NFX) {
-            punch.latch = (punch.latch == (int8_t)fx) ? (int8_t)-1 : (int8_t)fx;  /* tap to latch; tap same to unlatch */
+            if (punch.latch_mode)
+                punch.latch = (punch.latch == (int8_t)fx) ? (int8_t)-1 : (int8_t)fx;
             punch.req = (int8_t)fx;
             punch.keybit = 1u << k;
         }
