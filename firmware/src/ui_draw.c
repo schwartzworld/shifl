@@ -553,7 +553,7 @@ static void draw_tracks(void)
         if (m < ts.meter[c] - 3)
             m = ts.meter[c] - 3;                     /* falls ~20 dB/s */
         ts.meter[c] = (uint8_t)(m < 0 ? 0 : m);
-        sig = 1u + lvl + ts.meter[c] * 128u + sel * 65536u + (sel && ui.hot_t && ui.hot_col == 1u) * 131072u +
+        sig = 1u + lvl + ts.meter[c] * 128u + sel * 65536u + (sel && ui.hot_t && ui.hot_col == 0u) * 131072u +
               (t->p[P_MUTE] != 0) * 262144u;
         if (ui.force || sig != ts.fader[c]) {
             int32_t fy = (int32_t)(TS_H - 2u) - (int32_t)lvl * (TS_H - 4) / 127;
