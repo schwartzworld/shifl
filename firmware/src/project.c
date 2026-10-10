@@ -24,6 +24,19 @@
 #define PROJ_NG_V3 27u                         /* G_COUNT of formats 1..3 */
 #define PROJ_NP_V2 53u                         /* P_COUNT of formats 1 and 2 (P_E0 was 45) */
 #define PROJ_NG_V2 27u                         /* G_COUNT of formats 1 and 2 */
+#define PROJ_NP_V4OLD 61u                      /* P_COUNT before P_SPICE was added */
+typedef struct {                               /* a track of the pre-spice V4 format, read only */
+    int16_t p[PROJ_NP_V4OLD];
+    uint8_t engine, preset;
+    union { step_t step[NSTEP]; dstep_t dstep[NSTEP]; };
+} proj_trk_v4old_t;
+typedef struct {                               /* pre-spice format 4 (FUN4, P_COUNT=61), read only */
+    uint32_t magic, size;
+    int16_t g[G_COUNT];
+    uint8_t sel, rsv[3];
+    proj_trk_v4old_t t[NTRK];
+    uint32_t sum;
+} project_v4old_t;
 typedef struct {                               /* one track; the drum track ignores engine / preset */
     int16_t p[P_COUNT];
     uint8_t engine, preset;
@@ -137,6 +150,36 @@ static void proj_trk_from_v3(proj_trk_t *d, const proj_trk_v3_t *s, int drum)
     }
 }
 
+/* a pre-spice V4 track -> today's (P_SPICE gets its default 0) */
+static void proj_trk_from_v4old(proj_trk_t *d, const proj_trk_v4old_t *s, int drum)
+{
+    uint32_t k, nc = PROJ_NP_V4OLD - 8u;   /* nc = 53 = old P_E0 */
+    for (k = 0; k < P_E0; k++)
+        d->p[k] = k < nc ? s->p[k] : TP[k].def;
+    for (k = 0; k < 8u; k++)
+        d->p[P_E0 + k] = s->p[nc + k];
+    d->engine = drum ? 0u : s->engine;
+    d->preset = drum ? 0u : s->preset;
+    memcpy(d->step, s->step, sizeof d->step);
+}
+
+static int proj_from_v4old(project_t *q, const project_v4old_t *v4o, int n)
+{
+    uint32_t i;
+    if (n != (int)sizeof *v4o || v4o->magic != PROJ_MAGIC ||
+        v4o->size != sizeof *v4o || v4o->sum != proj_hash(v4o, sizeof *v4o - 4u))
+        return 0;
+    memset(q, 0, sizeof *q);
+    q->magic = PROJ_MAGIC;
+    q->size = sizeof *q;
+    memcpy(q->g, v4o->g, sizeof q->g);
+    q->sel = v4o->sel;
+    for (i = 0; i < NTRK; i++)
+        proj_trk_from_v4old(&q->t[i], &v4o->t[i], i == TRK_DRUM);
+    q->sum = proj_sum(q);
+    return 1;
+}
+
 /* a track of formats 1 and 2 -> format 3 (mapped by count, see the top) */
 static void proj_trk_v2_to_v3(proj_trk_v3_t *d, const proj_trk_v2_t *s, int drum)
 {
@@ -225,7 +268,8 @@ static int proj_import(project_t *q, const void *b, int n)
         memcpy(q, b, sizeof *q);
         return 1;
     }
-    return proj_from_v3(q, (const project_v3_t *)b, n) || proj_from_v2(q, (const project_v2_t *)b, n) ||
+    return proj_from_v4old(q, (const project_v4old_t *)b, n) ||
+           proj_from_v3(q, (const project_v3_t *)b, n) || proj_from_v2(q, (const project_v2_t *)b, n) ||
            proj_from_v1(q, (const project_v1_t *)b, n);
 }
 
@@ -296,6 +340,7 @@ static union {
     project_v3_t v3;
     project_v2_t v2;
     project_v1_t v1;
+    project_v4old_t v4old;
 } proj_tmp;
 static void proj_fetch(uint32_t slot)
 {

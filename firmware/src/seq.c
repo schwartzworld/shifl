@@ -40,6 +40,82 @@ static const uint16_t SCALE_MASK[] = {
 #define NSCALES (sizeof SCALE_MASK / sizeof SCALE_MASK[0])
 #define SEQ_NONE 0xFFFFFFFFu
 
+/* -------------------------------------------------------- spice & dice ---
+ * Non-destructive randomisation overlay for the arp and step sequencer.
+ * Each modification fires when t->p[P_SPICE] >= thresh; thresh=0xFF = inactive. */
+#define DICE_LEN 16u
+typedef struct {
+    uint16_t rest_mask;         /* bit per step: this step can be a rest */
+    uint8_t  oct[DICE_LEN];    /* per step: 0=no change, 1=+1 oct, 2=-1 oct */
+    uint8_t  vel[DICE_LEN];    /* per step: 0xFF=no change, else LV_* */
+    uint8_t  thresh[DICE_LEN]; /* 0xFF=inactive; fires when P_SPICE >= thresh */
+} dice_t;
+static dice_t trk_dice[NTRK];
+
+static void dice_clear_track(uint32_t ti)
+{
+    uint32_t k;
+    dice_t *d = &trk_dice[ti % NTRK];
+    d->rest_mask = 0;
+    for (k = 0; k < DICE_LEN; k++) {
+        d->oct[k] = 0;
+        d->vel[k] = 0xFF;
+        d->thresh[k] = 0xFF;
+    }
+}
+
+static void dice_roll(uint32_t ti)
+{
+    uint32_t k;
+    dice_t *d = &trk_dice[ti % NTRK];
+    d->rest_mask = 0;
+    for (k = 0; k < DICE_LEN; k++) {
+        uint32_t r = rng();
+        d->thresh[k] = (uint8_t)((r >> 8) & 127u);
+        switch (r & 3u) {
+        case 0:
+            d->rest_mask |= (uint16_t)(1u << k);
+            d->oct[k] = 0;
+            d->vel[k] = 0xFF;
+            break;
+        case 1:
+            d->oct[k] = (uint8_t)(1u + ((r >> 4) & 1u));
+            d->vel[k] = 0xFF;
+            break;
+        default:
+            d->oct[k] = 0;
+            d->vel[k] = (uint8_t)((r & 2u) ? LV_GHOST : LV_HARD);
+            break;
+        }
+    }
+}
+
+/* pure: the note arp_next would play on step step_i (no side effects on t) */
+static uint32_t arp_note_of(const track_t *t, uint32_t step_i)
+{
+    uint32_t cnt, list[64], len = 0, i, j, o;
+    for (i = 0; i < t->nheld; i++)
+        list[i] = t->held[i];
+    cnt = t->nheld;
+    if (!t->p[P_AORDER])
+        for (i = 1; i < cnt; i++)
+            for (j = i; j > 0 && list[j - 1u] > list[j]; j--) {
+                uint32_t x = list[j]; list[j] = list[j - 1u]; list[j - 1u] = x;
+            }
+    for (o = 0; o < (uint32_t)t->p[P_AOCT]; o++)
+        for (i = 0; i < cnt && len < 64u; i++)
+            list[len++] = (uint32_t)clamp((int32_t)list[i] + 12 * (int32_t)o, 0, 127);
+    if (!len) return 60u;
+    switch (t->p[P_AMODE]) {
+    case 2:  j = len - 1u - step_i % len; break;
+    case 3: { uint32_t cyc = len > 1u ? 2u * len - 2u : 1u, k = step_i % cyc;
+              j = k < len ? k : cyc - k; break; }
+    case 4:  j = rng() % len; break;
+    default: j = step_i % len; break;
+    }
+    return list[j];
+}
+
 #define KB_SILENT 255u
 static uint32_t kb_prev;
 /* per key: what its press started, so its release ends the same (whatever the layer or track is now) */
@@ -364,6 +440,41 @@ static void undo_mark(const track_t *t, uint32_t sess)
 }
 #define UNDO_REC(t) (((t)->pass << 2) | 1u)      /* a recording pass of track t */
 static uint32_t undo_erase_sess;
+
+/* bake the arp (with current spice/dice) into the sequencer pattern; turns arp off */
+static void arp_to_seq(track_t *t)
+{
+    uint32_t len = trk_len(t), i, ti = trk_index(t);
+    const dice_t *dc = &trk_dice[ti % NTRK];
+    if (is_drum(t) || !t->nheld || !t->p[P_AMODE])
+        return;
+    undo_mark(t, (undo_sess += 4u) | 3u);
+    fm1_irq_off();
+    for (i = 0; i < len; i++) {
+        step_t *s = &t->step[i];
+        uint32_t n = arp_note_of(t, i), vel = 100, di = i % DICE_LEN, muted = 0;
+        memset(s, 0, sizeof *s);
+        if (dc->thresh[di] != 0xFF && (uint32_t)t->p[P_SPICE] >= dc->thresh[di]) {
+            muted = (dc->rest_mask >> di) & 1u;
+            if (!muted) {
+                if (dc->oct[di] == 1u) n = (uint32_t)clamp((int32_t)n + 12, 0, 127);
+                else if (dc->oct[di] == 2u) n = (uint32_t)clamp((int32_t)n - 12, 0, 127);
+                if (dc->vel[di] != 0xFF) vel = lvl_vel(dc->vel[di], 100);
+            }
+        }
+        if (!muted) {
+            s->note[0] = (uint8_t)n;
+            s->n = 1;
+            s->time = ST_NOTE;
+            s->vel = (uint8_t)vel;
+        } else {
+            s->time = ST_REST;
+        }
+    }
+    t->p[P_AMODE] = 0;
+    t->seq_active = 1;
+    fm1_irq_on();
+}
 
 /* ------------------------------------------------------- recording --- */
 /* key to ear, in samples: the key's debounce (~3 ms) and the audio out buffer (HALF_FRAMES to
@@ -928,13 +1039,27 @@ static void arp_tick(track_t *t, uint32_t adv)
     }
     t->arp_note = 0;
     if ((uint32_t)(rng() & 127u) <= (uint32_t)t->p[P_APROB]) {
-        uint32_t n = arp_next(t);
-        t->arp_note = (uint8_t)n;
-        t->arp_off = slen * (uint32_t)t->p[P_AGATE] / 128u;
-        trk_note_on(t, n, 100);
-        seq_out_on(t, n, 100);
-        if (((song.rec >> trk_index(t)) & 1u) && song.playing)
-            rec_note(t, n, 100, 0, 0);
+        uint32_t n = arp_next(t), vel = 100, muted = 0;
+        {
+            uint32_t di = t->arp_idx % DICE_LEN;
+            const dice_t *dc = &trk_dice[trk_index(t) % NTRK];
+            if (dc->thresh[di] != 0xFF && (uint32_t)t->p[P_SPICE] >= dc->thresh[di]) {
+                muted = (dc->rest_mask >> di) & 1u;
+                if (!muted) {
+                    if (dc->oct[di] == 1u) n = (uint32_t)clamp((int32_t)n + 12, 0, 127);
+                    else if (dc->oct[di] == 2u) n = (uint32_t)clamp((int32_t)n - 12, 0, 127);
+                    if (dc->vel[di] != 0xFF) vel = lvl_vel(dc->vel[di], 100);
+                }
+            }
+        }
+        if (!muted) {
+            t->arp_note = (uint8_t)n;
+            t->arp_off = slen * (uint32_t)t->p[P_AGATE] / 128u;
+            trk_note_on(t, n, vel);
+            seq_out_on(t, n, vel);
+            if (((song.rec >> trk_index(t)) & 1u) && song.playing)
+                rec_note(t, n, vel, 0, 0);
+        }
     }
 }
 
@@ -1675,6 +1800,8 @@ static void seq_step(track_t *t, const step_t *s, uint32_t slen, uint32_t skip)
     uint32_t next_tie = t->step[(t->seq_idx + 1u) % trk_len(t)].time == ST_TIE;
     uint32_t step_time = s->time, do_accent, do_slide;
     uint32_t acc_t, sld_t;
+    int32_t dice_oct_delta = 0;
+    uint32_t dice_vel_ovr = 0xFF;
 
     /* resolve time probability */
     if (step_time >= ST_P75) {
@@ -1687,6 +1814,20 @@ static void seq_step(track_t *t, const step_t *s, uint32_t slen, uint32_t skip)
     do_accent = flags_is_accent(s->flags) && (acc_t >= 128u || (rng() & 127u) < acc_t);
     do_slide  = flags_is_slide(s->flags)  && (sld_t >= 128u || (rng() & 127u) < sld_t);
     t->seq_accent = (uint8_t)do_accent;
+
+    /* spice & dice: synth parts only, applies rest/oct/vel modifications */
+    if (!is_drum(t) && t->p[P_SPICE]) {
+        uint32_t di = (uint32_t)t->seq_idx % DICE_LEN;
+        const dice_t *dc = &trk_dice[trk_index(t) % NTRK];
+        if (dc->thresh[di] != 0xFF && (uint32_t)t->p[P_SPICE] >= dc->thresh[di]) {
+            if ((dc->rest_mask >> di) & 1u) {
+                seq_release(t);
+                return;
+            }
+            dice_oct_delta = dc->oct[di] == 1u ? 12 : dc->oct[di] == 2u ? -12 : 0;
+            dice_vel_ovr = dc->vel[di];
+        }
+    }
 
     if (step_time == ST_TIE) {
         if (t->seq_n) {
@@ -1715,9 +1856,12 @@ static void seq_step(track_t *t, const step_t *s, uint32_t slen, uint32_t skip)
     for (i = 0; i < s->n; i++)
         if (!((skip >> i) & 1u)) {
             uint32_t tn = seq_note_trans(t, s->note[i]);
-            trk_note_on(t, tn, step_vel(s, i, do_accent));
+            uint32_t sv = step_vel(s, i, do_accent);
+            if (dice_oct_delta) tn = (uint32_t)clamp((int32_t)tn + dice_oct_delta, 0, 127);
+            if (dice_vel_ovr != 0xFF) sv = lvl_vel(dice_vel_ovr, sv);
+            trk_note_on(t, tn, sv);
             if (!slide_in || !(mo_set[trk_index(t) % NTRK][tn >> 5] & (1u << (tn & 31u))))
-                seq_out_on(t, tn, step_vel(s, i, do_accent));
+                seq_out_on(t, tn, sv);
         }
     if (slide_in)                                   /* release what is not held over */
         for (i = 0; i < t->seq_n; i++) {
@@ -1730,8 +1874,11 @@ static void seq_step(track_t *t, const step_t *s, uint32_t slen, uint32_t skip)
         }
     t->seq_n = 0;
     for (i = 0; i < s->n; i++)
-        if (!((skip >> i) & 1u))
-            t->seq_notes[t->seq_n++] = (uint8_t)seq_note_trans(t, s->note[i]);
+        if (!((skip >> i) & 1u)) {
+            uint32_t tn2 = seq_note_trans(t, s->note[i]);
+            if (dice_oct_delta) tn2 = (uint32_t)clamp((int32_t)tn2 + dice_oct_delta, 0, 127);
+            t->seq_notes[t->seq_n++] = (uint8_t)tn2;
+        }
     t->seq_off = gate;
     t->seq_hold = (uint8_t)(!s->rat && (do_slide || next_tie));   /* next step a TIE: keep the notes to it */
 }

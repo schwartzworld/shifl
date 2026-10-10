@@ -403,7 +403,10 @@ static void graph_browse(void)
         if (e == NENGINES) {                             /* user preset: "U07" and its name */
             up_slot_label(tag, k);
             up_name(k, nm);
-        } else {                                         /* its kind: BASS, KEYS, PAD... */
+        } else if (e > NENGINES) {                       /* RAND preset: k is the engine index */
+            str_cpy(tag, preset_kind(n), sizeof tag);
+            str_cpy(nm, BANK[n].name, sizeof nm);
+        } else {                                         /* factory preset */
             str_cpy(tag, preset_kind(n), sizeof tag);
             str_cpy(nm, ENGINES[e]->presets[k].name, sizeof nm);
         }

@@ -89,6 +89,7 @@ static const param_desc_t TP[P_COUNT] = {
     [P_TFLT] = PD("FILT", F_FILT, -64, 63, 0),
     [P_STRUM] = PD("STRUM", F_INT, -60, 60, 0),   /* ms a note: > 0 low to high (down), < 0 high to low */
     [P_VLEAD] = PE("VLEAD", N_ONOFF, 0),
+    [P_SPICE] = PD("SPICE", F_PCT, 0, 127, 0),
 };
 /* a preset's extra parameters (preset_t.x) into p, each clamped to its range */
 static void preset_extras(int16_t *p, const preset_t *pr)

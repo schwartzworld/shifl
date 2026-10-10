@@ -15,31 +15,50 @@ Free and open source (GPL-3.0), based on <a href="https://github.com/hugelton/Fe
 
 SHIFL turns the FM-1 into a six-track groovebox you play live: **five synths and a drum machine** with 16 sounds on the white keys, 116 sounds across five engines — DX7 FM, virtual analogue, Phase Distortion (CZ-1), formant voice and lo-fi chip — three drum kits, your own samples, a song mode you play with your hands — and **USB audio**, a **MIDI keyboard on the jack**, **MIDI CC control**, **MIDI clock**, **lights for playing in the dark** and a **full backup**. House, techno, hip-hop, trap, drum & bass, amapiano, synthwave, lo-fi, ambient, chiptune — it does not pick a style for you. No factory patterns, nothing to load: everything you hear, you play.
 
-> **Status:** 2.4. Still a beta: install at your own risk, and please [report](../../issues) what you find. Your projects, presets, samples and settings are kept when you update, and you can go back at any time (see [Going back](#going-back)).
+> **Status:** 2.5. Still a beta: install at your own risk, and please [report](../../issues) what you find. Your projects, presets, samples and settings are kept when you update, and you can go back at any time (see [Going back](#going-back)).
 
 ## Contents
 
-1. [What's new in 2.4](#whats-new-in-24)
-2. [Screenshots](#screenshots)
-3. [Features](#features)
-4. [Presets](#presets)
-5. [MIDI CC reference](#midi-cc-reference)
-6. [Install](#install)
-7. [Your first beat in 60 seconds](#your-first-beat-in-60-seconds)
-8. [The controls](#the-controls)
-9. [The menu: settings of the FM-1](#the-menu-settings-of-the-fm-1)
-10. [MIDI and USB audio](#midi-and-usb-audio)
-11. [The web editor](#the-web-editor)
-12. [Compatibility](#compatibility)
-13. [Troubleshooting](#troubleshooting)
-14. [Specifications](#specifications)
-15. [Documentation](#documentation)
-16. [Building and tests](#building-and-tests)
-17. [Contributing](#contributing)
-18. [Credits and thanks](#credits-and-thanks)
-19. [Licence](#licence)
+1. [What's new in 2.5](#whats-new-in-25)
+2. [What's new in 2.4](#whats-new-in-24)
+3. [Screenshots](#screenshots)
+4. [Features](#features)
+5. [Presets](#presets)
+6. [MIDI CC reference](#midi-cc-reference)
+7. [Install](#install)
+8. [Your first beat in 60 seconds](#your-first-beat-in-60-seconds)
+9. [The controls](#the-controls)
+10. [The menu: settings of the FM-1](#the-menu-settings-of-the-fm-1)
+11. [MIDI and USB audio](#midi-and-usb-audio)
+12. [The web editor](#the-web-editor)
+13. [Compatibility](#compatibility)
+14. [Troubleshooting](#troubleshooting)
+15. [Specifications](#specifications)
+16. [Documentation](#documentation)
+17. [Building and tests](#building-and-tests)
+18. [Contributing](#contributing)
+19. [Credits and thanks](#credits-and-thanks)
+20. [Licence](#licence)
 
 ---
+
+## What's new in 2.5
+
+| | |
+| --- | --- |
+| **Spice & Dice** | A randomisation overlay for the arpeggiator and step sequencer (inspired by Arturia's Spice & Dice). **Dice** generates a frozen 16-step variation pattern — rests, octave shifts and velocity changes. **Spice** (KNOB 2 in the ARP layer, 0–127) is a per-track blend: at 0 nothing changes; at 127 every variation applies. Roll new dice with **ARP + OCT+**, clear with **ARP + OCT−**. **EDIT + ARP** bakes the current arp (with spice & dice applied) into the step sequencer as a fixed pattern. |
+
+  To see Spice & Dice on device: install the updated firmware from build/felucca.fwsc (or via http://localhost:8766),
+  then:
+  - Hold ARP — the 16 tiles now show dice steps (all --- until rolled), and KNOB 2 shows "spice"
+  - ARP + OCT+ — rolls the dice (tiles light up with +8va, -8va, soft, hard, rest)
+  - ARP + OCT− — clears dice and resets spice to 0
+  - Hold EDIT + press ARP — bakes the current arpeggio (with spice/dice applied) into the sequencer
+
+| **CZ-1 improvements** | Four sound-design effects on EDIT 2 — RING (ring modulator), FOLD (wavefolder), BITS (bit crush), PHSR (phaser) — tuned for a wider, more audible range. All factory presets load with filter fully open (CUT=127) for a transparent default. |
+| **Drum improvements** | Global drum level raised to match synth tracks at their default levels. Drum lane probability per step (`P75` / `P50` / `P25` / ratchet modes). |
+
+What came in 2.0–2.4: see below.
 
 ## What's new in 2.4
 
@@ -85,7 +104,7 @@ Every function button is a **layer**: hold it and the 16 white keys and the four
 | --- | --- | --- |
 | **FX** — punch | 16 punch-in effects on the whole mix (page 1 of 32): loops 1/4–1/32, oct up, stop, slap, echo tails, phone filter, bit crush, alias, gate | FILTER · DUST · DUCK |
 | **EDIT** — erase | erase a sound or a note as the loop plays (stopped: from the whole pattern) | SHIFT · LENGTH ×2 / ½ · TRANSPOSE |
-| **ARP** — roll | note repeat on the grid, recorded as ratchets | RATE (1/8 … 1/64) |
+| **ARP** — roll | note repeat on the grid, recorded as ratchets; **spice & dice** randomisation (OCT+ roll, OCT− clear; EDIT+ARP → bake to seq) | RATE · SPICE |
 | **SEQ** — steps | the 16 steps of the page, with a level, ratchet and probability per step | SOUND / NOTE · DIV · SWING · LENGTH |
 | **SCL** — key | the key of the song | CHORD · SCALE · KEYS · TRANSPOSE |
 | **GLO** — mix | 1–4 mute, 5–8 solo, 16 tap tempo | the levels of tracks 1–6 |
@@ -443,7 +462,7 @@ Something else? [Open an issue](../../issues): what you did, what you expected, 
 | Sequencer | 64 steps per track, own length and division each; dotted step sizes (1/32 … 2m•); chords with level, ratchet and probability per note; drums with level, ratchet and probability per sound; ties, slide; MPC swing 50–75 %; one sample-accurate clock (no drift) |
 | Step probability | 100 % / 75 % / 50 % / 25 % per step (synth and drums) |
 | Recording | live, quantised as heard (latency-compensated), overdub; free take or set tempo; start on first note or one-bar count-in; 1, 2 or 4 bars |
-| Performance | layers: punch-in FX, erase, note repeat, step entry, key / chords, mute / solo / tap tempo, song sections |
+| Performance | layers: punch-in FX, erase, note repeat with spice & dice, step entry, key / chords, mute / solo / tap tempo, song sections |
 | Song mode | 4 sections × 16 steps × 1–64 bars; independent fragments with key changes, in-key transposition, per-track patch overrides, FX overrides |
 | Effects | 32 punch-in effects (2 pages of 16, beat-synced); master DUST, DUCK, DJ filter, limiter; per track drive, slicer, sends to a stereo chorus, a dotted-aware tempo delay and a stereo reverb |
 | MIDI CC | per-track filter cutoff / resonance (CC 71/74, ch 1–5); global FX and swing (ch 16); 32 momentary punch effects (CC 102–133, ch 16) |
