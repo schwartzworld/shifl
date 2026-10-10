@@ -40,86 +40,11 @@ static const uint16_t SCALE_MASK[] = {
 #define NSCALES (sizeof SCALE_MASK / sizeof SCALE_MASK[0])
 #define SEQ_NONE 0xFFFFFFFFu
 
-/* -------------------------------------------------------- spice & dice ---
- * Non-destructive randomisation overlay for the arp and step sequencer.
- * Each modification fires when t->p[P_SPICE] >= thresh; thresh=0xFF = inactive. */
-#define DICE_LEN 16u
-typedef struct {
-    uint16_t rest_mask;         /* bit per step: this step can be a rest */
-    uint8_t  oct[DICE_LEN];    /* per step: 0=no change, 1=+1 oct, 2=-1 oct */
-    uint8_t  vel[DICE_LEN];    /* per step: 0xFF=no change, else LV_* */
-    uint8_t  thresh[DICE_LEN]; /* 0xFF=inactive; fires when P_SPICE >= thresh */
-} dice_t;
-static dice_t trk_dice[NTRK];
-
-static void dice_clear_track(uint32_t ti)
-{
-    uint32_t k;
-    dice_t *d = &trk_dice[ti % NTRK];
-    d->rest_mask = 0;
-    for (k = 0; k < DICE_LEN; k++) {
-        d->oct[k] = 0;
-        d->vel[k] = 0xFF;
-        d->thresh[k] = 0xFF;
-    }
-}
-
-static void dice_roll(uint32_t ti)
-{
-    uint32_t k;
-    dice_t *d = &trk_dice[ti % NTRK];
-    d->rest_mask = 0;
-    for (k = 0; k < DICE_LEN; k++) {
-        uint32_t r = rng();
-        d->thresh[k] = (uint8_t)((r >> 8) & 127u);
-        switch (r & 3u) {
-        case 0:
-            d->rest_mask |= (uint16_t)(1u << k);
-            d->oct[k] = 0;
-            d->vel[k] = 0xFF;
-            break;
-        case 1:
-            d->oct[k] = (uint8_t)(1u + ((r >> 4) & 1u));
-            d->vel[k] = 0xFF;
-            break;
-        default:
-            d->oct[k] = 0;
-            d->vel[k] = (uint8_t)((r & 2u) ? LV_GHOST : LV_HARD);
-            break;
-        }
-    }
-}
-
-/* pure: the note arp_next would play on step step_i (no side effects on t) */
-static uint32_t arp_note_of(const track_t *t, uint32_t step_i)
-{
-    uint32_t cnt, list[64], len = 0, i, j, o;
-    for (i = 0; i < t->nheld; i++)
-        list[i] = t->held[i];
-    cnt = t->nheld;
-    if (!t->p[P_AORDER])
-        for (i = 1; i < cnt; i++)
-            for (j = i; j > 0 && list[j - 1u] > list[j]; j--) {
-                uint32_t x = list[j]; list[j] = list[j - 1u]; list[j - 1u] = x;
-            }
-    for (o = 0; o < (uint32_t)t->p[P_AOCT]; o++)
-        for (i = 0; i < cnt && len < 64u; i++)
-            list[len++] = (uint32_t)clamp((int32_t)list[i] + 12 * (int32_t)o, 0, 127);
-    if (!len) return 60u;
-    switch (t->p[P_AMODE]) {
-    case 2:  j = len - 1u - step_i % len; break;
-    case 3: { uint32_t cyc = len > 1u ? 2u * len - 2u : 1u, k = step_i % cyc;
-              j = k < len ? k : cyc - k; break; }
-    case 4:  j = rng() % len; break;
-    default: j = step_i % len; break;
-    }
-    return list[j];
-}
 
 #define KB_SILENT 255u
 static uint32_t kb_prev;
 /* per key: what its press started, so its release ends the same (whatever the layer or track is now) */
-enum { KS_NONE, KS_NOTE, KS_DRUM, KS_ROLL, KS_ERASE, KS_FX, KS_UI, KS_MOD };   /* KS_MOD: a chord modifier (2.4) */
+enum { KS_NONE, KS_NOTE, KS_DRUM, KS_ERASE, KS_FX, KS_UI, KS_MOD };   /* KS_MOD: a chord modifier (2.4) */
 static uint8_t kb_kind[27], kb_trk[27], kb_n[27], kb_nt[27][4], kb_root[27];   /* kb_root: a chord key's note (CHORD+) */
 static uint8_t last_note = 60;
 static uint8_t pen_n = 1, pen_note[4] = {60};   /* the last chord / note played: the SEQ layer writes it */
@@ -441,40 +366,6 @@ static void undo_mark(const track_t *t, uint32_t sess)
 #define UNDO_REC(t) (((t)->pass << 2) | 1u)      /* a recording pass of track t */
 static uint32_t undo_erase_sess;
 
-/* bake the arp (with current spice/dice) into the sequencer pattern; turns arp off */
-static void arp_to_seq(track_t *t)
-{
-    uint32_t len = trk_len(t), i, ti = trk_index(t);
-    const dice_t *dc = &trk_dice[ti % NTRK];
-    if (is_drum(t) || !t->nheld || !t->p[P_AMODE])
-        return;
-    undo_mark(t, (undo_sess += 4u) | 3u);
-    fm1_irq_off();
-    for (i = 0; i < len; i++) {
-        step_t *s = &t->step[i];
-        uint32_t n = arp_note_of(t, i), vel = 100, di = i % DICE_LEN, muted = 0;
-        memset(s, 0, sizeof *s);
-        if (dc->thresh[di] != 0xFF && (uint32_t)t->p[P_SPICE] >= dc->thresh[di]) {
-            muted = (dc->rest_mask >> di) & 1u;
-            if (!muted) {
-                if (dc->oct[di] == 1u) n = (uint32_t)clamp((int32_t)n + 12, 0, 127);
-                else if (dc->oct[di] == 2u) n = (uint32_t)clamp((int32_t)n - 12, 0, 127);
-                if (dc->vel[di] != 0xFF) vel = lvl_vel(dc->vel[di], 100);
-            }
-        }
-        if (!muted) {
-            s->note[0] = (uint8_t)n;
-            s->n = 1;
-            s->time = ST_NOTE;
-            s->vel = (uint8_t)vel;
-        } else {
-            s->time = ST_REST;
-        }
-    }
-    t->p[P_AMODE] = 0;
-    t->seq_active = 1;
-    fm1_irq_on();
-}
 
 /* ------------------------------------------------------- recording --- */
 /* key to ear, in samples: the key's debounce (~3 ms) and the audio out buffer (HALF_FRAMES to
@@ -875,77 +766,7 @@ static void erase_now(track_t *t)             /* a key just went down */
 }
 static int erasing(const track_t *t) { return trk_index(t) == er_trk && (er_lanes || er_notes[0] || er_notes[1] || er_notes[2] || er_notes[3]); }
 
-/* ------------------------------------------------------------- arp --- */
-static void arp_add(track_t *t, uint32_t note)
-{
-    uint32_t i;
-    if (t->p[P_AHOLD] && t->arp_phys == 0u)
-        t->nheld = 0;                               /* new chord replaces the latched one */
-    t->arp_phys++;                                  /* every key-down: arp_remove counts every key-up */
-    for (i = 0; i < t->nheld; i++)
-        if (t->held[i] == note)
-            return;                                 /* repeated note-on: not a new note */
-    if (t->nheld < 16u)
-        t->held[t->nheld++] = (uint8_t)note;
-    if (t->nheld == 1u) {
-        t->arp_new = 1;                             /* the first note: now (or on the grid just ahead) */
-        t->arp_idx = 0xFFFFFFFFu;
-    }
-}
-
-static void arp_remove(track_t *t, uint32_t note)
-{
-    uint32_t i, k = 0;
-    if (t->arp_phys)
-        t->arp_phys--;
-    if (t->p[P_AHOLD])
-        return;
-    for (i = 0; i < t->nheld; i++)
-        if (t->held[i] != note)
-            t->held[k++] = t->held[i];
-    t->nheld = (uint8_t)k;
-}
-
-/* the next note of the arp: the held notes (sorted or as played) over OCT octaves, by MODE */
-static uint32_t arp_next(track_t *t)
-{
-    uint32_t cnt, list[64], len = 0, i, j, o;
-    for (i = 0; i < t->nheld; i++)
-        list[i] = t->held[i];
-    cnt = t->nheld;
-    if (!t->p[P_AORDER])
-        for (i = 1; i < cnt; i++)
-            for (j = i; j > 0 && list[j - 1] > list[j]; j--) {
-                uint32_t x = list[j];
-                list[j] = list[j - 1];
-                list[j - 1] = x;
-            }
-    for (o = 0; o < (uint32_t)t->p[P_AOCT]; o++)
-        for (i = 0; i < cnt && len < 64u; i++)
-            list[len++] = (uint32_t)clamp((int32_t)list[i] + 12 * (int32_t)o, 0, 127);
-    t->arp_idx++;
-    if (!len)
-        return 60u;
-    switch (t->p[P_AMODE]) {
-    case 2:
-        j = len - 1u - t->arp_idx % len;
-        break;
-    case 3: {
-        uint32_t cyc = len > 1u ? 2u * len - 2u : 1u, k = t->arp_idx % cyc;
-        j = k < len ? k : cyc - k;
-        break;
-    }
-    case 4:
-        j = rng() % len;
-        break;
-    default:
-        j = t->arp_idx % len;
-        break;
-    }
-    return list[j];
-}
-
-/* MIDI OUT of what the sequencer, the arp and the rolls play (GLO > SYSTEM > MIDI = SEQ; the keys always
+/* MIDI OUT of what the sequencer plays (GLO > SYSTEM > MIDI = SEQ; the keys always
  * go out: key_down / key_up). Notes from a computer or the jack are never echoed (no MIDI loop). A set per
  * track of the notes sent on, so a note is ended once, and STOP or MIDI = KEYS end them all */
 static uint32_t mo_set[NTRK][4];
@@ -985,83 +806,6 @@ static void seq_out_all_off(void)
         seq_out_track_off(&trk[i]);
 }
 
-/* the arp, once per block: on the transport's grid of RATE (with its SWING) while playing, from the
- * first key while stopped. A new chord starts at once unless the grid is just ahead. While recording,
- * each note it plays is recorded (what you hear) */
-static void arp_tick(track_t *t, uint32_t adv)
-{
-    uint32_t div = (uint32_t)t->p[P_ARATE] % NDIV_SHORT, u = div_units(div), into, slen, abs = 0, fire = 0;
-    if (t->arp_note) {
-        if (t->arp_off <= adv) {
-            trk_note_off(t, t->arp_note);
-            seq_out_off(t, t->arp_note);
-            t->arp_note = 0;
-        } else {
-            t->arp_off -= adv;
-        }
-    }
-    if (!t->p[P_AMODE] || !t->nheld) {
-        if (!t->nheld && t->arp_note) {
-            trk_note_off(t, t->arp_note);
-            seq_out_off(t, t->arp_note);
-            t->arp_note = 0;
-        }
-        t->arp_new = 0;
-        return;
-    }
-    if (song.playing) {
-        abs = grid_at(div, swings(div) ? swing_units(t->p[P_ASWING], u) : 0u, &into, &slen);
-        if (t->arp_new) {
-            t->arp_new = 0;
-            t->arp_abs = into * 4u >= slen * 3u ? abs : abs - 1u;   /* the last quarter: the grid plays it */
-        }
-        if (abs + 1u == t->arp_abs)
-            abs = t->arp_abs;                       /* ARP SWG turned up inside an odd step: no replay */
-        fire = abs != t->arp_abs;
-        t->arp_abs = abs;
-    } else {
-        if (t->arp_new) {
-            t->arp_new = 0;
-            t->arp_pos = u;
-        }
-        slen = u;
-        t->arp_pos += adv;
-        if (t->arp_pos >= u) {
-            t->arp_pos = t->arp_pos - u < u ? t->arp_pos - u : 0;
-            fire = 1;
-        }
-    }
-    if (!fire)
-        return;
-    if (t->arp_note) {
-        trk_note_off(t, t->arp_note);
-        seq_out_off(t, t->arp_note);
-    }
-    t->arp_note = 0;
-    if ((uint32_t)(rng() & 127u) <= (uint32_t)t->p[P_APROB]) {
-        uint32_t n = arp_next(t), vel = 100, muted = 0;
-        {
-            uint32_t di = t->arp_idx % DICE_LEN;
-            const dice_t *dc = &trk_dice[trk_index(t) % NTRK];
-            if (dc->thresh[di] != 0xFF && (uint32_t)t->p[P_SPICE] >= dc->thresh[di]) {
-                muted = (dc->rest_mask >> di) & 1u;
-                if (!muted) {
-                    if (dc->oct[di] == 1u) n = (uint32_t)clamp((int32_t)n + 12, 0, 127);
-                    else if (dc->oct[di] == 2u) n = (uint32_t)clamp((int32_t)n - 12, 0, 127);
-                    if (dc->vel[di] != 0xFF) vel = lvl_vel(dc->vel[di], 100);
-                }
-            }
-        }
-        if (!muted) {
-            t->arp_note = (uint8_t)n;
-            t->arp_off = slen * (uint32_t)t->p[P_AGATE] / 128u;
-            trk_note_on(t, n, vel);
-            seq_out_on(t, n, vel);
-            if (((song.rec >> trk_index(t)) & 1u) && song.playing)
-                rec_note(t, n, vel, 0, 0);
-        }
-    }
-}
 
 /* ------------------------------------------------------- note input --- */
 /* armed and stopped, a note on the selected track: an empty project starts a free take, else the
@@ -1097,10 +841,6 @@ static void input_on(track_t *t, uint32_t note, uint32_t vel)
     arm_start(t);
     if (ft_on && t == &trk[ft_trk % NTRK])
         ft_note_on(note, vel);
-    if (t->p[P_AMODE]) {
-        arp_add(t, note);                         /* (the arp records the notes it plays) */
-        return;
-    }
     if (((song.rec >> trk_index(t)) & 1u) && song.playing)
         rec_note(t, note, vel, 0, 1);
     if (in_chord)                                 /* a chord from the keys: maybe strummed (voice.c) */
@@ -1119,8 +859,7 @@ static void input_off(track_t *t, uint32_t note)
     if (ft_on && t == &trk[ft_trk % NTRK])
         ft_note_off(note);
     rec_release(t, note);
-    arp_remove(t, note);                            /* both: the note may have started in the */
-    trk_note_off(t, note);                          /* other mode (ARP switched while held) */
+    trk_note_off(t, note);
 }
 
 /* a drum hit from a key, MIDI or a roll: lane, level; rat: its ratchet when recorded (rolls); rec: it
@@ -1138,132 +877,6 @@ static void drum_input(uint32_t lane, uint32_t lvl, uint32_t rat, int rec)
     trk_note_on(t, LANE_NOTE[lane], lvl_vel(lvl, 100));
 }
 
-/* -------------------------------------------------------------- roll --- */
-/* ARP + key: note repeat. The key plays at G_ROLL (1/8, 1/16, 1/32, 32T, 1/64) on the transport's grid
- * (stopped: from the press) until it or ARP is up. Recorded, a roll faster than the track's steps
- * becomes ratchets (1/32 on 1/16 steps: x2, 32T: x3, 1/64: x4). */
-static const uint8_t ROLL_DEN[5] = {2, 4, 8, 12, 16};
-#define NROLL 4u
-static struct {
-    uint8_t on, key, trk, note, lvl;    /* note: the synth note, or the lane */
-    uint32_t last;                      /* playing: the roll step last played; stopped: units since */
-    uint32_t off;                       /* synth: units to its note-off, 0 = not sounding */
-    uint32_t rec_abs;                   /* the step its last recorded hit went into */
-} roll[NROLL];
-static uint32_t roll_den(void) { return ROLL_DEN[(uint32_t)clamp(song.g[G_ROLL], 0, 4)]; }
-/* the lanes / notes a roll plays live on track t: the pattern does not play them meanwhile (no flam
- * with what was recorded, nor with what this roll is recording) */
-static uint32_t roll_lanes(const track_t *t)
-{
-    uint32_t r, m = 0;
-    for (r = 0; r < NROLL; r++)
-        if (roll[r].on && roll[r].trk == trk_index(t))
-            m |= 1u << (roll[r].note & 15u);
-    return m;
-}
-static int roll_has(const track_t *t, uint32_t note)
-{
-    uint32_t r;
-    for (r = 0; r < NROLL; r++)
-        if (roll[r].on && roll[r].trk == trk_index(t) && roll[r].note == note)
-            return 1;
-    return 0;
-}
-
-static void roll_hit(uint32_t r)
-{
-    track_t *t = &trk[roll[r].trk % NTRK];
-    uint32_t u = BEAT_U / roll_den(), su = div_units((uint32_t)t->p[P_SDIV]);
-    uint32_t hits = su / u, rat = hits > 4u ? 3u : hits > 1u ? hits - 1u : 0u;
-    uint32_t armed = ((song.rec >> trk_index(t)) & 1u) && song.playing, later, abs = 0, rec = 0;
-    if (armed) {                                     /* one recorded hit a step: the ratchet does the rest */
-        abs = rec_target(t, &later);
-        rec = abs != roll[r].rec_abs;
-        roll[r].rec_abs = abs;
-    }
-    if (is_drum(t)) {
-        drum_input(roll[r].note, roll[r].lvl, rat, rec || !armed);
-        seq_out_on(t, LANE_NOTE[roll[r].note & 15u], lvl_vel(roll[r].lvl, 100));
-        return;
-    }
-    arm_start(t);
-    if (roll[r].off)
-        trk_note_off(t, roll[r].note);
-    trk_note_on(t, roll[r].note, lvl_vel(roll[r].lvl, 100));
-    seq_out_on(t, roll[r].note, lvl_vel(roll[r].lvl, 100));
-    roll[r].off = u / 2u;
-    if (rec)
-        rec_note(t, roll[r].note, 100, rat, 0);
-    if (ft_on && t == &trk[ft_trk % NTRK])
-        ft_note_on(roll[r].note, 100), ft_note_off(roll[r].note);
-}
-
-static void roll_start(uint32_t k, track_t *t, uint32_t note, uint32_t lvl)
-{
-    uint32_t r, den = roll_den(), into, slen, abs;
-    for (r = 0; r < NROLL && roll[r].on; r++)
-        ;
-    if (r == NROLL)
-        return;
-    roll[r].on = 1;
-    roll[r].key = (uint8_t)k;
-    roll[r].trk = (uint8_t)trk_index(t);
-    roll[r].note = (uint8_t)note;
-    roll[r].lvl = (uint8_t)lvl;
-    roll[r].off = 0;
-    roll[r].rec_abs = SEQ_NONE;
-    if (song.playing) {
-        abs = grid_den(den, 0u, &into, &slen);
-        roll[r].last = abs;
-        if (into * 4u >= slen * 3u)
-            return;                                  /* the grid is just ahead: it starts there */
-    } else {
-        roll[r].last = 0;
-    }
-    roll_hit(r);
-}
-
-static void roll_end(uint32_t r)
-{
-    if (roll[r].on && roll[r].off && roll[r].trk != TRK_DRUM) {
-        trk_note_off(&trk[roll[r].trk % NTRK], roll[r].note);
-        seq_out_off(&trk[roll[r].trk % NTRK], roll[r].note);
-    }
-    if (roll[r].on && roll[r].trk == TRK_DRUM)
-        seq_out_off(&trk[TRK_DRUM], LANE_NOTE[roll[r].note & 15u]);
-    roll[r].on = 0;
-}
-
-static void roll_block(uint32_t adv)
-{
-    uint32_t r, den = roll_den(), u = BEAT_U / den, into, slen;
-    for (r = 0; r < NROLL; r++) {
-        if (!roll[r].on)
-            continue;
-        if (roll[r].off) {
-            if (roll[r].off <= adv) {
-                trk_note_off(&trk[roll[r].trk % NTRK], roll[r].note);
-                seq_out_off(&trk[roll[r].trk % NTRK], roll[r].note);
-                roll[r].off = 0;
-            } else {
-                roll[r].off -= adv;
-            }
-        }
-        if (song.playing) {
-            uint32_t abs = grid_den(den, 0u, &into, &slen);
-            if (abs != roll[r].last) {
-                roll[r].last = abs;
-                roll_hit(r);
-            }
-        } else {
-            roll[r].last += adv;
-            if (roll[r].last >= u) {
-                roll[r].last = roll[r].last - u < u ? roll[r].last - u : 0;
-                roll_hit(r);
-            }
-        }
-    }
-}
 
 /* ---------------------------------------------------------- keyboard --- */
 /* the level of a key on the drum track: OCT- held ghost, OCT+ held hard */
@@ -1380,11 +993,6 @@ static void key_down(uint32_t k)
         uint32_t lane = lane_of_key(k), lvl = key_lvl();
         kb_nt[k][0] = (uint8_t)lane;
         kb_n[k] = 1;
-        if (layer == LY_ROLL) {
-            kb_kind[k] = KS_ROLL;
-            roll_start(k, t, lane, lvl);
-            return;
-        }
         kb_kind[k] = KS_DRUM;
         drum_input(lane, lvl, 0, 1);
         mc = trk_midi_ch(sel);
@@ -1398,13 +1006,6 @@ static void key_down(uint32_t k)
                 kb_kind[k] = KS_MOD;
                 chord_revoice(sel);
             }
-            return;
-        }
-        if (layer == LY_ROLL) {
-            kb_kind[k] = KS_ROLL;
-            kb_nt[k][0] = (uint8_t)n;
-            kb_n[k] = 1;
-            roll_start(k, t, n, LV_NORM);
             return;
         }
         kb_kind[k] = KS_NOTE;
@@ -1457,11 +1058,6 @@ static void key_up(uint32_t k)
             for (i = 0; i < kb_n[k]; i++)
                 er_notes[(kb_nt[k][i] >> 5) & 3u] &= ~(1u << (kb_nt[k][i] & 31u));
         return;
-    case KS_ROLL:
-        for (i = 0; i < NROLL; i++)
-            if (roll[i].on && roll[i].key == k)
-                roll_end(i);
-        return;
     case KS_NOTE:
         mc = trk_midi_ch(kb_trk[k] % NTRK);
         for (i = 0; i < kb_n[k]; i++) {
@@ -1512,12 +1108,8 @@ static void audition_block(void)
 
 static void keyboard_block(void)
 {
-    uint32_t cur = fm1_in.notes, ch = cur ^ kb_prev, k, r;
+    uint32_t cur = fm1_in.notes, ch = cur ^ kb_prev, k;
     audition_block();
-    if (!(layer_buttons() & ly_bit[LY_ROLL]))         /* ARP up (and not locked): the rolls end (the keys stay silent) */
-        for (r = 0; r < NROLL; r++)
-            if (roll[r].on)
-                roll_end(r);
     if (!ch)
         return;
     for (k = 0; k < 27u; k++) {
@@ -1671,10 +1263,7 @@ static void seq_reset_tracks(uint32_t pos)
         t->rskip_lanes = 0;
         t->rskip_abs = SEQ_NONE;
         t->rh_n = 0;
-        t->arp_new = t->nheld != 0;
     }
-    for (i = 0; i < NROLL; i++)
-        roll[i].last = SEQ_NONE - 1u;               /* (a roll held over the start: on the grid from here) */
     clk_beat = 0;
     clk_pos = pos;
 #if FELUCCA_ARRANGER
@@ -1800,8 +1389,6 @@ static void seq_step(track_t *t, const step_t *s, uint32_t slen, uint32_t skip)
     uint32_t next_tie = t->step[(t->seq_idx + 1u) % trk_len(t)].time == ST_TIE;
     uint32_t step_time = s->time, do_accent, do_slide;
     uint32_t acc_t, sld_t;
-    int32_t dice_oct_delta = 0;
-    uint32_t dice_vel_ovr = 0xFF;
 
     /* resolve time probability */
     if (step_time >= ST_P75) {
@@ -1814,20 +1401,6 @@ static void seq_step(track_t *t, const step_t *s, uint32_t slen, uint32_t skip)
     do_accent = flags_is_accent(s->flags) && (acc_t >= 128u || (rng() & 127u) < acc_t);
     do_slide  = flags_is_slide(s->flags)  && (sld_t >= 128u || (rng() & 127u) < sld_t);
     t->seq_accent = (uint8_t)do_accent;
-
-    /* spice & dice: synth parts only, applies rest/oct/vel modifications */
-    if (!is_drum(t) && t->p[P_SPICE]) {
-        uint32_t di = (uint32_t)t->seq_idx % DICE_LEN;
-        const dice_t *dc = &trk_dice[trk_index(t) % NTRK];
-        if (dc->thresh[di] != 0xFF && (uint32_t)t->p[P_SPICE] >= dc->thresh[di]) {
-            if ((dc->rest_mask >> di) & 1u) {
-                seq_release(t);
-                return;
-            }
-            dice_oct_delta = dc->oct[di] == 1u ? 12 : dc->oct[di] == 2u ? -12 : 0;
-            dice_vel_ovr = dc->vel[di];
-        }
-    }
 
     if (step_time == ST_TIE) {
         if (t->seq_n) {
@@ -1851,14 +1424,9 @@ static void seq_step(track_t *t, const step_t *s, uint32_t slen, uint32_t skip)
     if (!slide_in)
         seq_release(t);
     for (i = 0; i < s->n; i++)
-        if (roll_has(t, s->note[i]))
-            skip |= 1u << i;                        /* (a roll plays it) */
-    for (i = 0; i < s->n; i++)
         if (!((skip >> i) & 1u)) {
             uint32_t tn = seq_note_trans(t, s->note[i]);
             uint32_t sv = step_vel(s, i, do_accent);
-            if (dice_oct_delta) tn = (uint32_t)clamp((int32_t)tn + dice_oct_delta, 0, 127);
-            if (dice_vel_ovr != 0xFF) sv = lvl_vel(dice_vel_ovr, sv);
             trk_note_on(t, tn, sv);
             if (!slide_in || !(mo_set[trk_index(t) % NTRK][tn >> 5] & (1u << (tn & 31u))))
                 seq_out_on(t, tn, sv);
@@ -1874,11 +1442,8 @@ static void seq_step(track_t *t, const step_t *s, uint32_t slen, uint32_t skip)
         }
     t->seq_n = 0;
     for (i = 0; i < s->n; i++)
-        if (!((skip >> i) & 1u)) {
-            uint32_t tn2 = seq_note_trans(t, s->note[i]);
-            if (dice_oct_delta) tn2 = (uint32_t)clamp((int32_t)tn2 + dice_oct_delta, 0, 127);
-            t->seq_notes[t->seq_n++] = (uint8_t)tn2;
-        }
+        if (!((skip >> i) & 1u))
+            t->seq_notes[t->seq_n++] = (uint8_t)seq_note_trans(t, s->note[i]);
     t->seq_off = gate;
     t->seq_hold = (uint8_t)(!s->rat && (do_slide || next_tie));   /* next step a TIE: keep the notes to it */
 }
@@ -1890,7 +1455,7 @@ static void drum_step(track_t *t, const dstep_t *s, uint32_t skip)
     t->drum_fired = 0;
     seq_out_track_off(t);                           /* the last step's hits end here */
     /* certain hits (on=1): always fire, may have ratchets */
-    m = dstep_mask(s) & ~skip & ~roll_lanes(t);
+    m = dstep_mask(s) & ~skip;
     for (l = 0; m; l++, m >>= 1) {
         if (!(m & 1u)) continue;
         t->drum_fired |= 1u << l;
@@ -1901,7 +1466,6 @@ static void drum_step(track_t *t, const dstep_t *s, uint32_t skip)
     for (l = 0; l < DRUM_LANES; l++) {
         uint32_t prb;
         if ((skip >> l) & 1u) continue;
-        if ((roll_lanes(t) >> l) & 1u) continue;
         if (dstep_certain(s, l)) continue;
         prb = dstep_rat(s, l);
         if (!prb) continue;
@@ -2063,7 +1627,7 @@ static void seq_ratchets(track_t *t, uint32_t into, uint32_t slen)
         return;                                     /* (its condition failed: no hit at all) */
     if (is_drum(t)) {
         const dstep_t *s = &t->dstep[t->seq_idx % NSTEP];
-        uint32_t m = t->drum_fired & dstep_mask(s) & ~roll_lanes(t);   /* only certain hits */
+        uint32_t m = t->drum_fired & dstep_mask(s);
         for (i = 0; m; i++, m >>= 1) {
             uint32_t hits = 1u + dstep_rat(s, i), h, done;
             if (!(m & 1u) || hits == 1u)
@@ -2084,7 +1648,7 @@ static void seq_ratchets(track_t *t, uint32_t into, uint32_t slen)
             return;
         for (i = 0; i < s->n; i++) {
             uint32_t hits = 1u + ((s->rat >> (2u * i)) & 3u), h;
-            if (hits == 1u || roll_has(t, s->note[i]))
+            if (hits == 1u)
                 continue;
             h = into * hits / slen;
             if (h > t->rat_done[i] && h < hits) {
@@ -2432,24 +1996,9 @@ static void events_block(uint32_t n)
         if ((pr >> i) & 1u) {
             trk_all_off(t);
             t->nheld = 0;
-            t->arp_phys = 0;
-            t->arp_note = 0;
         }
         if (i < NPART)
             engine_block(t);                          /* engine switch: fade, then switch (voice.c) */
-        /* ARP turned off, or HOLD released with no key down: drop the latched chord */
-        if ((t->armp && !t->p[P_AMODE]) || (t->aholdp && !t->p[P_AHOLD] && !t->arp_phys)) {
-            t->nheld = 0;
-            if (!t->p[P_AMODE])
-                t->arp_phys = 0;
-            if (t->arp_note) {
-                trk_note_off(t, t->arp_note);
-                seq_out_off(t, t->arp_note);
-                t->arp_note = 0;
-            }
-        }
-        t->armp = t->p[P_AMODE];
-        t->aholdp = t->p[P_AHOLD];
     }
     keyboard_block();
     strum_block(n);                                   /* (voice.c: the strummed notes due) */
@@ -2496,9 +2045,6 @@ static void events_block(uint32_t n)
     for (i = 0; i < NTRK; i++)
         seq_tick(&trk[i], adv);
     click_tick();
-    roll_block(adv);
-    for (i = 0; i < NPART; i++)
-        arp_tick(&trk[i], adv);
     if (song.playing) {
         song.tick++;
         clk_pos += adv;

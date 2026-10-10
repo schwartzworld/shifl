@@ -534,7 +534,7 @@ static void layer_tap(uint32_t layer)
         if (on_song_page())
             song_clone_fragment();
         else
-            open_family(FAM_ARP);
+            ui_message("LIVE MODE");
         break;
     case LY_SCALE:
         open_family(FAM_SCL);
@@ -678,41 +678,6 @@ static int layers_input(uint32_t note_edges, uint32_t *pressed, uint32_t home)
                 ui_message(undo_swap(0) ? "UNDO" : "NOTHING TO UNDO");
             else
                 ui_message(undo_swap(1) ? "REDO" : "NOTHING TO REDO");
-        }
-        {   /* EDIT + ARP: bake the arp (with spice & dice) into the sequencer */
-            static uint32_t prev_erase_arp;
-            uint32_t ab = 1u << panel.btn[B_ARP];
-            uint32_t ba = fm1_in.buttons & ab, pressa = ba & ~prev_erase_arp;
-            prev_erase_arp = ba;
-            if (pressa) {
-                track_t *ta = TSEL;
-                if (!is_drum(ta) && ta->p[P_AMODE] && ta->nheld) {
-                    used[held] = 1;
-                    arp_to_seq(ta);
-                    ui_message("ARP BAKED TO SEQ");
-                }
-            }
-        }
-    }
-    if (held == LY_ROLL) {                                /* ARP + OCT+: roll dice; OCT-: clear */
-        uint32_t ob = 1u << panel.btn[B_OCTDN], pb = 1u << panel.btn[B_OCTUP];
-        static uint32_t prev_roll_oct;
-        uint32_t b = fm1_in.buttons & (ob | pb), press = b & ~prev_roll_oct;
-        prev_roll_oct = b;
-        if (press & pb) {
-            used[held] = 1;
-            fm1_irq_off();
-            dice_roll(song.sel % NTRK);
-            fm1_irq_on();
-            ui_message("DICE ROLLED");
-        }
-        if (press & ob) {
-            used[held] = 1;
-            fm1_irq_off();
-            dice_clear_track(song.sel % NTRK);
-            fm1_irq_on();
-            TSEL->p[P_SPICE] = 0;
-            ui_message("DICE CLEARED");
         }
     }
     if (held == LY_FX) {                                  /* FX + OCT-: toggle effects page; FX + OCT+: toggle latch */

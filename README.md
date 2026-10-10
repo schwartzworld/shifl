@@ -46,15 +46,6 @@ SHIFL turns the FM-1 into a six-track groovebox you play live: **five synths and
 
 | | |
 | --- | --- |
-| **Spice & Dice** | A randomisation overlay for the arpeggiator and step sequencer (inspired by Arturia's Spice & Dice). **Dice** generates a frozen 16-step variation pattern — rests, octave shifts and velocity changes. **Spice** (KNOB 2 in the ARP layer, 0–127) is a per-track blend: at 0 nothing changes; at 127 every variation applies. Roll new dice with **ARP + OCT+**, clear with **ARP + OCT−**. **EDIT + ARP** bakes the current arp (with spice & dice applied) into the step sequencer as a fixed pattern. |
-
-  To see Spice & Dice on device: install the updated firmware from build/felucca.fwsc (or via http://localhost:8766),
-  then:
-  - Hold ARP — the 16 tiles now show dice steps (all --- until rolled), and KNOB 2 shows "spice"
-  - ARP + OCT+ — rolls the dice (tiles light up with +8va, -8va, soft, hard, rest)
-  - ARP + OCT− — clears dice and resets spice to 0
-  - Hold EDIT + press ARP — bakes the current arpeggio (with spice/dice applied) into the sequencer
-
 | **CZ-1 improvements** | Four sound-design effects on EDIT 2 — RING (ring modulator), FOLD (wavefolder), BITS (bit crush), PHSR (phaser) — tuned for a wider, more audible range. All factory presets load with filter fully open (CUT=127) for a transparent default. |
 | **Drum improvements** | Global drum level raised to match synth tracks at their default levels. Drum lane probability per step (`P75` / `P50` / `P25` / ratchet modes). |
 
@@ -104,7 +95,6 @@ Every function button is a **layer**: hold it and the 16 white keys and the four
 | --- | --- | --- |
 | **FX** — punch | 16 punch-in effects on the whole mix (page 1 of 32): loops 1/4–1/32, oct up, stop, slap, echo tails, phone filter, bit crush, alias, gate | FILTER · DUST · DUCK |
 | **EDIT** — erase | erase a sound or a note as the loop plays (stopped: from the whole pattern) | SHIFT · LENGTH ×2 / ½ · TRANSPOSE |
-| **ARP** — roll | note repeat on the grid, recorded as ratchets; **spice & dice** randomisation (OCT+ roll, OCT− clear; EDIT+ARP → bake to seq) | RATE · SPICE |
 | **SEQ** — steps | the 16 steps of the page, with a level, ratchet and probability per step | SOUND / NOTE · DIV · SWING · LENGTH |
 | **SCL** — key | the key of the song | CHORD · SCALE · KEYS · TRANSPOSE |
 | **GLO** — mix | 1–4 mute, 5–8 solo, 16 tap tempo | the levels of tracks 1–6 |
@@ -125,7 +115,7 @@ Keys 1, 5, 9 and 13 glow dimly while a layer is held: the first key of each row 
 
 - **Five engines:** DX7 FM synthesis, virtual analogue (two oscillators, filter, drive), Casio CZ-1 Phase Distortion, formant voice, lo-fi chip.
 - **116 sounds, browsed by kind** — all level-matched. **32 slots** for your own presets.
-- Envelopes (with a pitch punch for 808-style kicks), LFO, arpeggiator, glide and voice modes (POLY, MONO, LEGATO, UNISON), per-track drive and slicer, sends to a **stereo chorus**, a **tempo delay** and a **stereo reverb**.
+- Envelopes (with a pitch punch for 808-style kicks), LFO, glide and voice modes (POLY, MONO, LEGATO, UNISON), per-track drive and slicer, sends to a **stereo chorus**, a **tempo delay** and a **stereo reverb**.
 - **Key and chords (SCL):** the key of the song for all synths, 16 scales, one-key chords (triad, 7th, 9th, sus4, power), keys snapped to the scale or the scale on the white keys.
 
 ### Recording and the sequencer
@@ -344,7 +334,7 @@ Nothing to download or compile. Your projects, user presets, samples and setting
 | **FX · SCL · ENV · LFO · EDIT · GLO** (top row) | tap: their pages · hold FX, SCL, EDIT, GLO: a layer. **SCL** is the second button of the top row, between FX and ENV |
 | **HOME** | the TRACKS screen · hold: the menu · tapped while a layer is held: lock it |
 | **SAVE** | on TRACKS: the SONG screen · elsewhere: the SAVE pages · hold: the song layer |
-| **ARP · SEQ** | tap: their pages · hold: note repeat · steps |
+| **ARP · SEQ** | tap: their pages · hold SEQ: steps |
 | **PLAY** | start / stop all tracks; its light flashes on every beat |
 | **REC** | playing: record now / stop · stopped: arm (the REC screen) · hold: clear the track |
 | **EDIT + OCT− / OCT+** | undo / redo |
@@ -411,7 +401,7 @@ Open **[shifl.netlify.app](https://shifl.netlify.app/)** in Chrome or Edge, with
 - **Library** — your user presets and preset files.
 - **Samples** — the three user slots, files and **CHOP**.
 - **Projects** — the four projects, and **Backup**: *Save a backup* writes everything on the FM-1 to one file; *Restore from a file* puts it all back (stop playback first).
-- **Settings** — global, master (DUST, DUCK, FILT, ROLL), drums.
+- **Settings** — global, master (DUST, DUCK, FILT), drums.
 
 <p align="center"><img src="assets/screens/editor-backup.png" alt="SHIFL web editor: projects and backup" width="560"></p>
 
@@ -462,7 +452,7 @@ Something else? [Open an issue](../../issues): what you did, what you expected, 
 | Sequencer | 64 steps per track, own length and division each; dotted step sizes (1/32 … 2m•); chords with level, ratchet and probability per note; drums with level, ratchet and probability per sound; ties, slide; MPC swing 50–75 %; one sample-accurate clock (no drift) |
 | Step probability | 100 % / 75 % / 50 % / 25 % per step (synth and drums) |
 | Recording | live, quantised as heard (latency-compensated), overdub; free take or set tempo; start on first note or one-bar count-in; 1, 2 or 4 bars |
-| Performance | layers: punch-in FX, erase, note repeat with spice & dice, step entry, key / chords, mute / solo / tap tempo, song sections |
+| Performance | layers: punch-in FX, erase, step entry, key / chords, mute / solo / tap tempo, song sections |
 | Song mode | 4 sections × 16 steps × 1–64 bars; independent fragments with key changes, in-key transposition, per-track patch overrides, FX overrides |
 | Effects | 32 punch-in effects (2 pages of 16, beat-synced); master DUST, DUCK, DJ filter, limiter; per track drive, slicer, sends to a stereo chorus, a dotted-aware tempo delay and a stereo reverb |
 | MIDI CC | per-track filter cutoff / resonance (CC 71/74, ch 1–5); global FX and swing (ch 16); 32 momentary punch effects (CC 102–133, ch 16) |
@@ -501,7 +491,7 @@ See [BUILDING.md](BUILDING.md). In short: the JieLi toolchain and three files of
 - **ChanceTheMaker** and **keremimo** — the TRS MIDI input fix (Felucca Salt) and contributions to the MIDI clock.
 - **Everyone who installed SHIFL, made music with it, commented, reported a bug or asked for a feature** — most of what is here comes from your messages.
 - Samples: Versilian Studios VSCO-2 CE and VCSL, Sonic Pi (all CC0). Font: Terminus (SIL OFL 1.1). Icons: Fukiai (MIT, Hügelton Instruments). PHASE engine after CrispyZebra (GPL); VOICE after klattsch (MIT). CZ-1 preset names: Casio Computer Co., Ltd.
-- Interface ideas after teenage engineering's pocket operators and EP-133, Elektron's step entry and Akai's MPC (swing, note repeat, erase).
+- Interface ideas after teenage engineering's pocket operators and EP-133, Elektron's step entry and Akai's MPC (swing, erase).
 
 ## Licence
 

@@ -6,25 +6,16 @@ All committed changes by Ian Schwartz, plus current uncommitted work-in-progress
 
 ## Committed Changes
 
-### Spice & Dice arpeggiator randomisation (`2026-10-09`)
+### Arpeggiator removed (`2026-10-10`)
 
-Adds an Arturia-inspired Spice & Dice feature to the arpeggiator and step sequencer.
+Removed the arpeggiator and note-repeat roll layer entirely.
 
-**Dice** — a 16-step repeating variation overlay, frozen until re-rolled. Each step is one of: rest (silence), octave +1, octave −1, ghost velocity, or hard velocity. Each step also carries a threshold (0–127).
-
-**Spice** (P_SPICE, 0–127) — per-track dry/wet blend. A dice step's modification fires when `P_SPICE >= thresh`. At 0 nothing changes; at 127 every modification is applied. Returning to the same spice value gives deterministic replay.
-
-**Controls** (hold ARP):
-- **KNOB 2** — Spice (0–127 %, shown as a percentage); K1 is still roll rate
-- **ARP + OCT+** — roll new dice (all 16 steps re-randomised)
-- **ARP + OCT−** — clear dice (all modifications inactive, spice reset to 0)
-- **EDIT + ARP** — bake the arp (with current spice & dice) into the sequencer as a fixed pattern, then turn the arpeggiator off
-
-The ARP layer screen now shows the 16 dice steps as labelled tiles: `+8va`, `-8va`, `soft`, `hard`, `rest` or `---` (inactive), lit in the track colour when active at the current spice level.
-
-**Implementation:** `dice_t` struct + `trk_dice[NTRK]` array in `seq.c`; `dice_clear_track()`, `dice_roll()`, `arp_note_of()`, `arp_to_seq()` added; `arp_tick()` and `seq_step()` both apply dice to synth parts (drum track is unaffected). Parameter `P_SPICE` inserted before `P_E0` (P_COUNT: 61→62). Old projects (P_COUNT=61, "FUN4") load cleanly via a new `project_v4old_t` migration path with P_SPICE defaulting to 0 (dry).
-
-**Bumped to FM-1_945.**
+- **ARP pages removed** — `ARP` and `ARP 2` pages deleted from `params.c`; `FAM_ARP` family is gone.
+- **Note-repeat roll removed** — the hold-ARP layer (`LY_ROLL`) and `KS_ROLL` tracking removed from `seq.c` / `ui_input.c` / `ui_layers.c`.
+- **Spice & Dice removed** — `dice_t` struct, `trk_dice[]` array, `dice_clear_track()`, `dice_roll()`, `arp_note_of()`, `arp_to_seq()` removed from `seq.c`.
+- **`arp_add()` / `arp_remove()` removed** from `seq.c`.
+- **MASTER page** — `G_ROLL` knob slot replaced with `0xFF` (unused); MASTER is now DUST, DUCK, FILT only.
+- **ARP tap** — now shows `SONG MODE` message (placeholder).
 
 ---
 

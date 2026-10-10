@@ -4,7 +4,7 @@
  * let go without touching anything) the button opens its pages as before.
  *   FX    punch-in effects (punch.c)       knobs: FILTER  DUST  DUCK
  *   EDIT  erase that sound / note (seq.c)  knobs: SHIFT  LENGTH x2 / half  TRANSPOSE   OCT- undo  OCT+ redo
- *   ARP   note repeat (seq.c roll)         knobs: RATE
+ *   ARP   (removed)
  *   SEQ   steps 1..16 of the page          knobs: SOUND / NOTE  DIV  SWING  LENGTH;  a step key held:
  *         (black keys 1..4: pages)                SOUND / NOTE  LEVEL  RATCHET
  *   SCL   any key: the key of the song     knobs: CHORD  SCALE  KEYS  TRANSPOSE
@@ -36,11 +36,6 @@ static void layers_init(void)
     ft_btn_mask = 1u << panel.btn[B_REC];
     ft_drop_mask = 1u << panel.btn[B_PLAY];
     ui.lock_par = P_ED_FLT;                             /* the lock parameter until a sound knob is turned */
-    {
-        uint32_t di;
-        for (di = 0; di < NTRK; di++)
-            dice_clear_track(di);
-    }
 }
 
 static uint32_t key_of_white(uint32_t w) { return key_of_lane(w & 15u); }   /* white key w -> key index */
@@ -472,12 +467,6 @@ static void layer_knobs(uint32_t layer)
             else if (k == 2u)
                 pattern_transpose(t, s);
             break;
-        case LY_ROLL:
-            if (k == 0u)
-                song.g[G_ROLL] = (int16_t)clamp(song.g[G_ROLL] + s, 0, 4);
-            else if (k == 1u && !is_drum(t))
-                t->p[P_SPICE] = (int16_t)clamp(t->p[P_SPICE] + accel(EN_K2, s, 127), 0, 127);
-            break;
         case LY_STEP:
             if (ui.step_held) {                         /* SOUND / NOTE  LEVEL  RATCHET  NUDGE */
                 if (k == 0u && is_drum(t))
@@ -670,46 +659,6 @@ static void layer_screen_draw(void)
         fmt_int(v[1], t->p[P_SLEN]);
         str_cpy(v[2], is_drum(t) ? "" : "-  +", 8);
         str_cpy(sub, undo.valid ? (undo.undone ? "oct+ redo" : "oct- undo") : sub, sizeof sub);
-        break;
-    }
-    case LY_ROLL: {                                     /* 16 dice steps; K2 = spice */
-        const dice_t *dc = &trk_dice[sel & 3u];
-        uint32_t spice = is_drum(t) ? 0u : (uint32_t)t->p[P_SPICE];
-        str_cpy(sub, "oct+ roll  oct- clear", sizeof sub);
-        for (i = 0; i < 16u; i++) {
-            uint32_t active = !is_drum(t) && dc->thresh[i] != 0xFF && spice >= dc->thresh[i];
-            if (dc->thresh[i] == 0xFF) {
-                str_cpy(tl[i].lab, "---", 8);
-                tl[i].bg = TE_G1;
-                tl[i].fg = TE_G2;
-            } else if ((dc->rest_mask >> i) & 1u) {
-                str_cpy(tl[i].lab, "rest", 8);
-                tl[i].bg = active ? TE_G3 : TE_G1;
-                tl[i].fg = active ? C_BLACK : TE_G2;
-            } else if (dc->oct[i] == 1u) {
-                str_cpy(tl[i].lab, "+8va", 8);
-                tl[i].bg = active ? col : TE_G1;
-                tl[i].fg = active ? C_BLACK : TE_G3;
-            } else if (dc->oct[i] == 2u) {
-                str_cpy(tl[i].lab, "-8va", 8);
-                tl[i].bg = active ? TE_MID[sel & 3u] : TE_G1;
-                tl[i].fg = active ? C_BLACK : TE_G3;
-            } else if (dc->vel[i] == LV_GHOST) {
-                str_cpy(tl[i].lab, "soft", 8);
-                tl[i].bg = active ? TE_DIM[sel & 3u] : TE_G1;
-                tl[i].fg = active ? C_WHITE : TE_G3;
-            } else {
-                str_cpy(tl[i].lab, "hard", 8);
-                tl[i].bg = active ? C_WHITE : TE_G1;
-                tl[i].fg = active ? C_BLACK : TE_G3;
-            }
-        }
-        lab[0] = "rate";
-        lab[1] = is_drum(t) ? "" : "spice";
-        str_cpy(v[0], N_ROLL[clamp(song.g[G_ROLL], 0, 4)], 8);
-        fmt_int(v[1], (int32_t)spice * 100 / 127);
-        ratio[0] = song.g[G_ROLL] * 250;
-        ratio[1] = is_drum(t) ? -1 : (int32_t)(spice * 1000u / 127u);
         break;
     }
     case LY_STEP: {                                     /* the 16 steps of the page */

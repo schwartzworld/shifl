@@ -86,7 +86,7 @@ The 11 black keys are F#3, G#3, A#3, C#4, D#4, F#4, G#4, A#4, C#5, D#5, F#5. The
 | **FX** | button | punch-in layer (hold), effect pages (tap) |
 | **SCL** | button | key / chord layer (hold), scale pages (tap) |
 | **EDIT** | button | erase layer (hold), engine pages (tap) |
-| **ARP** | button | note-repeat layer (hold), arpeggiator pages (tap) |
+| **ARP** | button | (removed) |
 | **SEQ** | button | step layer (hold), sequencer pages (tap) |
 | **GLO** | button | mix layer (hold), global pages (tap) |
 | **OCT− / OCT+** | buttons | octave, ghost / hard hits, undo / redo, pages |
@@ -119,7 +119,7 @@ Every function button has two lives:
 - **Tap** it: its **pages** open (sound design, settings), as on any FM-1 firmware. Tap it again: the next page of that button. **SELECT** also walks the pages of that button, both ways. Each button remembers the last page you used.
 - **Hold** it: a **layer**. While it is held, the 16 white keys and KNOB 1–4 do something else, and after 0.14 s the screen shows the 16 keys as 16 tiles (four rows of four: keys 1–4, 5–8, 9–12, 13–16) and the knobs as dials. Let go: back to playing.
 
-The layers are **FX** (punch-in effects), **EDIT** (erase), **ARP** (note repeat), **SEQ** (steps), **SCL** (key and chords), **GLO** (mix) and **SAVE** (song). ENV and LFO have no layer: they only open pages.
+The layers are **FX** (punch-in effects), **EDIT** (erase), **SEQ** (steps), **SCL** (key and chords), **GLO** (mix) and **SAVE** (song). ENV and LFO have no layer: they only open pages.
 
 **Landmarks:** while a layer is held (and always on the drum track) keys 1, 5, 9 and 13 glow dimly — the first key of each row of tiles — so you can find a tile without looking. Keys at full light are what is on.
 
@@ -134,7 +134,7 @@ The layers are **FX** (punch-in effects), **EDIT** (erase), **ARP** (note repeat
 1. Turn **ALGORITHM** to track **4** (orange). The white keys play 16 drum sounds: **F3 kick**, G3 kick 2, A3 snare, B3 clap, **C4 hat**, D4 open hat… Turn **PRESETS** to pick a kit: try *808* or *BOOMBAP*.
 2. Press **REC** (*rec ready*). **Play a beat freely**, at your own tempo — no click, no count-in. Hold **OCT−** while you hit for ghost notes, **OCT+** for hard hits.
 3. **Press REC on the "1" after your last bar.** The loop closes: its length sets the tempo, the hits snap to the grid, and it plays at once.
-4. Press **REC** again while it plays: you record on top (overdub). Hold **ARP** and hold the hat key (C4): a 1/16 hat roll, recorded as ratchets.
+4. Press **REC** again while it plays: you record on top (overdub).
 5. Turn **ALGORITHM** to track **1** (blue, *808 BOOM*), press **REC**, play a bass line.
 6. Hold **SCL** and press the key of your song (for example D). Select track 2, hold **SCL** and turn **KNOB 1** to *7TH*: every white key is now a chord of the key, one finger each.
 7. Hold **FX** and hold a white key for a punch-in effect; still holding FX, turn **KNOB 2** for DUST, **KNOB 3** for DUCK.
@@ -155,7 +155,7 @@ The layers are **FX** (punch-in effects), **EDIT** (erase), **ARP** (note repeat
 | **FX** | FX pages (FX, FILTER, SLICER, DLY, REV/CHO) | punch-in layer |
 | **SCL** | SCL pages (SCL, SCL 2) | key / chord layer |
 | **EDIT** | EDIT pages (EDIT 1, EDIT 2, VOICE, VOICE 2) · on TRACKS with the drum track: the **DRUMS** screen · on DRUMS: grid ↔ kit · on the STEP page: clear the step | erase layer |
-| **ARP** | ARP pages (ARP, ARP 2) | note-repeat layer |
+| **ARP** | — | — |
 | **SEQ** | SEQ pages (STEP, PATTERN, SONG) · on TRACKS with the drum track: the **DRUMS** screen · on DRUMS: grid ↔ kit | step layer |
 | **GLO** | GLO pages (GLOBAL, MASTER, SYSTEM, DRUMS) | mix layer |
 | **OCT− / OCT+** | synth track: octave down / up (−3 … +3) · both together: octave 0 | drum track: **ghost** (OCT−) / **hard** (OCT+) hits while held |
@@ -214,7 +214,7 @@ The FM-1's keys have no velocity: on the drum track every hit has one of four **
 | 4 · B3 | CLAP | 8 · F4 | RIM | 12 · C5 | CRASH | 16 · G5 | COWBELL |
 
 - **Levels:** GHOST, SOFT, NORM, HARD (hold OCT− / OCT+ while you hit). Softer hits are darker as well as quieter.
-- **Ratchets:** a hit can repeat x1–x4 inside its step (ARP rolls record them; SEQ + step + KNOB 3 sets them).
+- **Ratchets:** a hit can repeat x1–x4 inside its step (SEQ + step + KNOB 3 sets them).
 - **Choke:** the closed hat and the pedal hat cut the open hat.
 - **6 drum voices**, separate from the synths' 8.
 
@@ -299,8 +299,8 @@ LENGTH and START apply when you record at a tempo (MODE *tempo*, or a project th
 
 ### What gets recorded
 
-- **Synth tracks:** the notes (and chords) with their lengths; ties for held notes; ARP rolls as ratchets; CHORD+ chords as they sound.
-- **Drum track:** the hits with their levels; ARP rolls as **ratchets** (a 1/32 roll on a 1/16 track: x2 on each step).
+- **Synth tracks:** the notes (and chords) with their lengths; ties for held notes; CHORD+ chords as they sound.
+- **Drum track:** the hits with their levels.
 - Never recorded: punch-in effects, the click, notes played in a layer that uses the keys for something else (FX, SEQ, GLO…).
 
 ---
@@ -313,7 +313,6 @@ All seven layers at a glance:
 | --- | --- | --- | --- | --- | --- | --- | --- |
 | **FX** | punch | a punch-in effect while the key is held | FILTER (master) | DUST | DUCK | TRK FILT (selected track) | FX pages |
 | **EDIT** | erase | erase that sound / note from the pattern | SHIFT | LENGTH ×2 / ½ | TRANSPOSE | — | EDIT pages |
-| **ARP** | roll | note repeat on the grid | RATE | — | — | — | ARP pages |
 | **SEQ** | steps | steps 1–16 of the page | SOUND / NOTE | DIV | SWING | LENGTH | SEQ pages |
 | **SCL** | key | the key of the song | CHORD | SCALE | KEYS | TRANSPOSE | SCL pages |
 | **GLO** | mix | 1–4 mute · 5–8 solo · 9 fill · 10 fill bar · 16 tap tempo | level 1 | level 2 | level 3 | level 4 | GLO pages |
@@ -347,16 +346,6 @@ Keys pressed while FX is held never play or record notes.
 | **EDIT + OCT+** | **redo** |
 
 All the knob turns of one EDIT hold count as one change for undo.
-
-### ARP — roll (note repeat)
-
-| Control | Does |
-| --- | --- |
-| **ARP + key (held)** | the key repeats on the grid at the RATE, locked to the tempo and the swing; it ends with the key |
-| **ARP + KNOB 1** | **RATE**: 1/8, 1/16, 1/32, 32T, 1/64 (also GLO → MASTER → ROLL) |
-| **ARP + key + OCT− / OCT+** | on the drum track: ghost / hard rolls |
-
-While recording, a roll is written as ratchets (a 1/32 roll on a 1/16 track: x2 on each step). Rolls ignore fills. (The **arpeggiator** is something else: tap ARP for its pages.)
 
 ### SEQ — steps
 
@@ -460,7 +449,7 @@ A **lock** gives one sound parameter another value **for that step only** (Elekt
 3. Turn **PRESETS**: the first click makes the lock, one click away from the track's value; the next ones move it. The title line shows it (*lock dst 14*; *lock flt --* = no lock yet).
 4. **ALGORITHM** (step still held) steps through the other parameters, wrapping round.
 
-At the next step without a lock on that parameter, it comes back to its base value (notes still ringing follow). A knob turned on the page while a lock is in force wins: that value becomes the new base. Several locks can sit on one step (one per parameter), **24 per track**. The sound parameters of the track can be locked (and the PATTERN page's GATE); the arp, key / scale / chord, STRUM / VLEAD, voice-mode, MUTE, LEN / DIV / SWG and the global pages cannot (*NOT LOCKABLE*; *NO LOCK LEFT* when the 24 are used). A locked step shows the same dot as a nudged one; **SEQ + step + OCT−** clears both. Undo (EDIT + OCT−) is for steps: it does not bring nudges and locks back.
+At the next step without a lock on that parameter, it comes back to its base value (notes still ringing follow). A knob turned on the page while a lock is in force wins: that value becomes the new base. Several locks can sit on one step (one per parameter), **24 per track**. The sound parameters of the track can be locked (and the PATTERN page's GATE); key / scale / chord, STRUM / VLEAD, voice-mode, MUTE, LEN / DIV / SWG and the global pages cannot (*NOT LOCKABLE*; *NO LOCK LEFT* when the 24 are used). A locked step shows the same dot as a nudged one; **SEQ + step + OCT−** clears both. Undo (EDIT + OCT−) is for steps: it does not bring nudges and locks back.
 
 ### Fill conditions
 
@@ -472,7 +461,7 @@ At the next step without a lock on that parameter, it comes back to its base val
 | **FILL ONLY** | small **F** (top left) | only during a fill |
 | **NO FILL** | **×** (top left) | always, except during a fill |
 
-Call a fill while you play: **GLO + key 9** (as long as you hold it) or **GLO + key 10** (the whole next bar). Build a beat whose rolls, crashes and pickup notes are FILL ONLY and whose main hat is NO FILL: one finger brings the fill in and out on the bar. A skipped step is silent whole (no note, no MIDI, no ratchet, no lock). On the drum track the condition is the step's, every sound in it. STOP ends any fill. The arp and the rolls ignore fills.
+Call a fill while you play: **GLO + key 9** (as long as you hold it) or **GLO + key 10** (the whole next bar). Build a beat whose rolls, crashes and pickup notes are FILL ONLY and whose main hat is NO FILL: one finger brings the fill in and out on the bar. A skipped step is silent whole (no note, no MIDI, no ratchet, no lock). On the drum track the condition is the step's, every sound in it. STOP ends any fill.
 
 ### Divisions
 
@@ -624,7 +613,7 @@ The song's settings can only be edited while it is stopped (*STOP FIRST*). An em
 | **REC READY / FREE TAKE / COUNT-IN** | **REC** while stopped | the tracks, then **mode · length · start** on KNOB 1–3 (4-3-2-1 during a count-in); in a free take: the seconds and the loop it would make |
 | **Hold ring** | hold **REC** | the ring of *clear track* filling |
 | **SONG** | tap **SAVE** on TRACKS, or **SAVE + key 16** | the section chain; see [The SONG screen](#the-song-screen) |
-| **Pages** | tap ENV, LFO, FX, SCL, EDIT, ARP, SEQ, GLO, SAVE | four colour-coded values with a graph (ENV, LFO, ARP, SCL, FX, SLICER…), or the four values in large type placed as the knobs are (1 2 / 3 4) |
+| **Pages** | tap ENV, LFO, FX, SCL, EDIT, SEQ, GLO, SAVE | four colour-coded values with a graph (ENV, LFO, SCL, FX, SLICER…), or the four values in large type placed as the knobs are (1 2 / 3 4) |
 | **Menu** | hold **HOME** | the settings of the FM-1 in four sections; see [The HOME menu](#20-the-home-menu-and-the-lights) |
 
 The **title line** of every screen also carries short messages: *KEY D*, *ERASED*, *AGAIN: SAVE*, *NEXT: B*, *chain A B B C*, *lock flt 12*…
@@ -652,13 +641,11 @@ Tap a button to open its first page (or the last one you used); **tap it again**
 | | **EDIT 2** | engine parameter 5 | 6 | 7 | 8 |
 | | **VOICE** | VCE: POLY, MONO, LEG (legato), UNI (unison) | GLD glide | GLMOD: RATE / TIME | PRIO: LAST, LOW, HIGH (mono note priority) |
 | | **VOICE 2** | ALLOC: ROT (rotate) / REUSE | DTUNE (unison detune) | PAN | MUTE |
-| **ARP** | **ARP** | MODE: OFF, UP, DN, UPDN, RND, ORD | RATE: 1/4 … 16T | OCT: 1–4 octaves | GATE |
-| | **ARP 2** | SWG swing | PROB probability of each note | HOLD: OFF / ON (latch) | ORD: NOTE (pitch order) / PLAY (the order you played) |
 | **SEQ** | **STEP** | STEP (cursor) | NOTE | TIME: NOTE, TIE, REST | FLAG: –, ACC, SLD, A+S |
 | | **PATTERN** | LEN 1–64 steps | DIV 1/4 … 2BAR | SWG track swing | GATE note length |
 | | **SONG** | the SONG screen | | | |
 | **GLO** | **GLOBAL** | BPM 40–240 | SWING (all tracks) | CLICK: OFF, REC, ON | TUNE ±50 cents |
-| | **MASTER** | DUST | DUCK | FILT (DJ filter) | ROLL (note-repeat rate) |
+| | **MASTER** | DUST | DUCK | FILT (DJ filter) | — |
 | | **SYSTEM** | MIDI out: KEYS / SEQ | SYNC: INT, USB, TRS | IN: NOTES / CLOCK | CPU load (USB link state when no computer is connected) |
 | | **DRUMS** | CH: the drum track's MIDI input channel (0 = off, default 10) | LVL drum level | REV drum reverb | — |
 | **SAVE** | **PRESETS** | the sound | the engine | — | — |
@@ -729,7 +716,7 @@ Edit full patches in the web editor's **FM6** panel (Sound page, on an FM6 track
 
 Each synth track: engine → **drive** (DST) → **SLICER** → **FILTER** (the track's own) → level (and DUCK) → pan and **sends** to the stereo chorus, the tempo delay and the reverb. The drum track has its own slicer, filter, level, pan and reverb send. Then the whole mix, with the effect returns: **DUST** → **punch-in effects** → **FILT** (the DJ filter) → **MASTER** volume → limiter.
 
-### Master: DUST, DUCK, FILT, ROLL
+### Master: DUST, DUCK, FILT
 
 On FX + KNOB 1–3, or GLO → MASTER:
 
@@ -738,7 +725,6 @@ On FX + KNOB 1–3, or GLO → MASTER:
 | **DUST** 0–100 % | the mix through an old sampler and a record: drive into a soft clip, a lower sample rate (down to ~11 kHz), fewer bits (down to 8), a low-pass closing to ~3 kHz, and, while the transport plays, a little hiss and crackle (a stopped SLOOP is silent) |
 | **DUCK** 0–100 % | every kick pumps the synth tracks down and back over an 1/8 note: the sidechain sound, in time at any tempo |
 | **FILT** | a DJ filter: left of centre a low-pass closing, right a high-pass opening, centre OFF; it glides (no zipper noise) |
-| **ROLL** | the note-repeat rate of ARP + key |
 
 ### Punch-in effects
 
@@ -938,7 +924,7 @@ Open it from the [installer page](https://isod89.github.io/sloop-fm1/), the [edi
 | **Samples** | your instruments in USR1–USR4, in three steps (see [above](#an-instrument-editor--samples)), with CHOP |
 | **Drum kit** | your own drum kits, in three steps (see [above](#a-drum-kit-editor--drum-kit)) |
 | **Projects** | the four project slots (**Load**, **Save**) and **Backup** (see below) |
-| **Settings** | GLOBAL (BPM, SWING, CLICK, TUNE), **MASTER** (DUST, DUCK, FILT, ROLL), DRUMS (CH, LVL, REV), and the system information (firmware, sync, slots) |
+| **Settings** | GLOBAL (BPM, SWING, CLICK, TUNE), **MASTER** (DUST, DUCK, FILT), DRUMS (CH, LVL, REV), and the system information (firmware, sync, slots) |
 
 The editor writes presets, the FM6 bank and backups to flash only while the song is stopped, as the FM-1 does (it asks you to stop first). Try it without hardware: add `?mock=1` to the editor's address. The protocol is documented in [web/EDITOR_PROTOCOL.md](web/EDITOR_PROTOCOL.md).
 
@@ -998,7 +984,7 @@ On the installer page, open **Return to the official firmware (V15)**: save a ba
 | tap HOME | TRACKS · on TRACKS: visualiser |
 | hold HOME | menu |
 | tap SAVE | on TRACKS: SONG screen · else SAVE pages |
-| tap ENV, LFO, FX, SCL, EDIT, ARP, SEQ, GLO | their pages (again: next page) |
+| tap ENV, LFO, FX, SCL, EDIT, SEQ, GLO | their pages (again: next page) |
 | tap EDIT / SEQ on TRACKS, drum track | DRUMS screen (again: grid ↔ kit) |
 | OCT− / OCT+ | octave (both: 0) · drums: ghost / hard while held |
 | ALGORITHM | track |
@@ -1011,7 +997,6 @@ On the installer page, open **Return to the official firmware (V15)**: save a ba
 | --- | --- | --- | --- | --- | --- | --- |
 | **FX** | punch-in effects 1–16 | master FILTER | DUST | DUCK | track FILTER | OCT−: page 2 · OCT+: latch mode · HOME: lock |
 | **EDIT** | erase sound / note | SHIFT | LENGTH ×2 / ½ | TRANSPOSE | — | OCT− undo · OCT+ redo |
-| **ARP** | note repeat | RATE | — | — | — | OCT− / OCT+: ghost / hard (drums) |
 | **SEQ** | steps · black keys 1–4: page | SOUND / NOTE | DIV | SWING | LENGTH | OCT− / OCT+: page |
 | **SEQ + step** | more steps | drums: which sound · synths: NOTE | LEVEL | RATCHET | NUDGE | PRESETS lock · ALGORITHM lock parameter · OCT+ fill condition · OCT− clear nudge, locks, condition |
 | **SCL** | key of the song | CHORD | SCALE | KEYS | TRANSPOSE | — |
