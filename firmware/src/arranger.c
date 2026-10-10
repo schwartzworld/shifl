@@ -12,6 +12,7 @@ static void arrangement_apply_scene(uint32_t scene);   /* project.c: all-tracks-
 static uint8_t arrangement_start_index;  /* set by UI before transport start to begin from a specific entry */
 static int8_t arr_song_transpose;         /* semitone offset for the current fragment; 0 when not in song mode */
 static uint8_t arr_song_trans_inkey;      /* 1 = snap transposed note to the track's scale after chromatic shift */
+static uint8_t arr_song_vol[ARR_STEPS][ARR_TRACKS]; /* per-fragment per-track volume override; ARR_VOL_NONE=use scene's */
 
 static int arrangement_start(void)
 {

@@ -41,7 +41,7 @@ static void song_sane(void)
     if (!ok) arr_defaults(&arrangement);
     if (song_cursor >= arrangement.count)
         song_cursor = (uint8_t)(arrangement.count - 1u);
-    if (song_sub > ARR_TRACKS + 7u) song_sub = 0;
+    if (song_sub > ARR_TRACKS + 10u) song_sub = 0;
 }
 
 /* Scene targeted by REC/LOAD: the selected track's scene, or the first non-muted
@@ -64,9 +64,11 @@ static void song_clone_fragment(void)
     for (i = arrangement.count; i > (uint32_t)song_cursor + 1u; i--) {
         arrangement.entry[i] = arrangement.entry[i - 1u];
         arrangement.patch[i] = arrangement.patch[i - 1u];
+        memcpy(arr_song_vol[i], arr_song_vol[i - 1u], ARR_TRACKS);
     }
     arrangement.entry[song_cursor + 1u] = arrangement.entry[song_cursor];
     arrangement.patch[song_cursor + 1u] = arrangement.patch[song_cursor];
+    memcpy(arr_song_vol[song_cursor + 1u], arr_song_vol[song_cursor], ARR_TRACKS);
     arrangement.count++;
     song_cursor++;
     ui_message("CLONED");
@@ -95,6 +97,7 @@ static void song_screen_draw(void)
         for (k = 0; k < ARR_TRACKS; k++) {
             sig = sig * 11u + arrangement.patch[i].engine[k];
             sig = sig * 13u + arrangement.patch[i].preset[k];
+            sig = sig * 17u + arr_song_vol[i][k];
         }
     }
     for (i = 0; i < ARR_SCENES; i++) sig = sig * 3u + (uint32_t)project_used(i);
@@ -221,18 +224,14 @@ static void song_screen_draw(void)
         }
         cv_rect(0, 1, 240, 1, RGB(54, 54, 60));
         cv_blit(0, 198);
-    } else if (song_sub >= (uint8_t)(ARR_TRACKS + 4u)) {
-        /* Patch override rows (sub=8..11, one per track) */
+    } else if (song_sub >= (uint8_t)(ARR_TRACKS + 4u) && song_sub < (uint8_t)(ARR_TRACKS + 4u + NPART)) {
+        /* Patch override rows (sub=8..10, synth tracks 1-3 only) */
         uint32_t pk = (uint32_t)song_sub - (ARR_TRACKS + 4u);
         const arr_patch_t *pa = &arrangement.patch[song_cursor];
         cv_begin(240, 42, C_BLACK);
         b[0] = 'P'; b[1] = (char)('1' + pk); b[2] = 0;
         cv_text(4, 11, &FONT_S, b, SC[pk]);
-        if (pk >= NPART) {
-            cv_rect(36, 9, 44, 20, RGB(26, 26, 30));
-            cv_text(40, 11, &FONT_S, "DRUM", RGB(80, 80, 88));
-            cv_text(88, 11, &FONT_S, "fixed", RGB(80, 80, 88));
-        } else if (pa->engine[pk] == ARR_PATCH_NONE) {
+        if (pa->engine[pk] == ARR_PATCH_NONE) {
             cv_rect(36, 9, 26, 20, RGB(26, 26, 30));
             cv_text(40, 11, &FONT_S, "--", RGB(80, 80, 88));
             cv_text(70, 11, &FONT_S, "default", RGB(80, 80, 88));
@@ -244,6 +243,26 @@ static void song_screen_draw(void)
             str_cpy(b + str_len(b), ENGINES[eng]->presets[pst].name, 17);
             cv_rect(36, 9, 196, 20, RGB(40, 40, 52));
             cv_text(40, 11, &FONT_S, b, RGB(180, 180, 220));
+        }
+        cv_rect(0, 1, 240, 1, RGB(54, 54, 60));
+        cv_blit(0, 198);
+    } else if (song_sub >= (uint8_t)(ARR_TRACKS + 4u + NPART)) {
+        /* Vol override rows (sub=11..14, all 4 tracks) */
+        uint32_t vk = (uint32_t)song_sub - (ARR_TRACKS + 4u + NPART);
+        uint8_t vv = arr_song_vol[song_cursor][vk];
+        cv_begin(240, 42, C_BLACK);
+        b[0] = 'V'; b[1] = (char)('1' + vk); b[2] = 0;
+        cv_text(4, 11, &FONT_S, b, SC[vk]);
+        if (vv == ARR_VOL_NONE) {
+            cv_rect(36, 9, 26, 20, RGB(26, 26, 30));
+            cv_text(40, 11, &FONT_S, "--", RGB(80, 80, 88));
+            cv_text(70, 11, &FONT_S, "default", RGB(80, 80, 88));
+        } else {
+            char vb[8];
+            fmt_int(vb, (int32_t)vv);
+            cv_rect(36, 9, 52, 20, RGB(40, 52, 40));
+            cv_text(40, 11, &FONT_S, vb, RGB(120, 220, 120));
+            cv_text(96, 11, &FONT_S, "vol override", RGB(80, 80, 88));
         }
         cv_rect(0, 1, 240, 1, RGB(54, 54, 60));
         cv_blit(0, 198);
@@ -331,7 +350,7 @@ static void song_screen_input(uint32_t pressed, uint32_t home)
         }
         if (song.playing || transport_req) { ui_message("STOP FIRST"); continue; }
         if (k == 1) {
-            song_sub = (uint8_t)clamp((int32_t)song_sub + steps, 0, (int32_t)ARR_TRACKS + 7);
+            song_sub = (uint8_t)clamp((int32_t)song_sub + steps, 0, (int32_t)ARR_TRACKS + 10);
         } else if (k == 2) {
             arr_entry_t *e = &arrangement.entry[song_cursor];
             if (song_sub == 0u) {
@@ -355,23 +374,30 @@ static void song_screen_input(uint32_t pressed, uint32_t home)
                 int32_t cur_k = (e->rsv[2] & ARR_FLAG_INKEY) ? 1 : 0;
                 int32_t new_k = clamp(cur_k + steps, 0, 1);
                 e->rsv[2] = (uint8_t)((e->rsv[2] & ~ARR_FLAG_INKEY) | (uint8_t)new_k);
-            } else if (song_sub >= ARR_TRACKS + 4u) {
-                /* Patch override rows: one per track (ARR_TRACKS+4 = track 0) */
+            } else if (song_sub >= ARR_TRACKS + 4u && song_sub < ARR_TRACKS + 4u + NPART) {
+                /* Patch override rows (sub=8..10): synth tracks only */
                 uint32_t tk = (uint32_t)song_sub - (ARR_TRACKS + 4u);
-                if (tk < NPART) {
-                    arr_patch_t *pa = &arrangement.patch[song_cursor];
-                    int32_t cur_f = (pa->engine[tk] == ARR_PATCH_NONE) ? -1 :
-                                    song_ep_to_flat(pa->engine[tk], pa->preset[tk]);
-                    int32_t new_f = clamp(cur_f + steps, -1, (int32_t)song_patch_count() - 1);
-                    if (new_f < 0) {
-                        pa->engine[tk] = ARR_PATCH_NONE;
-                        pa->preset[tk] = ARR_PATCH_NONE;
-                    } else {
-                        uint8_t eng, pst;
-                        song_flat_to_ep((uint32_t)new_f, &eng, &pst);
-                        pa->engine[tk] = eng;
-                        pa->preset[tk] = pst;
-                    }
+                arr_patch_t *pa = &arrangement.patch[song_cursor];
+                int32_t cur_f = (pa->engine[tk] == ARR_PATCH_NONE) ? -1 :
+                                song_ep_to_flat(pa->engine[tk], pa->preset[tk]);
+                int32_t new_f = clamp(cur_f + steps, -1, (int32_t)song_patch_count() - 1);
+                if (new_f < 0) {
+                    pa->engine[tk] = ARR_PATCH_NONE;
+                    pa->preset[tk] = ARR_PATCH_NONE;
+                } else {
+                    uint8_t eng, pst;
+                    song_flat_to_ep((uint32_t)new_f, &eng, &pst);
+                    pa->engine[tk] = eng;
+                    pa->preset[tk] = pst;
+                }
+            } else if (song_sub >= ARR_TRACKS + 4u + NPART) {
+                /* Vol override rows (sub=11..14): all 4 tracks, 0-127 or -1=none */
+                uint32_t vk = (uint32_t)song_sub - (ARR_TRACKS + 4u + NPART);
+                if (vk < NTRK) {
+                    int32_t cur_v = (arr_song_vol[song_cursor][vk] == ARR_VOL_NONE) ? -1 :
+                                    (int32_t)arr_song_vol[song_cursor][vk];
+                    int32_t new_v = clamp(cur_v + steps, -1, 127);
+                    arr_song_vol[song_cursor][vk] = (new_v < 0) ? ARR_VOL_NONE : (uint8_t)new_v;
                 }
             }
         } else if (k == 3) {

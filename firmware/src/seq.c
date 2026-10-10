@@ -1199,7 +1199,7 @@ static void key_down(uint32_t k)
     kb_n[k] = 0;
     switch (layer) {
     case LY_FX: {                                     /* FX held: the white keys pick a punch-in effect */
-        int32_t fx = punch_key(k);
+        int32_t fx = punch_key(k) + (int32_t)punch.page * 16;
         kb_kind[k] = KS_FX;
         if (fx >= 0 && fx < (int32_t)PUNCH_NFX) {
             if (punch.latch_mode)

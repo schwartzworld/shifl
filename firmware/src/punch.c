@@ -386,5 +386,5 @@ static int32_t punch_key(uint32_t k)
 {
     static const int8_t W[12] = {0, -1, 1, -1, 2, -1, 3, 4, -1, 5, -1, 6};   /* from F */
     int32_t i = W[k % 12u];
-    return i < 0 ? -1 : (int32_t)(k / 12u) * 7 + i + (int32_t)punch.page * 16;
+    return i < 0 ? -1 : (int32_t)(k / 12u) * 7 + i;
 }
