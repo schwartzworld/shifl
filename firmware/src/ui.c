@@ -401,6 +401,14 @@ static const struct { uint8_t kind, e; const char *name; } BANK[] = {
     {BK_FX, 3, "SYN DRUMS 1"}, {BK_FX, 3, "SYN DRUMS 2"}, {BK_FX, 3, "CONGA"},
     {BK_FX, 3, "MOTORCYCLE"},
     {BK_FX, 3, "INIT TONE"},
+    {BK_FX, 4, "INIT PATCH"},
+    {BK_FX, 1, "INIT CHIP"},
+    {BK_FX, 2, "INIT VOX"},
+    /* RAND: e >= NENGINES encodes engine index; bank_resolve skips the name lookup */
+    {BK_FX, 5, "RAND DX7"},
+    {BK_FX, 6, "RAND LOFI"},
+    {BK_FX, 7, "RAND VOICE"},
+    {BK_FX, 9, "RAND ANALOG"},
     /* ANALOG (engine 4) */
     {BK_BASS, 4, "808 BOOM"}, {BK_BASS, 4, "808 DIRTY"}, {BK_BASS, 4, "SUB BASS"},
     {BK_BASS, 4, "808 SLIDE"}, {BK_BASS, 4, "ACID 303"}, {BK_BASS, 4, "PLUGG BASS"},
@@ -412,14 +420,20 @@ static const struct { uint8_t kind, e; const char *name; } BANK[] = {
     {BK_PLUCK, 4, "TRAP PLUCK"},
 };
 #define NBANK (sizeof BANK / sizeof BANK[0])
+#define BANK_RAND 0xFEu          /* bank_pi sentinel: RAND entry, not a real preset */
 static uint8_t bank_pi[NBANK];                       /* the preset index of each entry in its engine */
 static uint8_t bank_ready;
 static void bank_resolve(void)
 {
     uint32_t i, k;
     for (i = 0; i < NBANK; i++) {
-        const engine_t *e = ENGINES[BANK[i].e % NENGINES];
+        const engine_t *e;
         bank_pi[i] = 0xFF;
+        if (BANK[i].e >= NENGINES) {                 /* RAND entry: no preset to look up */
+            bank_pi[i] = BANK_RAND;
+            continue;
+        }
+        e = ENGINES[BANK[i].e % NENGINES];
         for (k = 0; k < e->npresets; k++)
             if (str_eq(e->presets[k].name, BANK[i].name))
                 bank_pi[i] = (uint8_t)k;
@@ -440,7 +454,7 @@ static uint32_t preset_pos(uint32_t *total)          /* list index of the select
     return cur;
 }
 
-/* list index n (< total) -> engine, *k its preset; NENGINES = user preset, *k its slot */
+/* list index n (< total) -> engine, *k its preset; NENGINES = user preset, NENGINES+1 = RAND */
 static uint32_t preset_at(uint32_t n, uint32_t *k)
 {
     if (!bank_ready)
@@ -449,16 +463,38 @@ static uint32_t preset_at(uint32_t n, uint32_t *k)
         *k = up_nth(n - NBANK);
         return NENGINES;
     }
+    if (bank_pi[n] == BANK_RAND) {
+        *k = BANK[n].e - NENGINES;  /* the engine index encoded in e */
+        return NENGINES + 1u;
+    }
     *k = bank_pi[n] == 0xFF ? 0u : bank_pi[n];
     return BANK[n].e % NENGINES;
 }
 static const char *preset_kind(uint32_t n) { return n < NBANK ? BANK_KIND[BANK[n].kind] : "USER"; }
+
+static void apply_rand_preset(uint32_t ei)           /* randomize synth params; INIT preset sets the base */
+{
+    const engine_t *e = ENGINES[ei % NENGINES];
+    uint32_t i;
+    apply_preset_to(TSEL, e->npresets - 1u);
+    for (i = 0; i < 8u; i++) {
+        int32_t lo = e->edit[i].min, hi = e->edit[i].max, range = hi - lo;
+        TSEL->p[P_E0 + i] = (int16_t)(range > 0 ? lo + (int32_t)(rng() % (uint32_t)(range + 1)) : lo);
+    }
+    ui.force = 1;
+}
 
 static void preset_go(uint32_t n)                    /* load list index n into the selected track */
 {
     uint32_t k, e = preset_at(n, &k);
     if (is_drum(TSEL))
         return;                                      /* one GM kit: nothing to browse */
+    if (e == NENGINES + 1u) {                        /* RAND: switch engine if needed, then randomize */
+        if (k != TSEL->eng_req)
+            select_engine(k);
+        apply_rand_preset(k);
+        return;
+    }
     if (e == NENGINES) {
         up_load(k);
         return;

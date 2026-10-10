@@ -124,6 +124,7 @@ static const preset_t ANALOG_PRESETS[] = {
      XP(P_LD_PIT + 1, 1, P_LRATE + 1, 80, P_LFADE + 1, 60, P_GLIDE + 1, 30)},
     {"SAW BASS", {0, 6, 64, 0, 52, 30, 40, 64}, {0, 60, 60, 20}, 30, 1, FX(8, 0, 0, 4), XP(P_TRANS + 1, -24)},
     {"SINE PAD", {3, 10, 64, 4, 90, 0, 0, 32}, {80, 90, 118, 90}, 0, 0, FX(0, 60, 20, 65)},
+    {"INIT PATCH", {0, 0, 64, 0, 127, 0, 0, 64}, {0, 60, 127, 30}, 0, 0, FX(0, 0, 0, 0)},
 };
 
 static const engine_t ENG_ANALOG = {
