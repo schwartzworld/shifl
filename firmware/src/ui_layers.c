@@ -338,8 +338,12 @@ static void layer_key(uint32_t layer, uint32_t k, uint32_t down)
         ui_say("KEY ", N_NOTE[root]);
         return;
     }
-    case LY_ROLL: {                                     /* live mode: ARP held selects scenes */
-        if (!live_mode) return;
+    case LY_ROLL: {                                     /* live mode: ARP held selects scenes; otherwise: GEN / MUT */
+        if (!live_mode) {
+            if (w == 0)      { is_drum(TSEL) ? drum_generate(TSEL) : seq_generate(TSEL); ui_say("GEN", ""); }
+            else if (w == 1) { seq_mutate(TSEL); ui_say("MUT", ""); }
+            return;
+        }
         if (w < 0 || w >= (int32_t)ARR_STEPS) return;
         if (song.playing) {
             fm1_irq_off();
@@ -714,8 +718,13 @@ static void layer_screen_draw(void)
         str_cpy(sub, undo.valid ? (undo.undone ? "oct+ redo" : "oct- undo") : sub, sizeof sub);
         break;
     }
-    case LY_ROLL: {                                     /* live mode: 16 scene tiles */
-        if (!live_mode) break;
+    case LY_ROLL: {                                     /* live mode: 16 scene tiles; otherwise: GEN / MUT */
+        if (!live_mode) {
+            str_cpy(sub, "key 1: generate   key 2: mutate", sizeof sub);
+            str_cpy(tl[0].lab, "GEN", 8); tl[0].bg = col; tl[0].fg = C_BLACK;
+            str_cpy(tl[1].lab, "MUT", 8); tl[1].bg = TE_MID[sel & 3u]; tl[1].fg = C_BLACK;
+            break;
+        }
         col = RGB(0, 200, 240);
         if (lm_chain_taps >= 2u || lm_chain_n)
             lm_chain_sub(sub, sizeof sub);

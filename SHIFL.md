@@ -339,6 +339,22 @@ The protocol is documented in [web/EDITOR_PROTOCOL.md](web/EDITOR_PROTOCOL.md) (
 
 The full Felucca engine is underneath: nine synthesis engines (analog, 4-op FM, phase distortion, lo-fi chip, sampler, formant voice, three-oscillator, tonewheel organ, granular), envelopes (with a pitch punch for the 808s), LFO, scales and chords, glide and voice modes, per-track drive and slicer, chorus / delay / reverb sends (a stereo chorus, a tempo delay, a stereo reverb built as a feedback delay network: dense, no metallic ring), 32 user presets, 4 projects.
 
+### ENV — amplitude envelope
+
+**ATK · DEC · SUS · REL** — the standard ADSR that controls the volume shape of every note.
+
+**ENV DEST** — how much the amp envelope modulates other parameters: **FLT** (filter cutoff), **PIT** (pitch punch), **SHP** (waveshape / filter type).
+
+### FENV — filter envelope
+
+A second, independent ADSR that drives the filter cutoff separately from the amp envelope.
+
+**ATK · DEC · SUS · REL** — the filter envelope's own attack, decay, sustain and release, independent of the amp envelope's values.
+
+The filter envelope is always running; how much it moves the filter is set by **FLT** on the ENV DEST page. A slow FENV attack opens the filter gradually while the amp (ENV ATK) can be instant — useful for slow filter sweeps on a plucked or percussive sound. A fast FENV release closes the filter while the amp sustains — useful for a vowel-like pluck on a pad. The accent (velocity > 110) still follows the amp envelope for a TR-style bright hit.
+
+Existing patches load with FENV set to the same ATK / DEC / SUS / REL values as the amp envelope, so they sound identical until you change the FENV page.
+
 ## MIDI keyboards
 
 SHIFL takes MIDI from two places at once:

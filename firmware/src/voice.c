@@ -270,6 +270,7 @@ static void voice_start(track_t *t, voice_t *v, uint32_t note, uint32_t vel, int
     if (!sounding) {
         v->env = 0;
         v->env_out = 0;
+        v->fenv = 0;
     }                                                   /* sounding: the attack starts from the current level */
     e->note_on(t, v);
     if (sounding && !eng_sampled(e)) {                 /* retrigger: keep phases (dx7_note_on handles its own keep) */
@@ -541,8 +542,29 @@ static void engine_block(track_t *t)
                 trk_note_on(t, t->xp_note[i], t->xp_vel[i]);
         }
     }
-    for (i = 0; i < 8u; i++)                            /* the engine's own values, for a later fade */
+    for (i = 0; i < 16u; i++)                           /* the engine's own values, for a later fade */
         t->pe_old[i] = t->p[P_E0 + i];
+}
+
+/* one control tick of the filter envelope; independent ADSR, shares the amp stage for gating */
+static int32_t fenv_tick(track_t *t, voice_t *v)
+{
+    const int16_t *p = t->p;
+    int32_t sus = (int32_t)p[P_FSUS] << 17;            /* Q24 */
+    if (v->stage == 3 || v->stage == 4) {
+        v->fenv -= mulq16(v->fenv, ENV_EXP[p[P_FREL] & 127]);
+        if (v->fenv < (1 << 12))
+            v->fenv = 0;
+    } else if (v->stage && v->fenv < (1 << 24)) {      /* attack not yet complete */
+        v->fenv += (int32_t)ENV_LIN[p[P_FATK] & 127];
+        if (v->fenv >= (1 << 24))
+            v->fenv = 1 << 24;
+    } else if (v->stage) {                             /* past attack: decay toward sustain */
+        v->fenv += mulq16(sus - v->fenv, ENV_EXP[p[P_FDEC] & 127]);
+    } else {
+        v->fenv = 0;
+    }
+    return v->fenv >> 9;                               /* Q15 */
 }
 
 /* one control tick (CTL samples) of the amplitude envelope; returns Q15 */
@@ -598,11 +620,11 @@ static uint32_t track_render(track_t *t, int32_t *out, uint32_t n)
     int32_t tune = song.g[G_TUNE] >= 0 ? song.g[G_TUNE] * 16 / 100 : -((-song.g[G_TUNE] * 16 + 99) / 100);
     int32_t tune_fine = (song.g[G_TUNE] * 16 - tune * 100) * 2367 / 16000;   /* rest, in 1/4096 (1 ct = 2.367) */
     uint32_t nr = 0, fade = t->xf_on && t->xf;
-    int16_t pe_new[8];
+    int16_t pe_new[16];
     for (i = 0; i < n; i++)
         out[i] = 0;
     if (fade)                                           /* engine switch: the old engine, its own values */
-        for (i = 0; i < 8u; i++) {
+        for (i = 0; i < 16u; i++) {
             pe_new[i] = t->p[P_E0 + i];
             t->p[P_E0 + i] = t->pe_old[i];
         }
@@ -612,7 +634,7 @@ static uint32_t track_render(track_t *t, int32_t *out, uint32_t n)
     for (i = 0; i < NVOICE; i++) {
         voice_t *v = &t->v[i];
         vmod_t m;
-        int32_t env, pitch;
+        int32_t env, fenv, pitch;
         if (!v->active)
             continue;
         {
@@ -635,6 +657,7 @@ static uint32_t track_render(track_t *t, int32_t *out, uint32_t n)
                     env = e->amp(t, v, env);
                 m.envq15 = env;
             }
+            fenv = fenv_tick(t, v);
             m.amp1 = mulq15(env, v->vel * 258);
             if (p[P_LD_AMP])
                 m.amp1 = mulq15(m.amp1, 32767 - mulq15((lfo + 32768) >> 1, p[P_LD_AMP] * 258));
@@ -667,8 +690,8 @@ static uint32_t track_render(track_t *t, int32_t *out, uint32_t n)
             if (m.fine)                                 /* unison detune, fine tune and the fraction */
                 m.inc += (uint32_t)((int32_t)(m.inc >> 12) * m.fine);
         }
-        m.cutoff = ((lfo * p[P_LD_FLT]) >> 7) + ((m.envq15 * p[P_ED_FLT]) >> 7);
-        if (v->vel > 110)                               /* accent opens the filter with the env */
+        m.cutoff = ((lfo * p[P_LD_FLT]) >> 7) + ((fenv * p[P_ED_FLT]) >> 7);
+        if (v->vel > 110)                               /* accent opens the filter with the amp env */
             m.cutoff += (m.envq15 * 24) >> 7;
         m.shape = (64 << 8) + ((lfo * p[P_LD_SHP]) >> 7) + ((m.envq15 * p[P_ED_SHP]) >> 7);
         e->render(t, v, out, n, &m);
@@ -679,7 +702,7 @@ static uint32_t track_render(track_t *t, int32_t *out, uint32_t n)
         }
     }
     if (fade) {
-        for (i = 0; i < 8u; i++)
+        for (i = 0; i < 16u; i++)
             t->p[P_E0 + i] = pe_new[i];
         t->xf--;
     }

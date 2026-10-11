@@ -70,7 +70,9 @@ enum {                          /* per-track parameters */
     P_STRUM,                                   /* SLOOP 2.4: a chord's notes one after the other, ms each (> 0 down, < 0 up) */
     P_VLEAD,                                   /* SLOOP 2.4: chord mode, each chord voiced nearest the last (seq.c) */
     P_SPICE,                                   /* SLOOP 2.5: spice & dice randomisation blend (0=dry, 127=full) */
+    P_FATK, P_FDEC, P_FSUS, P_FREL,           /* filter envelope: independent ADSR for the filter cutoff mod */
     P_E0, P_E1, P_E2, P_E3, P_E4, P_E5, P_E6, P_E7,
+    P_E8, P_E9, P_E10, P_E11, P_E12, P_E13, P_E14, P_E15,
     P_COUNT
 };
 
@@ -98,6 +100,7 @@ typedef struct {
     uint8_t pitch_frac;          /* the glide between 1/16 semitones: pitch_cur + pitch_frac / 256 */
     int16_t penv;                /* the pitch envelope (ENV > PIT): Q15, a fast fall from the note's start */
     int32_t env;                 /* Q24 */
+    int32_t fenv;                /* filter envelope, Q24 */
     int32_t env_out;             /* last control-rate amplitude, Q15 */
     int32_t pitch16, pitch_cur;  /* 1/16 semitone, with glide */
     int32_t gstep;               /* glide: 1/4096 semitone per control tick, 0 = RATE (GLIDE: the time an octave takes) */
@@ -139,7 +142,7 @@ struct track;
 typedef struct {
     const char *name;            /* "VA" */
     const char *page_title[2];
-    param_desc_t edit[8];        /* P_E0..P_E7 */
+    param_desc_t edit[16];       /* P_E0..P_E15 (engines with 8 params leave [8..15] zero) */
     const preset_t *presets;
     uint8_t npresets;
     int8_t fil_page;             /* EDIT page that holds the filter, -1 = none */
@@ -316,8 +319,9 @@ typedef struct track {
     int16_t armp, aholdp;        /* P_AMODE / P_AHOLD as last seen by the ISR */
     /* engine switch (voice.c engine_block): the old engine's voices fade out, then it switches */
     uint8_t xf_on, xf;           /* fading; blocks of the fade still to render */
-    int16_t pe_old[8];           /* P_E0..P_E7 of the sounding engine: the fade renders with these */
+    int16_t pe_old[16];          /* P_E0..P_E15 of the sounding engine: the fade renders with these */
     uint8_t xp_n, xp_note[4], xp_vel[4];   /* note-ons during the fade, played on the new engine */
+    uint32_t gen_seed;               /* seed of the last seq_generate / drum_generate call */
 } track_t;
 
 typedef struct {

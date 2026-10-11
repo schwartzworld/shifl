@@ -15,12 +15,14 @@ Free and open source (GPL-3.0), based on <a href="https://github.com/hugelton/Fe
 
 SHIFL turns the FM-1 into a six-track groovebox you play live: **five synths and a drum machine** with 16 sounds on the white keys, 116 sounds across five engines — DX7 FM, virtual analogue, Phase Distortion (CZ-1), formant voice and lo-fi chip — three drum kits, your own samples, a song mode you play with your hands — and **USB audio**, a **MIDI keyboard on the jack**, **MIDI CC control**, **MIDI clock**, **lights for playing in the dark** and a **full backup**. House, techno, hip-hop, trap, drum & bass, amapiano, synthwave, lo-fi, ambient, chiptune — it does not pick a style for you. No factory patterns, nothing to load: everything you hear, you play.
 
-> **Status:** 2.5. Still a beta: install at your own risk, and please [report](../../issues) what you find. Your projects, presets, samples and settings are kept when you update, and you can go back at any time (see [Going back](#going-back)).
+> **Status:** 2.7. Still a beta: install at your own risk, and please [report](../../issues) what you find. Your projects, presets, samples and settings are kept when you update, and you can go back at any time (see [Going back](#going-back)).
 
 ## Contents
 
-1. [What's new in 2.5](#whats-new-in-25)
-2. [What's new in 2.4](#whats-new-in-24)
+1. [What's new in 2.7](#whats-new-in-27)
+2. [What's new in 2.6](#whats-new-in-26)
+3. [What's new in 2.5](#whats-new-in-25)
+4. [What's new in 2.4](#whats-new-in-24)
 3. [Screenshots](#screenshots)
 4. [Features](#features)
 5. [Presets](#presets)
@@ -41,6 +43,24 @@ SHIFL turns the FM-1 into a six-track groovebox you play live: **five synths and
 20. [Licence](#licence)
 
 ---
+
+## What's new in 2.7
+
+| | |
+| --- | --- |
+| **Generative sequences** | Hold **ARP** and press the first white key to **generate** a new pattern from scratch; press the second white key to **mutate** the current one (roughly a quarter of the steps re-rolled). Works on both synth tracks and the drum track. Generation is scale-aware — notes are drawn from the track's current key and scale (SCL page) and land in the C4–C5 range. **SPICE** (EDIT page, 0–127) controls density and accent intensity: 0 is sparse and quiet, 127 is dense and accented. Every generate and mutate is undoable with EDIT + OCT−. |
+
+## What's new in 2.6
+
+| | |
+| --- | --- |
+| **808 circuit kit** | A new **808** drum kit (kit 6) models the TR-808's analog voice circuits — bridged-T resonators for BD, SD, toms and congas; noise voices for clap and maracas; six free-running square oscillators through band-pass and high-pass filters for the hats, cymbal and cowbell. Velocity sets the trigger level and changes the timbre, not just the volume. All synthesized, no samples. |
+| **909 circuit kit** | A new **909** drum kit (kit 7) ports the 9W9 TR-909 circuit model (Charles Vestal, GPL-3.0): exponential-ramp oscillators with pitch modulation for BD and SD; three-VCO toms; noise-burst clap; synthesized hi-hats and cymbals. All synthesized, no samples. |
+| **Filter envelope** | A second, independent ADSR envelope — **ENV → FENV** — controls the filter cutoff separately from the amplitude envelope. Previously, a slow attack on the filter meant a slow attack on the sound too. Now set a long FENV attack for a slow filter sweep while the note opens instantly, or a fast FENV release while the amp sustains. Existing patches load with FENV set to the same shape as the amp envelope, so nothing changes unless you go to the FENV page and edit it. |
+
+The 808 and 909 respond to TUNE, TONE, DECY and SNAP on the drum track's EDIT page, and all per-lane macros (TUNE, DECAY, LEVEL, PAN, REV, DRIVE, CRUSH, RING, FOLD) work as on the FM kits.
+
+What came in 2.0–2.5: see below.
 
 ## What's new in 2.5
 
@@ -109,14 +129,15 @@ Keys 1, 5, 9 and 13 glow dimly while a layer is held: the first key of each row 
 - **Play drums on the keys:** the drum track responds to the keyboard like a synth track — hold a key, it plays that drum voice pitched.
 - **Ghost and hard hits:** hold OCT− / OCT+ while you play. Every hit keeps its level (GHOST, SOFT, NORM, HARD) and a **ratchet** (×1–×4).
 - **Step probability per lane:** each drum step can be certain, or fire at 75 %, 50 % or 25 % chance. The dial cycles: `--` / `on` / `P75` / `P50` / `P25` / `×2` / `×3` / `×4`. Ratchets only apply on lanes that actually fired.
-- **3 kits, 17 voices each**, all level-matched: 808 FM, ELECTRO and METAL, each voice built like on the classic machines; softer hits are darker as well as quieter.
+- **5 kits, 17 voices each**, all level-matched: 808 FM, ELECTRO and METAL (FM synthesis), **808** and **909** (analog circuit models — no samples); softer hits are darker as well as quieter.
 - **Grid and kit pages** on the FM-1 (EDIT or SEQ on the drum track), and a 16-lane grid in the web editor.
 
 ### Synths and sounds
 
 - **Five engines:** DX7 FM synthesis, virtual analogue (two oscillators, filter, drive), Casio CZ-1 Phase Distortion, formant voice, lo-fi chip.
 - **116 sounds, browsed by kind** — all level-matched. **32 slots** for your own presets.
-- Envelopes (with a pitch punch for 808-style kicks), LFO, glide and voice modes (POLY, MONO, LEGATO, UNISON), per-track drive and slicer, sends to a **stereo chorus**, a **tempo delay** and a **stereo reverb**.
+- **Two envelopes per track:** the amp ADSR and an independent **filter envelope** (FENV) — set a slow filter sweep with an instant attack, or a fast filter close while the amp sustains. With a pitch punch for 808-style kicks.
+- LFO, glide and voice modes (POLY, MONO, LEGATO, UNISON), per-track drive and slicer, sends to a **stereo chorus**, a **tempo delay** and a **stereo reverb**.
 - **Key and chords (SCL):** the key of the song for all synths, 16 scales, one-key chords (triad, 7th, 9th, sus4, power), keys snapped to the scale or the scale on the white keys.
 
 ### Recording and the sequencer
@@ -315,7 +336,7 @@ Nothing to download or compile. Your projects, user presets, samples and setting
 
 ## Your first beat in 60 seconds
 
-1. **ALGORITHM** to track **6** (orange, drums). The white keys are 17 drum sounds; **PRESETS** picks a kit (try *808 FM* or *ELECTRO*).
+1. **ALGORITHM** to track **6** (orange, drums). The white keys are 17 drum sounds; **PRESETS** picks a kit (try *808*, *909*, *808 FM* or *ELECTRO*).
 2. Press **REC** and play a beat freely, at your own tempo. Hold **OCT−** while you hit for ghost notes, **OCT+** for hard ones.
 3. **Press REC on the "1" after your last bar.** The loop closes, its length sets the tempo, the hits snap to the grid and it plays at once. (Prefer a set tempo, or a count-in? Turn KNOB 1 and KNOB 3 on the REC screen before you start.)
 4. **REC** again while it plays: you record on top. Hold **ARP** and hold the hat key for a hat roll.
@@ -450,7 +471,7 @@ Something else? [Open an issue](../../issues): what you did, what you expected, 
 | --- | --- |
 | Tracks | 5 synth parts (voices shared) + drums (17 sounds, polyphonic) |
 | Sounds | 116 presets on 5 engines — ANALOG (22), DX7 FM (20), CZ-1 Phase Distortion (65), formant voice (4), lo-fi chip (5) — all level-matched; 3 user sample slots; 32 user presets |
-| Drum kits | 3 FM-synthesised kits (808 FM, ELECTRO, METAL), 17 sounds each, level-matched |
+| Drum kits | 3 FM-synthesised kits (808 FM, ELECTRO, METAL) + 2 analog circuit models (808, 909 — no samples), 17 sounds each, level-matched |
 | Sequencer | 64 steps per track, own length and division each; dotted step sizes (1/32 … 2m•); chords with level, ratchet and probability per note; drums with level, ratchet and probability per sound; ties, slide; MPC swing 50–75 %; one sample-accurate clock (no drift) |
 | Step probability | 100 % / 75 % / 50 % / 25 % per step (synth and drums) |
 | Recording | live, quantised as heard (latency-compensated), overdub; free take or set tempo; start on first note or one-bar count-in; 1, 2 or 4 bars |

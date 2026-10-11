@@ -106,6 +106,19 @@ static inline int32_t tsvf_lp(const tsvf_t *c, int32_t in, int32_t *ic1, int32_t
     return v2;
 }
 
+/* Jangada: the same filter step, with the band-pass too; HP = in - k*bp - lp */
+static inline int32_t tsvf_lpbp(const tsvf_t *c, int32_t in, int32_t *ic1, int32_t *ic2, int32_t *bp)
+{
+    int32_t v3 = in - *ic2;
+    int32_t v1 = (c->a1 * *ic1 + c->a2 * v3) >> 13;
+    int32_t v2 = *ic2 + ((c->a2 * *ic1 + c->a3 * v3) >> 13);
+    *ic1 = clamp(2 * v1 - *ic1, -150000, 150000);
+    *ic2 = clamp(2 * v2 - *ic2, -150000, 150000);
+    *bp = v1;
+    return v2;
+}
+static inline int32_t tsvf_k(int32_t reso) { return 8192 - reso * 7600 / 127; }   /* Q12, as tsvf_coef */
+
 /* amplitude ramp over the block. Blocks are always CTL long, so x / CTL is a
  * shift rounded towards zero (-Os would keep a hardware divide per sample) */
 #define CTL_LOG2 5

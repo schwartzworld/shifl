@@ -366,6 +366,157 @@ static void undo_mark(const track_t *t, uint32_t sess)
 #define UNDO_REC(t) (((t)->pass << 2) | 1u)      /* a recording pass of track t */
 static uint32_t undo_erase_sess;
 
+/* --------------------------------------------------------- generate --- */
+/* Private xorshift32 for deterministic, seed-based pattern generation. */
+static uint32_t gen_next(uint32_t *r)
+{
+    *r ^= *r << 13;
+    *r ^= *r >> 17;
+    *r ^= *r << 5;
+    return *r;
+}
+
+/* Pick a random in-scale MIDI note (C4 or C5) using local prng *r. */
+static uint32_t gen_pick_note(const track_t *t, uint32_t *r)
+{
+    uint32_t mask = scale_mask(t), deg[12], ndeg = 0, i;
+    for (i = 0; i < 12u; i++)
+        if ((mask >> i) & 1u)
+            deg[ndeg++] = i;
+    if (!ndeg) { ndeg = 1; deg[0] = 0; }
+    i = deg[gen_next(r) % ndeg];
+    return (uint32_t)clamp((int32_t)60 + t->p[P_ROOT] + (int32_t)i + (int32_t)(gen_next(r) & 1u) * 12, 0, 127);
+}
+
+/* Same but uses the global rng (for mutation, where reproducibility is not needed). */
+static uint32_t mutate_pick_note(const track_t *t)
+{
+    uint32_t mask = scale_mask(t), deg[12], ndeg = 0, i;
+    for (i = 0; i < 12u; i++)
+        if ((mask >> i) & 1u)
+            deg[ndeg++] = i;
+    if (!ndeg) { ndeg = 1; deg[0] = 0; }
+    i = deg[rng() % ndeg];
+    return (uint32_t)clamp((int32_t)60 + t->p[P_ROOT] + (int32_t)i + (int32_t)(rng() & 1u) * 12, 0, 127);
+}
+
+/* Full from-scratch generation of a synth part.
+ * P_SPICE (0-127) controls density: 0 = ~50% notes, 127 = ~80% notes. */
+static void seq_generate(track_t *t)
+{
+    uint32_t len = trk_len(t), i, r;
+    uint32_t spice    = (uint32_t)clamp(t->p[P_SPICE], 0, 127);
+    uint32_t note_thr = 64u + spice / 4u;   /* density threshold: 64..96 / 128 */
+    uint32_t acc_thr  = 28u + spice / 8u;   /* accent probability */
+    step_t   tmp[NSTEP];
+    int      any = 0;
+
+    r = rng();
+    memset(tmp, 0, sizeof tmp);
+    for (i = 0; i < len; i++) {
+        step_t *s = &tmp[i];
+        if ((gen_next(&r) & 127u) >= note_thr) { s->time = ST_REST; continue; }
+        s->note[0] = (uint8_t)gen_pick_note(t, &r);
+        if (i % 4u == 0u && (gen_next(&r) & 127u) < 45u)   /* beat steps: 35% chance of root */
+            s->note[0] = (uint8_t)clamp((int32_t)60 + t->p[P_ROOT], 0, 127);
+        s->n = 1; s->time = ST_NOTE;
+        if ((gen_next(&r) & 127u) < acc_thr) s->flags  = SF_ACCENT;
+        if ((gen_next(&r) & 127u) < 22u)     s->flags |= SF_SLIDE;
+        any = 1;
+    }
+    if (!any) {                              /* guarantee at least one note */
+        tmp[0].note[0] = (uint8_t)clamp((int32_t)60 + t->p[P_ROOT], 0, 127);
+        tmp[0].n = 1; tmp[0].time = ST_NOTE;
+    }
+    for (i = 0; i < len; i++) {             /* drop slides that lead into a rest */
+        uint32_t nx = (i + 1u) % len;
+        if (flags_is_slide(tmp[i].flags) && tmp[nx].time == ST_REST)
+            tmp[i].flags &= ~SF_SLIDE;
+    }
+    fm1_irq_off();
+    undo_mark(t, undo_sess++);
+    memcpy(t->step, tmp, len * sizeof(step_t));
+    t->gen_seed = r;
+    fm1_irq_on();
+}
+
+/* Full from-scratch generation of the drum part.
+ * Lane densities are tuned for a typical kick/snare/hat feel. */
+static void drum_generate(track_t *t)
+{
+    static const uint8_t LANE_DENS[DRUM_LANES] = {
+        80, 20, 50, 20, 60, 40, 30, 15,
+        25, 25, 20, 20, 15, 15, 10, 10
+    };
+    uint32_t len = trk_len(t), i, l, r;
+    dstep_t  tmp[NSTEP];
+
+    r = rng();
+    memset(tmp, 0, sizeof tmp);
+    for (i = 0; i < len; i++) {
+        dstep_t *d = &tmp[i];
+        for (l = 0; l < DRUM_LANES; l++) {
+            uint32_t thr = LANE_DENS[l];
+            if (i % 4u == 0u && l == 0u) thr = 120u;    /* kick on the downbeat */
+            if (i % 8u == 4u && l == 2u) thr = 100u;    /* snare on the backbeat */
+            if ((gen_next(&r) & 127u) < thr)
+                d->on[l >> 3] |= (uint8_t)(1u << (l & 7u));
+        }
+    }
+    fm1_irq_off();
+    undo_mark(t, undo_sess++);
+    memcpy(t->dstep, tmp, len * sizeof(dstep_t));
+    t->gen_seed = r;
+    fm1_irq_on();
+}
+
+/* Partial stochastic mutation: ~25% of steps re-rolled (type or pitch).
+ * Works on both synth and drum tracks. */
+static void seq_mutate(track_t *t)
+{
+    uint32_t len = trk_len(t), i;
+    uint32_t spice    = (uint32_t)clamp(t->p[P_SPICE], 0, 127);
+    uint32_t note_thr = 64u + spice / 4u;
+    uint32_t acc_thr  = 28u + spice / 8u;
+    union { step_t s[NSTEP]; dstep_t d[NSTEP]; } tmp;
+
+    fm1_irq_off();
+    undo_mark(t, undo_sess++);
+    memcpy(&tmp, t->step, len * 10u);   /* step_t and dstep_t are both 10 bytes */
+    fm1_irq_on();
+
+    for (i = 0; i < len; i++) {
+        if ((rng() & 3u) != 0u) continue;              /* 75% of steps untouched */
+        if (is_drum(t)) {
+            uint32_t l = rng() % DRUM_LANES;
+            tmp.d[i].on[l >> 3] ^= (uint8_t)(1u << (l & 7u));
+        } else {
+            step_t *s = &tmp.s[i];
+            if (rng() & 1u) {                           /* 50%: re-roll step type */
+                if ((rng() & 127u) >= note_thr) {
+                    s->time = ST_REST; s->n = 0;
+                } else {
+                    if (!s->n) { s->note[0] = (uint8_t)mutate_pick_note(t); s->n = 1; }
+                    s->time = ST_NOTE; s->flags = 0;
+                    if ((rng() & 127u) < acc_thr) s->flags  = SF_ACCENT;
+                    if ((rng() & 127u) < 22u)     s->flags |= SF_SLIDE;
+                }
+            } else if (s->n) {                          /* 50%: re-roll pitch */
+                s->note[0] = (uint8_t)mutate_pick_note(t);
+            }
+        }
+    }
+    if (!is_drum(t)) {
+        for (i = 0; i < len; i++) {
+            uint32_t nx = (i + 1u) % len;
+            if (flags_is_slide(tmp.s[i].flags) && tmp.s[nx].time == ST_REST)
+                tmp.s[i].flags &= ~SF_SLIDE;
+        }
+    }
+    fm1_irq_off();
+    memcpy(t->step, &tmp, len * 10u);
+    fm1_irq_on();
+}
 
 /* ------------------------------------------------------- recording --- */
 /* key to ear, in samples: the key's debounce (~3 ms) and the audio out buffer (HALF_FRAMES to

@@ -25,6 +25,7 @@
 #define PROJ_NP_V2 53u                         /* P_COUNT of formats 1 and 2 (P_E0 was 45) */
 #define PROJ_NG_V2 27u                         /* G_COUNT of formats 1 and 2 */
 #define PROJ_NP_V4OLD 61u                      /* P_COUNT before P_SPICE was added */
+#define PROJ_NP_V4NOFENV 70u                   /* P_COUNT before the filter envelope (P_FATK..P_FREL) */
 typedef struct {                               /* a track of the pre-spice V4 format, read only */
     int16_t p[PROJ_NP_V4OLD];
     uint8_t engine, preset;
@@ -37,6 +38,18 @@ typedef struct {                               /* pre-spice format 4 (FUN4, P_CO
     proj_trk_v4old_t t[NTRK];
     uint32_t sum;
 } project_v4old_t;
+typedef struct {                               /* a track of the pre-fenv V4 format, read only */
+    int16_t p[PROJ_NP_V4NOFENV];
+    uint8_t engine, preset;
+    union { step_t step[NSTEP]; dstep_t dstep[NSTEP]; };
+} proj_trk_v4nofenv_t;
+typedef struct {                               /* pre-fenv format 4 (FUN4, P_COUNT=70), read only */
+    uint32_t magic, size;
+    int16_t g[G_COUNT];
+    uint8_t sel, rsv[3];
+    proj_trk_v4nofenv_t t[NTRK];
+    uint32_t sum;
+} project_v4nofenv_t;
 typedef struct {                               /* one track; the drum track ignores engine / preset */
     int16_t p[P_COUNT];
     uint8_t engine, preset;
@@ -180,6 +193,36 @@ static int proj_from_v4old(project_t *q, const project_v4old_t *v4o, int n)
     return 1;
 }
 
+/* a pre-fenv V4 track -> today's (P_FATK..P_FREL get their defaults) */
+static void proj_trk_from_v4nofenv(proj_trk_t *d, const proj_trk_v4nofenv_t *s, int drum)
+{
+    uint32_t k, nc = PROJ_NP_V4NOFENV - 16u;   /* nc = 54 = old P_E0 (after P_SPICE) */
+    for (k = 0; k < P_E0; k++)
+        d->p[k] = k < nc ? s->p[k] : TP[k].def;
+    for (k = 0; k < 16u; k++)
+        d->p[P_E0 + k] = s->p[nc + k];
+    d->engine = drum ? 0u : s->engine;
+    d->preset = drum ? 0u : s->preset;
+    memcpy(d->step, s->step, sizeof d->step);
+}
+
+static int proj_from_v4nofenv(project_t *q, const project_v4nofenv_t *v, int n)
+{
+    uint32_t i;
+    if (n != (int)sizeof *v || v->magic != PROJ_MAGIC ||
+        v->size != sizeof *v || v->sum != proj_hash(v, sizeof *v - 4u))
+        return 0;
+    memset(q, 0, sizeof *q);
+    q->magic = PROJ_MAGIC;
+    q->size = sizeof *q;
+    memcpy(q->g, v->g, sizeof q->g);
+    q->sel = v->sel;
+    for (i = 0; i < NTRK; i++)
+        proj_trk_from_v4nofenv(&q->t[i], &v->t[i], i == TRK_DRUM);
+    q->sum = proj_sum(q);
+    return 1;
+}
+
 /* a track of formats 1 and 2 -> format 3 (mapped by count, see the top) */
 static void proj_trk_v2_to_v3(proj_trk_v3_t *d, const proj_trk_v2_t *s, int drum)
 {
@@ -268,7 +311,8 @@ static int proj_import(project_t *q, const void *b, int n)
         memcpy(q, b, sizeof *q);
         return 1;
     }
-    return proj_from_v4old(q, (const project_v4old_t *)b, n) ||
+    return proj_from_v4nofenv(q, (const project_v4nofenv_t *)b, n) ||
+           proj_from_v4old(q, (const project_v4old_t *)b, n) ||
            proj_from_v3(q, (const project_v3_t *)b, n) || proj_from_v2(q, (const project_v2_t *)b, n) ||
            proj_from_v1(q, (const project_v1_t *)b, n);
 }
@@ -341,6 +385,8 @@ static union {
     project_v2_t v2;
     project_v1_t v1;
     project_v4old_t v4old;
+    project_v4nofenv_t v4nofenv;
+    up_bank_t up_bank;
 } proj_tmp;
 static void proj_fetch(uint32_t slot)
 {

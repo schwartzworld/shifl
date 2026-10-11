@@ -90,6 +90,10 @@ static const param_desc_t TP[P_COUNT] = {
     [P_STRUM] = PD("STRUM", F_INT, -60, 60, 0),   /* ms a note: > 0 low to high (down), < 0 high to low */
     [P_VLEAD] = PE("VLEAD", N_ONOFF, 0),
     [P_SPICE] = PD("SPICE", F_PCT, 0, 127, 0),
+    [P_FATK] = PD("ATK", F_TIME, 0, 127, 10),
+    [P_FDEC] = PD("DEC", F_TIME, 0, 127, 70),
+    [P_FSUS] = PD("SUS", F_PCT, 0, 127, 90),
+    [P_FREL] = PD("REL", F_TIME, 0, 127, 60),
 };
 /* a preset's extra parameters (preset_t.x) into p, each clamped to its range */
 static void preset_extras(int16_t *p, const preset_t *pr)
@@ -97,8 +101,12 @@ static void preset_extras(int16_t *p, const preset_t *pr)
     uint32_t i;
     for (i = 0; i + 1u < 8u; i += 2u) {
         int32_t id = pr->x[i] - 1;
-        if (id >= 0 && id < P_E0)
-            p[id] = (int16_t)clamp(pr->x[i + 1u], TP[id].min, TP[id].max);
+        if (id >= 0 && id < P_COUNT) {
+            if (id < P_E0)
+                p[id] = (int16_t)clamp(pr->x[i + 1u], TP[id].min, TP[id].max);
+            else
+                p[id] = pr->x[i + 1u];   /* engine params (P_E8+): no TP descriptor */
+        }
     }
 }
 
@@ -286,6 +294,7 @@ typedef struct {
 static const page_t PAGES[] = {
     {"ENV", FAM_ENV, SC_TRACK, GR_ADSR, {P_ATK, P_DEC, P_SUS, P_REL}},
     {"ENV DEST", FAM_ENV, SC_TRACK, GR_NONE, {P_ED_FLT, P_ED_PIT, P_ED_SHP, 0xFF}},   /* (P_ED_FX: the level trim, no page) */
+    {"FENV", FAM_ENV, SC_TRACK, GR_ADSR, {P_FATK, P_FDEC, P_FSUS, P_FREL}},
     {"LFO", FAM_LFO, SC_TRACK, GR_LFO, {P_LRATE, P_LWAVE, P_LPHASE, P_LFADE}},
     {"LFO DEST", FAM_LFO, SC_TRACK, GR_NONE, {P_LD_PIT, P_LD_FLT, P_LD_SHP, P_LD_AMP}},
     {"FX", FAM_FX, SC_TRACK, GR_FX, {P_DIST, P_CHOR, P_DLY, P_REV}},

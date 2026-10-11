@@ -480,6 +480,7 @@ static void mix_block(int32_t *out, uint32_t n)
         send_c[i] = send_d[i] = send_r[i] = mix_l[i] = mix_r[i] = 0;
     events_block(n);
     duck_block(n * (uint32_t)song.g[G_BPM]);
+    analog_nv = (uint8_t)voices_busy();             /* superwave voice count for CPU scaling (eng_analog.c) */
     for (i = 0; i < NPART; i++)
         mix_part(&trk[i], n);
     drums.a0 = TDRUM->att;                              /* the drum track's mute / solo fade */

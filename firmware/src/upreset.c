@@ -15,7 +15,7 @@
  * With -DUP_HOST (host test) only the part above #ifndef UP_HOST is built;
  * it needs nothing but core.h. */
 #define UP_PER_BANK 16u
-#define UP_PMAX 72u                              /* room for P_COUNT to grow */
+#define UP_PMAX 76u                              /* room for P_COUNT to grow */
 #define UP_USED 0xA5u
 #define UP_VER 3u
 #define UP_BANK_MAGIC 0x31425055u                /* "UPB1" */
@@ -30,7 +30,7 @@ typedef struct {
     uint16_t rsize, nslot;
     up_rec_t r[UP_PER_BANK];
 } up_bank_t;
-_Static_assert(sizeof(up_rec_t) == 192, "user preset record layout");
+_Static_assert(sizeof(up_rec_t) == 200, "user preset record layout");
 _Static_assert(P_COUNT <= UP_PMAX && P_COUNT < 128, "user preset record: P_COUNT");
 static up_bank_t up_bank[UP_SLOTS / UP_PER_BANK];
 
@@ -55,11 +55,15 @@ static void up_bank_check(uint32_t b, int len)  /* after loading bank b (len byt
 /* the record's values in today's P_* order (mapped by count, see above); def = the defaults */
 static void up_params(const up_rec_t *r, int16_t *out, const int16_t *def)
 {
-    uint32_t i, nc = r->np - 8u;
+    /* old records (np <= P_E0 + 8) stored 8 engine params; new ones store 16 */
+    uint32_t i, neng = r->np > (uint32_t)(P_E0 + 8) ? (uint32_t)(P_COUNT - P_E0) : 8u;
+    uint32_t nc = r->np - neng;
     for (i = 0; i < P_E0; i++)
         out[i] = i < nc ? r->p[i] : def[i];
-    for (i = 0; i < 8u; i++)
+    for (i = 0; i < neng; i++)
         out[P_E0 + i] = r->p[nc + i];
+    for (i = neng; i < (uint32_t)(P_COUNT - P_E0); i++)
+        out[P_E0 + i] = def[P_E0 + i];   /* P_E8..E15 missing in old records: defaults */
     if (r->ver < 2u) {
         out[P_E0] = DX_VOICE_FROM_V1(out[P_E0]);
         out[P_E0 + 6] = DX_CUT_OPEN;
