@@ -46,6 +46,7 @@ SHIFL turns the FM-1 into a six-track groovebox you play live: **five synths and
 
 | | |
 | --- | --- |
+| **LIVE MODE** | Press ARP to enter live mode — a jam-first alternative to song mode. 16 scenes (matching the 16 song fragments) loop indefinitely. Press REC while playing to put the keyboard into scene-selection mode: the 16 white keys switch scenes, waiting for the next bar boundary. Press REC again to go back to playing notes. Holding ARP shows a 16-tile scene grid; tap two or more tiles to build a scene chain — each scene plays for its configured bar count then advances automatically, looping forever. Knob 1 on the SONG page also queues scene switches. |
 | **CZ-1 improvements** | Four sound-design effects on EDIT 2 — RING (ring modulator), FOLD (wavefolder), BITS (bit crush), PHSR (phaser) — tuned for a wider, more audible range. All factory presets load with filter fully open (CUT=127) for a transparent default. |
 | **Drum improvements** | Global drum level raised to match synth tracks at their default levels. Drum lane probability per step (`P75` / `P50` / `P25` / ratchet modes). |
 
@@ -62,7 +63,7 @@ What came in 2.0–2.4: see below.
 | **Step probability** | Each step on a synth track can fire at 100 %, 75 %, 50 % or 25 % chance per pass. Drum lanes support the same — certain hits, probabilistic hits and ratchets from a single per-lane dial (shown as `on` / `P75` / `P50` / `P25` / `×2` / `×3` / `×4`). |
 | **Six tracks** | Two additional synth tracks, for a total of five synths and a drum track (six tracks). |
 | **Drums with the keys** | The drum track can now be played on the keyboard keys, the same way as a synth track. |
-| **Song mode depth** | Each arrangement fragment is now independent (its own state, not a shared scene). Fragments can carry: a **key / root change**, **in-key transposition** (diatonic snap instead of chromatic), **per-track patch overrides** (change engine + preset mid-song for any track), and **FX overrides** (reverb / delay settings change as the song progresses). |
+| **Song mode depth** | Each arrangement fragment is now independent (its own state, not a shared scene). Fragments can carry: a **key / root change**, **in-key transposition** (diatonic snap instead of chromatic), **per-track patch overrides** (change engine + preset mid-song for any track), **per-track slicer overrides** (sequence the slicer on/off or switch GATE↔STUT per fragment), and **FX overrides** (reverb / delay settings change as the song progresses). |
 | **Dotted steps and delays** | The step sequencer gains dotted 1-measure and dotted 2-measure step lengths; fragments can be half a measure. The delay adds dotted 1/4 and dotted 1/8 as time options. |
 
 What came in 2.0–2.3 (USB audio, TRS MIDI in, MIDI clock, lights, backup): [SHIFL.md](SHIFL.md#new-in-24). Release notes: [Releases](../../releases).
@@ -137,6 +138,7 @@ Each arrangement fragment is independent and can carry its own overrides:
 - **Key change** — sets the root at that point in the arrangement.
 - **In-key transposition** — CHR mode: chromatic semitone shift; KEY mode: snaps the transpose to the nearest note in the current scale (diatonic transposition).
 - **Per-track patch overrides** — change the engine and preset for any track at any fragment, without touching the others.
+- **Per-track slicer overrides** — enable, disable, or switch slicer mode (GATE / STUT) per track per fragment, independently of the scene's setting.
 - **FX overrides** — reverb and delay settings change as the song progresses.
 
 ### Effects and master
@@ -453,7 +455,7 @@ Something else? [Open an issue](../../issues): what you did, what you expected, 
 | Step probability | 100 % / 75 % / 50 % / 25 % per step (synth and drums) |
 | Recording | live, quantised as heard (latency-compensated), overdub; free take or set tempo; start on first note or one-bar count-in; 1, 2 or 4 bars |
 | Performance | layers: punch-in FX, erase, step entry, key / chords, mute / solo / tap tempo, song sections |
-| Song mode | 4 sections × 16 steps × 1–64 bars; independent fragments with key changes, in-key transposition, per-track patch overrides, FX overrides |
+| Song mode | 4 sections × 16 steps × 1–64 bars; independent fragments with key changes, in-key transposition, per-track patch overrides, per-track slicer overrides, FX overrides |
 | Effects | 32 punch-in effects (2 pages of 16, beat-synced); master DUST, DUCK, DJ filter, limiter; per track drive, slicer, sends to a stereo chorus, a dotted-aware tempo delay and a stereo reverb |
 | MIDI CC | per-track filter cutoff / resonance (CC 71/74, ch 1–5); global FX and swing (ch 16); 32 momentary punch effects (CC 102–133, ch 16) |
 | Memory | autosave, undo / redo, 4 projects, 32 user presets, full backup / restore (editor) |

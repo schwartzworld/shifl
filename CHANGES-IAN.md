@@ -6,6 +6,52 @@ All committed changes by Ian Schwartz, plus current uncommitted work-in-progress
 
 ## Committed Changes
 
+### Live mode scene chaining (`2026-10-10`)
+
+Hold ARP in live mode and tap two or more entry keys to build a scene chain (up to 8 entries). Each scene plays for its configured bar count then auto-advances to the next, looping forever. Releasing ARP commits the chain. A single tap while a chain is playing clears it and jumps to the tapped scene.
+
+- **`lm_chain[]` state** (`seq.c`) — mirrors the existing `chain_sec[]` quick-section chain; auto-advance fires in `live_block()` using `arrangement.entry[s].bars` for timing.
+- **ARP held + multi-tap** (`ui_layers.c LY_ROLL`) — first tap queues the scene immediately (existing behaviour); additional taps while ARP is held accumulate into `lm_chain_tap[]`; release calls `lm_chain_release()`.
+- **Display** (`ui_layers.c LY_ROLL draw`) — sub-line shows `chain 1 3 5 2` while building or playing; next entry is highlighted with a cyan top marker.
+- **`lm_chain_release()` / `lm_chain_sub()`** (`ui_layers.c`) — commit and display helpers mirroring `chain_release()` / `chain_sub()`.
+- **ARP button-up hook** (`ui_input.c`) — calls `lm_chain_release()` alongside the existing `chain_release()` on SAVE release.
+- Chain clears on transport stop (`seq_stop()`).
+
+**Bumped to FM-1_952.**
+
+---
+
+### LIVE MODE (`2026-10-10`)
+
+A new performance mode for improvised jamming. ARP tap (outside the SONG page) toggles LIVE MODE on/off.
+
+- **16 live scenes** — each corresponds to one of the 16 song-mode fragments (same options: per-track scene assignment, punch FX, transpose, patch/vol/slicer overrides). Fragment 1–16 map directly to keyboard keys 1–16.
+- **Looping** — the active scene loops indefinitely; there is no automatic advance.
+- **Scene switching while playing** — queued for the next bar boundary; immediate when stopped.
+- **Scene selection with keys** — press REC while LIVE MODE is playing to enter scene selection mode (REC LED blinks, grid guides appear). Press any of the 16 white keys to switch scene. Press REC again to go back to playing notes.
+- **ARP held overlay** — holding ARP shows 16 numbered tiles; pressing a key also switches scene from this overlay.
+- **Knob scroll on SONG page** — scrolling KNOB 1 on the SONG page queues/applies scenes in LIVE MODE.
+- **ARP LED** stays lit while LIVE MODE is active.
+- **SONG page** — shows "live mode" (cyan) in the header; a cyan marker highlights the currently loaded scene entry.
+- Entering song mode (OCT− on SONG page) exits LIVE MODE; entering LIVE MODE disables song mode.
+
+**Bumped to FM-1_948.**
+
+---
+
+### Per-fragment slicer overrides in song mode (`2026-10-10`)
+
+Each arrangement fragment in song mode can now override the slicer mode for every track independently, making the slicer fully sequencable across an arrangement.
+
+- **`S1–S4` rows in SONG screen** — scroll KNOB 2 past the volume rows to reach four new slicer rows, one per track. Set to `--` (default) to leave the scene's slicer setting untouched; dial to `OFF`, `GATE`, or `STUT` to override it for that fragment only.
+- **`arr_song_slicer[ARR_STEPS][ARR_TRACKS]`** — new runtime array (mirrors `arr_song_vol`); applied in `arrangement_apply` inside `arranger_scene.c`.
+- **`ARR_SLCR_NONE = 0xFF`** — sentinel meaning "no override" (`arranger.h`), matching the `ARR_VOL_NONE` pattern.
+- **Persistence** — `arr_slcr[ARR_STEPS][ARR_TRACKS]` appended to `persist_t`; migration on older saves initialises every entry to `ARR_SLCR_NONE` (`project.c`, new `PERSIST_SIZE_V66`).
+
+**Bumped to FM-1_947.**
+
+---
+
 ### Arpeggiator removed (`2026-10-10`)
 
 Removed the arpeggiator and note-repeat roll layer entirely.

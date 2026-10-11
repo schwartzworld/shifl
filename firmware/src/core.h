@@ -214,8 +214,14 @@ typedef struct {                 /* a step of the drum track (10 bytes, the size
 _Static_assert(sizeof(step_t) == 10 && sizeof(dstep_t) == 10, "a step is 10 bytes on every track");
 /* sloopDX: the drum track's lane macros and parameter locks (drums.c), kept with the project. A macro is an
  * offset on the kit's sound (0 = as the kit): TUNE semitones, DECAY / SWEEP / BRIGHT / NOISE -40..40, LEVEL in
- * 1/2 dB -40..20, PAN -64..63, CHOKE 0 the kit's, 1 none, 2..4 groups A..C, REV the send -64..63 (64 + REV) */
-enum { DM_TUNE, DM_DECAY, DM_SWEEP, DM_BRIGHT, DM_NOISE, DM_LEVEL, DM_PAN, DM_CHOKE, DM_REV, DM_N };
+ * 1/2 dB -40..20, PAN -64..63, CHOKE 0 the kit's, 1 none, 2..4 groups A..C, REV the send -64..63 (64+REV),
+ * DLY the per-lane delay send 0..63, DRIVE soft overdrive 0..40, CRUSH bit crush 0..12, RING ring mod 0..40,
+ * FOLD wavefold 0..40. Indices 10-11 are reserved (the dice page occupies those display slots). */
+enum { DM_TUNE, DM_DECAY, DM_SWEEP, DM_BRIGHT, DM_NOISE, DM_LEVEL, DM_PAN, DM_CHOKE, DM_REV,
+       DM_DLY,                                    /* 9: per-lane delay send */
+       DM_UNUSED_A, DM_UNUSED_B,                  /* 10-11: dice-page display slots, never used as macros */
+       DM_DRIVE, DM_CRUSH, DM_RING, DM_FOLD,      /* 12-15: per-lane effects */
+       DM_N };                                    /* 16 */
 typedef struct {
     int8_t m[DRUM_LANES][DM_N];
     uint16_t lock[NSTEP];        /* a step's TUNE / DECAY lock of one lane (drums.c dlock_*), 0 = none */

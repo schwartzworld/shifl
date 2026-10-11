@@ -152,6 +152,12 @@ static uint32_t keys_lit(void)
     default:                                       /* playing, ARP roll, SAVE song, every page and the menu */
         break;
     }
+    if (live_mode && live_select) {
+        uint32_t base = fm1_in.notes;
+        if (live_mode_scene >= 0 && (uint32_t)(uint8_t)live_mode_scene < ARR_STEPS)
+            base |= 1u << key_of_white((uint32_t)(uint8_t)live_mode_scene);
+        return base;
+    }
     if (kb_grid) {                                 /* the DRUMS grid page: the sound's steps of this page */
         uint32_t len = trk_len(TDRUM), b0 = drum_cursor / 16u * 16u;
         for (i = 0; i < 16u; i++) {
@@ -197,7 +203,7 @@ static uint32_t keys_notes_dim(void)
  * 1, 5, 9, 13) while a layer is held, and on the drum track (its 16 sounds, 4 x 4 as on KIT) */
 static uint32_t keys_guide(void)
 {
-    if (ui.layer == LY_PLAY && !is_drum(TSEL))
+    if (ui.layer == LY_PLAY && !is_drum(TSEL) && !live_select)
         return 0u;
     return 1u << key_of_white(0) | 1u << key_of_white(4) | 1u << key_of_white(8) | 1u << key_of_white(12);
 }
@@ -230,7 +236,10 @@ static void ui_leds(void)
     led_put(nl, panel.btn[B_PLAY], play_led() || (song.playing && !song.rec && ft_on) ||
                                       (ci_on && ci_u % BEAT_U < BEAT_U / 4u));   /* (the count-in's beats) */
     led_put(nl, panel.btn[B_REC], song.rec != 0u || ft_on || (rec_wait && ((fm1_ms / 125u) & 1u)) ||
-                                     (ui.hold_kind == 1u && ((fm1_ms / 60u) & 1u)));   /* blinks: armed; fast: clearing */
+                                     (ui.hold_kind == 1u && ((fm1_ms / 60u) & 1u)) ||
+                                     (live_mode && live_select && ((fm1_ms / 300u) & 1u)));   /* live select: blinks */
+    if (live_mode)
+        led_put(nl, panel.btn[LAYER_BTN[LY_ROLL]], 1);  /* ARP lit while live mode active */
     if (is_drum(TSEL)) {                           /* the drum track: OCT- / OCT+ lit while ghost / hard */
         led_put(nl, panel.btn[B_OCTDN], (fm1_in.buttons & dyn_bit[0]) != 0u);
         led_put(nl, panel.btn[B_OCTUP], (fm1_in.buttons & dyn_bit[1]) != 0u);
@@ -533,8 +542,17 @@ static void layer_tap(uint32_t layer)
     case LY_ROLL:
         if (on_song_page())
             song_clone_fragment();
-        else
+        else if (live_mode) {
+            live_mode = 0;
+            live_select = 0;
+            live_mode_req = -1;
+            ui_message("LOOP MODE");
+        } else {
+            live_mode = 1;
+            arrangement_enabled = 0;
+            live_select = 0;
             ui_message("LIVE MODE");
+        }
         break;
     case LY_SCALE:
         open_family(FAM_SCL);
@@ -611,6 +629,8 @@ static int layers_input(uint32_t note_edges, uint32_t *pressed, uint32_t home)
             layer_tap(l);
         if (!d && down[l] && l == LY_SONG)
             chain_release();                              /* SAVE let go: commit a quick chain if ≥2 taps */
+        if (!d && down[l] && l == LY_ROLL)
+            lm_chain_release();                           /* ARP let go: commit a live-mode chain if ≥2 taps */
         down[l] = (uint8_t)d;
         if (d && held == LY_PLAY)
             held = l;

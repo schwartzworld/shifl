@@ -84,6 +84,10 @@ static void arrangement_apply(uint32_t entry_index)
                 const param_desc_t *d = &TP[P_LEVEL];
                 trk[k].p[P_LEVEL] = (int16_t)clamp((int32_t)arr_song_vol[entry_index][k], d->min, d->max);
             }
+            if (arr_song_slicer[entry_index][k] != ARR_SLCR_NONE) {
+                const param_desc_t *d = &TP[P_SLCR];
+                trk[k].p[P_SLCR] = (int16_t)clamp((int32_t)arr_song_slicer[entry_index][k], d->min, d->max);
+            }
         }
     }
     sync_reload = 1;

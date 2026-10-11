@@ -44,6 +44,8 @@ static struct {
     uint16_t swk[NDRUM];         /* its sweep decay per block, Q16 */
     int16_t pgl[NDRUM], pgr[NDRUM];   /* its pan, Q12 */
     int16_t send[NDRUM];         /* its reverb send, Q14 (16384 = the drum REV as it is) */
+    int16_t dsend[NDRUM];        /* its delay send, Q14 (DM_DLY 0..63, scaled to 0..32256) */
+    uint32_t ringph[NDRUM];      /* ring mod phase accumulator per voice (Q32, 300 Hz carrier) */
     uint8_t bus_tail;            /* blocks the bus still runs after the last voice (DRIVE / COMP states settle) */
 } drums;
 
@@ -182,7 +184,10 @@ static void ukit_from(uint32_t kit)              /* MY KIT := a factory kit */
 /* ---- lane macros ---- */
 static const struct { const char *name; int8_t min, max; } DM_DESC[DM_N] = {
     {"tune", -24, 24}, {"decay", -40, 40}, {"sweep", -40, 40}, {"bright", -40, 40}, {"noise", -40, 40},
-    {"level", -40, 20}, {"pan", -64, 63}, {"choke", 0, 4}, {"rev", -64, 63}};
+    {"level", -40, 20}, {"pan", -64, 63}, {"choke", 0, 4}, {"rev", -64, 63},
+    {"dly", 0, 63},                          /* 9: per-lane delay send */
+    {"", 0, 0}, {"", 0, 0},                  /* 10-11: unused (dice-page slots) */
+    {"drive", 0, 40}, {"crush", 0, 12}, {"ring", 0, 40}, {"fold", 0, 40}}; /* 12-15 */
 static const uint16_t DM_GAIN[61] = {                  /* LEVEL -20 .. +10 dB in 1/2 dB, Q12 */
     410, 434, 460, 487, 516, 546, 579, 613, 649, 688, 728, 772, 817, 866, 917, 971, 1029, 1090, 1154, 1223, 1295,
     1372, 1453, 1539, 1631, 1727, 1830, 1938, 2053, 2175, 2303, 2440, 2584, 2738, 2900, 3072, 3254, 3446, 3651,
@@ -209,6 +214,8 @@ static void dm_format(uint32_t k, int32_t v, char *b)   /* a macro's value, <= 6
         }
     } else if (k == DM_REV) {
         fmt_int(b, 64 + v);
+    } else if (k == DM_DLY) {
+        fmt_int(b, v);
     } else if (k == DM_LEVEL) {                     /* 1/2 dB -> dB: "-3.5", "+2", "0" */
         int32_t a = v < 0 ? -v : v;
         str_cpy(b, v > 0 ? "+" : v < 0 ? "-" : "", 6);
@@ -650,6 +657,8 @@ static void drum_on(uint32_t note, uint32_t vel)
         drums.pgl[i] = (int16_t)(4096 - (pan > 0 ? pan * 64 : 0));
         drums.pgr[i] = (int16_t)(4096 + (pan < 0 ? pan * 64 : 0));
         drums.send[i] = (int16_t)(rev * 256);
+        drums.dsend[i] = (int16_t)(clamp(dm_get(d, DM_DLY), 0, 63) * 512);  /* 0..63 → 0..32256, Q14-ish */
+        drums.ringph[i] = 0;
     }
     drum_voice(d, kit, drums.patch[i], tune, decay);
     drum_start(i);
@@ -659,7 +668,7 @@ static void drum_on(uint32_t note, uint32_t vel)
  * clip, 1x .. 9x into it, a tone low-pass that closes with it) -> COMP (its P_CHOR: a peak follower, ~0.2 ms up,
  * ~45 ms down, 4:1 above a threshold that falls with COMP (0 .. -23 dB), make-up up to +5.4 dB; one gain for
  * both sides and for the reverb send) -> the reverb send (each lane's REV, summed before: sb). Off at 0 */
-static void drums_bus(int32_t *l, int32_t *r, int32_t *sb, uint32_t n)
+static void drums_bus(int32_t *l, int32_t *r, int32_t *sb, int32_t *bd, uint32_t n)
 {
     int32_t d = TDRUM->p[P_DIST], c = TDRUM->p[P_CHOR], i, ch;
     if (d) {                                        /* (32-bit products throughout: the target has no fast 64-bit) */
@@ -692,6 +701,7 @@ static void drums_bus(int32_t *l, int32_t *r, int32_t *sb, uint32_t n)
             l[i] = (mulq15(clamp(l[i], -262143, 262143) >> 3, g) * mk) >> 9;   /* (2^15 x 2^15; x 8, Q12) */
             r[i] = (mulq15(clamp(r[i], -262143, 262143) >> 3, g) * mk) >> 9;
             sb[i] = (mulq15(clamp(sb[i], -262143, 262143) >> 3, g) * mk) >> 9;
+            bd[i] = (mulq15(clamp(bd[i], -262143, 262143) >> 3, g) * mk) >> 9;
         }
         drums.cmp_env = env;
         drums.cmp_g = g1;
@@ -710,7 +720,7 @@ static inline void drums_mix(int32_t *ml, int32_t *mr, int32_t *rev, int32_t *dl
     int32_t lvl = song.g[G_DRLVL] * 323, send = song.g[G_DRREV] * 323, dsend = song.g[G_DRDLY] * 161, pk = drums.peak;   /* (323: +25% vs 258 which was -0 dB at LVL 100 to match parts;
                                                                                            * was 200 (-2.4 dB), 1.9 had 142 (-3 dB)) */
     int32_t pan = trk[TRK_DRUM].p[P_PAN], gl = 4096 - (pan > 0 ? pan * 64 : 0), gr = 4096 + (pan < 0 ? pan * 64 : 0);
-    int32_t buf[DX_N], bl[DX_N], br[DX_N], bs[DX_N];
+    int32_t buf[DX_N], bl[DX_N], br[DX_N], bs[DX_N], bd[DX_N];   /* bd: per-lane delay send */
     for (i = 0; i < n && drums.tail; i++) {         /* declick tail, ~0.4 ms */
         if (mono) {
             mono[i] += drums.tail;
@@ -723,10 +733,11 @@ static inline void drums_mix(int32_t *ml, int32_t *mr, int32_t *rev, int32_t *dl
     if (n != DX_N)                                  /* (the mix runs in blocks of CTL) */
         return;
     for (i = 0; i < DX_N; i++)
-        bl[i] = br[i] = bs[i] = 0;
+        bl[i] = br[i] = bs[i] = bd[i] = 0;
     for (k = 0; k < NDRUM; k++) {
         voice_t *v = &drums.v[k];
-        int32_t rp = 0, pl = drums.pgl[k], pr = drums.pgr[k], sd = drums.send[k];
+        int32_t rp = 0, pl = drums.pgl[k], pr = drums.pgr[k], sd = drums.send[k], dd = drums.dsend[k];
+        uint32_t lane = drums.drum[k];
         if (!v->active)
             continue;
         any = 1;
@@ -742,14 +753,52 @@ static inline void drums_mix(int32_t *ml, int32_t *mr, int32_t *rev, int32_t *dl
             drums.sweep[k] = mulq16(drums.sweep[k], drums.swk[k]);
         for (i = 0; i < DX_N; i++) {
             int32_t s = clamp(buf[i] >> 11, -65535, 65535);   /* one carrier at full level: 16384 (as the synth parts) */
+            int32_t vm;
             rp = s > rp ? s : -s > rp ? -s : rp;
             s = mulq15(mulq15(s, drums.gain[k]),       /* (the click: not with the drum track's mute / solo, 3.4) */
-                       drums.drum[k] == DX_NDRUM - 1u ? lvl :
+                       lane == DX_NDRUM - 1u ? lvl :
                        mulq15(lvl, 32767 - drums.a0 - (((drums.a1 - drums.a0) * (int32_t)i) >> CTL_LOG2)));
+            /* per-lane sound design effects (DM_DRIVE, DM_CRUSH, DM_RING, DM_FOLD) */
+            vm = dm_get(lane, DM_DRIVE);
+            if (vm) {
+                int32_t g = 4096 + vm * 512;   /* Q12 gain: 1x..6.5x before clip */
+                int32_t wet = softclip(clamp((s * g) >> 13, -32767, 32767));
+                s = s + mulq15(wet - s, vm * 819);
+            }
+            vm = dm_get(lane, DM_CRUSH);
+            if (vm) {
+                int32_t sh = vm;   /* 1..12 bits removed: vm=6 ≈ 10-bit, vm=12 ≈ 4-bit */
+                s = s >= 0 ? (s >> sh) << sh : -((-s >> sh) << sh);
+            }
+            vm = dm_get(lane, DM_RING);
+            if (vm) {
+                uint32_t ph_inc = 29216330u + (uint32_t)(vm - 1) * 6741716u;   /* 300..3000 Hz with vm */
+                uint32_t rph = drums.ringph[k] + (uint32_t)i * ph_inc;
+                int32_t carrier = -sine_i(rph + 0x40000000u);
+                int32_t wet = clamp(mulq15(s, carrier) * 2, -32767, 32767);
+                s = s + mulq15(wet - s, vm * 819);
+            }
+            vm = dm_get(lane, DM_FOLD);
+            if (vm) {
+                int32_t drive = 256 + vm * vm * 9 / 4;   /* quadratic: 256..3856 */
+                int32_t x = (s * drive) >> 8;   /* no clamp: let fold handle range */
+                int32_t j;
+                for (j = 0; j < 16; j++) {       /* 16 folds handles up to ~16× gain without cancellation */
+                    if (x > 16384) x = 32768 - x;
+                    else if (x < -16384) x = -32768 - x;
+                }
+                s = clamp(x * 2, -32767, 32767);
+            }
             v->s[7] = s;
             bl[i] += (s * pl) >> 12;
             br[i] += (s * pr) >> 12;
             bs[i] += (s * sd) >> 14;
+            if (dd) bd[i] += (s * dd) >> 14;
+        }
+        {   /* advance ring mod phase — use the same scaled increment as the per-sample loop */
+            int32_t rv = dm_get(lane, DM_RING);
+            uint32_t ph_inc = rv > 0 ? 29216330u + (uint32_t)(rv - 1) * 6741716u : 29216330u;
+            drums.ringph[k] += (uint32_t)DX_N * ph_inc;
         }
         drums.t[k] += DX_N;
         /* the end: died away (the voice itself below -66 dB of a full carrier for 8 blocks, whatever its
@@ -766,7 +815,7 @@ static inline void drums_mix(int32_t *ml, int32_t *mr, int32_t *rev, int32_t *dl
         drums.bus_tail = 64;                        /* ~45 ms: the tone filters and the compressor settle */
     else if (!drums.bus_tail || !--drums.bus_tail)
         return;
-    drums_bus(bl, br, bs, DX_N);
+    drums_bus(bl, br, bs, bd, DX_N);
     for (i = 0; i < DX_N; i++) {
         int32_t l = clamp(bl[i], -262143, 262143), r = clamp(br[i], -262143, 262143);   /* (x gl fits 32 bits) */
         int32_t a = l < 0 ? -l : l, b = r < 0 ? -r : r;
@@ -782,7 +831,9 @@ static inline void drums_mix(int32_t *ml, int32_t *mr, int32_t *rev, int32_t *dl
         if (send)
             rev[i] += mulq15(clamp(bs[i], -262143, 262143), send);
         if (dsend)
-            dly[i] += mulq15(l + r, dsend);             /* (the sum: 129 = 258 / 2) */
+            dly[i] += mulq15(l + r, dsend);
+        if (bd[i])
+            dly[i] += clamp(bd[i], -262143, 262143);    /* per-lane delay: level encoded in dsend[k], independent of global */
     }
     drums.peak = pk;
 }

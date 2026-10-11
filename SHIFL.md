@@ -321,6 +321,8 @@ A song is up to 16 steps of 6 sections, **A–F** (each holds the four tracks: s
 
 The **SONG screen** (SAVE tapped on TRACKS) shows the chain and edits it by hand: **KNOB 1** the step, **KNOB 2** its section, **KNOB 3** its bars, **KNOB 4** the number of steps; **REC** stores the loop into the step's section; **SAVE** (tap) saves the chain; **OCT−** loop / song; **OCT+ twice** loads a section. The six sections are stored alongside the project.
 
+Scroll **KNOB 2** past the four track rows to reach fragment-level overrides that apply only while that fragment plays: **FX** (punch-in effect), **TRANS** (semitone transpose), **KEY** (chromatic vs in-key transposition), **P1–P3** (per-track engine + preset), **V1–V4** (per-track volume), and **S1–S4** (per-track slicer mode — **default** / **OFF** / **GATE** / **STUT**). Set to *default* (−−) to leave the scene's slicer setting untouched; choose a mode to override it for that fragment only.
+
 ## The web editor
 
 Open it from the installer page, or with **`OPEN-EDITOR.bat`** (`http://localhost:8766/webapp/editor/`), in Chrome or Edge with the FM-1 on USB, and press **Connect**. It follows the device live (turn a knob on the FM-1, the editor moves).

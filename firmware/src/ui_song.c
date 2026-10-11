@@ -41,7 +41,7 @@ static void song_sane(void)
     if (!ok) arr_defaults(&arrangement);
     if (song_cursor >= arrangement.count)
         song_cursor = (uint8_t)(arrangement.count - 1u);
-    if (song_sub > ARR_TRACKS + 10u) song_sub = 0;
+    if (song_sub > ARR_TRACKS + 14u) song_sub = 0;
 }
 
 /* Scene targeted by REC/LOAD: the selected track's scene, or the first non-muted
@@ -85,7 +85,8 @@ static void song_screen_draw(void)
     uint32_t sig = (uint32_t)song_cursor + 17u * arrangement_enabled + 37u * song.playing +
                    71u * arrangement_clock.index + 127u * arrangement_clock.bar +
                    257u * arrangement.count + 509u * (uint32_t)(uint16_t)song.g[G_BPM] +
-                   1021u * song_sub;
+                   1021u * song_sub + 83u * live_mode +
+                   89u * (uint32_t)(uint8_t)live_mode_scene + 97u * live_select;
     char b[30];
     for (i = 0; i < arrangement.count; i++) {
         const arr_entry_t *e = &arrangement.entry[i];
@@ -98,6 +99,7 @@ static void song_screen_draw(void)
             sig = sig * 11u + arrangement.patch[i].engine[k];
             sig = sig * 13u + arrangement.patch[i].preset[k];
             sig = sig * 17u + arr_song_vol[i][k];
+            sig = sig * 23u + arr_song_slicer[i][k];
         }
     }
     for (i = 0; i < ARR_SCENES; i++) sig = sig * 3u + (uint32_t)project_used(i);
@@ -107,8 +109,9 @@ static void song_screen_draw(void)
     /* Header */
     cv_begin(240, 40, C_BLACK);
     cv_text(4, 4, &FONT_L, "SONG", C_WHITE);
-    cv_text(76, 20, &FONT_S, arrangement_enabled ? "song mode" : "loop mode",
-            arrangement_enabled ? SC[3] : RGB(118, 118, 126));
+    cv_text(76, 20, &FONT_S,
+            arrangement_enabled ? "song mode" : live_mode ? "live mode" : "loop mode",
+            arrangement_enabled ? SC[3] : live_mode ? RGB(0, 200, 240) : RGB(118, 118, 126));
     fmt_int(b, song.g[G_BPM]);
     cv_text(236 - text_w(&FONT_S, b) - 28, 4, &FONT_S, b, C_WHITE);
     cv_text(236 - 24, 4, &FONT_S, "bpm", RGB(118, 118, 126));
@@ -140,6 +143,8 @@ static void song_screen_draw(void)
         }
         if (arrangement_clock.running && arrangement_clock.index == song_cursor)
             cv_rect(26, 19, (int32_t)(arrangement_clock.bar + 1u) * w / (e->bars ? e->bars : 1), 2, C_WHITE);
+        if (live_mode && live_mode_scene == (int8_t)song_cursor)
+            cv_rect(0, 19, 4, 6, RGB(0, 200, 240));
         if (sel) cv_rect(0, 1, 240, 1, RGB(54, 54, 60)), cv_rect(0, 24, 240, 1, RGB(54, 54, 60));
         cv_blit(0, 42);
     }
@@ -246,7 +251,7 @@ static void song_screen_draw(void)
         }
         cv_rect(0, 1, 240, 1, RGB(54, 54, 60));
         cv_blit(0, 198);
-    } else if (song_sub >= (uint8_t)(ARR_TRACKS + 4u + NPART)) {
+    } else if (song_sub >= (uint8_t)(ARR_TRACKS + 4u + NPART) && song_sub < (uint8_t)(ARR_TRACKS + 4u + NPART + NTRK)) {
         /* Vol override rows (sub=11..14, all 4 tracks) */
         uint32_t vk = (uint32_t)song_sub - (ARR_TRACKS + 4u + NPART);
         uint8_t vv = arr_song_vol[song_cursor][vk];
@@ -266,6 +271,25 @@ static void song_screen_draw(void)
         }
         cv_rect(0, 1, 240, 1, RGB(54, 54, 60));
         cv_blit(0, 198);
+    } else if (song_sub >= (uint8_t)(ARR_TRACKS + 4u + NPART + NTRK)) {
+        /* Slicer override rows (sub=15..18, all 4 tracks) */
+        static const char *const SL_NAME[3] = {"OFF", "GATE", "STUT"};
+        uint32_t sk = (uint32_t)song_sub - (ARR_TRACKS + 4u + NPART + NTRK);
+        uint8_t sv = arr_song_slicer[song_cursor][sk];
+        cv_begin(240, 42, C_BLACK);
+        b[0] = 'S'; b[1] = (char)('1' + sk); b[2] = 0;
+        cv_text(4, 11, &FONT_S, b, SC[sk]);
+        if (sv == ARR_SLCR_NONE) {
+            cv_rect(36, 9, 26, 20, RGB(26, 26, 30));
+            cv_text(40, 11, &FONT_S, "--", RGB(80, 80, 88));
+            cv_text(70, 11, &FONT_S, "default", RGB(80, 80, 88));
+        } else {
+            cv_rect(36, 9, 52, 20, RGB(40, 40, 52));
+            cv_text(40, 11, &FONT_S, SL_NAME[sv < 3u ? sv : 0u], RGB(180, 180, 220));
+            cv_text(96, 11, &FONT_S, "slicer override", RGB(80, 80, 88));
+        }
+        cv_rect(0, 1, 240, 1, RGB(54, 54, 60));
+        cv_blit(0, 198);
     } else {
         cv_begin(240, 42, C_BLACK);
         if (ui.msg_t) {
@@ -278,7 +302,7 @@ static void song_screen_draw(void)
                 cv_text((int32_t)i * 60 + 30 - text_w(&FONT_S, L[i]) / 2, 8, &FONT_S, L[i], RGB(118, 118, 126));
             }
             cv_text(4, 22, &FONT_S, "rec: store   save: chain", RGB(196, 196, 204));
-            cv_text(4, 33, &FONT_S, "oct-: loop/song  arp: clone", RGB(118, 118, 126));
+            cv_text(4, 33, &FONT_S, "oct-: loop/song/live  arp: clone", RGB(118, 118, 126));
         }
         cv_blit(0, 198);
     }
@@ -300,6 +324,8 @@ static void song_screen_input(uint32_t pressed, uint32_t home)
             else {
                 if (!song.playing && arrangement_enabled)
                     arrangement_start_index = song_cursor;
+                if (!song.playing && live_mode)
+                    live_mode_scene = (int8_t)song_cursor;
                 transport_req = song.playing ? 2 : 1;
             }
         } else if (b == B_SEQ) {
@@ -311,8 +337,20 @@ static void song_screen_input(uint32_t pressed, uint32_t home)
                 arrangement_save();
                 song_store_armed = 0;
             } else if (b == B_OCTDN) {
-                arrangement_enabled ^= 1u;
-                ui_message(arrangement_enabled ? "SONG MODE" : "LOOP MODE");
+                if (!arrangement_enabled && !live_mode) {
+                    arrangement_enabled = 1;
+                    ui_message("SONG MODE");
+                } else if (arrangement_enabled) {
+                    arrangement_enabled = 0;
+                    live_mode = 1;
+                    live_select = 0;
+                    ui_message("LIVE MODE");
+                } else {
+                    live_mode = 0;
+                    live_select = 0;
+                    live_mode_req = -1;
+                    ui_message("LOOP MODE");
+                }
             } else if (b == B_OCTUP) {
                 if (!song_ref_scene(&scene)) { ui_message("TRACK IS MUTED"); continue; }
                 if (song_load_armed && (int32_t)(fm1_ms - song_store_deadline) <= 0) {
@@ -346,11 +384,23 @@ static void song_screen_input(uint32_t pressed, uint32_t home)
         song_load_armed = 0;
         if (k == 0) {
             song_cursor = (uint8_t)clamp(song_cursor + steps, 0, arrangement.count - 1);
+            if (live_mode) {
+                if (song.playing) {
+                    fm1_irq_off();
+                    live_mode_req = (int8_t)song_cursor;
+                    fm1_irq_on();
+                } else {
+                    fm1_irq_off();
+                    arrangement_apply((uint32_t)song_cursor);
+                    live_mode_scene = (int8_t)song_cursor;
+                    fm1_irq_on();
+                }
+            }
             continue;
         }
         if (song.playing || transport_req) { ui_message("STOP FIRST"); continue; }
         if (k == 1) {
-            song_sub = (uint8_t)clamp((int32_t)song_sub + steps, 0, (int32_t)ARR_TRACKS + 10);
+            song_sub = (uint8_t)clamp((int32_t)song_sub + steps, 0, (int32_t)ARR_TRACKS + 14);
         } else if (k == 2) {
             arr_entry_t *e = &arrangement.entry[song_cursor];
             if (song_sub == 0u) {
@@ -390,7 +440,7 @@ static void song_screen_input(uint32_t pressed, uint32_t home)
                     pa->engine[tk] = eng;
                     pa->preset[tk] = pst;
                 }
-            } else if (song_sub >= ARR_TRACKS + 4u + NPART) {
+            } else if (song_sub >= ARR_TRACKS + 4u + NPART && song_sub < ARR_TRACKS + 4u + NPART + NTRK) {
                 /* Vol override rows (sub=11..14): all 4 tracks, 0-127 or -1=none */
                 uint32_t vk = (uint32_t)song_sub - (ARR_TRACKS + 4u + NPART);
                 if (vk < NTRK) {
@@ -398,6 +448,15 @@ static void song_screen_input(uint32_t pressed, uint32_t home)
                                     (int32_t)arr_song_vol[song_cursor][vk];
                     int32_t new_v = clamp(cur_v + steps, -1, 127);
                     arr_song_vol[song_cursor][vk] = (new_v < 0) ? ARR_VOL_NONE : (uint8_t)new_v;
+                }
+            } else if (song_sub >= ARR_TRACKS + 4u + NPART + NTRK) {
+                /* Slicer override rows (sub=15..18): all 4 tracks, OFF/GATE/STUT or -1=none */
+                uint32_t sk = (uint32_t)song_sub - (ARR_TRACKS + 4u + NPART + NTRK);
+                if (sk < NTRK) {
+                    int32_t cur_s = (arr_song_slicer[song_cursor][sk] == ARR_SLCR_NONE) ? -1 :
+                                    (int32_t)arr_song_slicer[song_cursor][sk];
+                    int32_t new_s = clamp(cur_s + steps, -1, 2);  /* -1=none, 0=off, 1=gate, 2=stut */
+                    arr_song_slicer[song_cursor][sk] = (new_s < 0) ? ARR_SLCR_NONE : (uint8_t)new_s;
                 }
             }
         } else if (k == 3) {

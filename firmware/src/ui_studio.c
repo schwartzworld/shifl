@@ -124,6 +124,11 @@ static void rec_toggle(void)
 {
     if (ft_owns_press())
         return;
+    if (live_mode && song.playing) {
+        live_select ^= 1u;
+        ui_message(live_select ? "SELECT SCENE" : "PLAY KEYS");
+        return;
+    }
     if (song.playing && arrangement_enabled) {
         ui_message("STOP THE SONG FIRST");
         return;

@@ -473,6 +473,7 @@ typedef struct {
                                                     * so 2.2 still reads its part (st_load cuts at its size) */
 #if FELUCCA_ARRANGER
     uint8_t arr_vol[ARR_STEPS][ARR_TRACKS];        /* per-fragment per-track volume override; ARR_VOL_NONE=use scene's */
+    uint8_t arr_slcr[ARR_STEPS][ARR_TRACKS];       /* per-fragment per-track slicer mode override; ARR_SLCR_NONE=use scene's */
 #endif
 } persist_t;
 /* V22 = before lights; defined via offsetof(arr_config_t, patch) so it stays correct if entry[] grows */
@@ -481,8 +482,10 @@ typedef struct {
 #define PERSIST_SIZE_V44 (PERSIST_SIZE_V22 + 4u)
 /* V55 = V44 + patch[] (before per-fragment vol override) */
 #define PERSIST_SIZE_V55 (PERSIST_SIZE_V22 + ARR_STEPS * sizeof(arr_patch_t) + 4u)
-_Static_assert(sizeof(persist_t) == PERSIST_SIZE_V55 + ARR_STEPS * ARR_TRACKS,
-               "arr_vol appended after lights; patch[] before it");
+/* V66 = V55 + arr_vol[] (before per-fragment slicer override) */
+#define PERSIST_SIZE_V66 (PERSIST_SIZE_V55 + ARR_STEPS * ARR_TRACKS)
+_Static_assert(sizeof(persist_t) == PERSIST_SIZE_V66 + ARR_STEPS * ARR_TRACKS,
+               "arr_slcr appended after arr_vol");
 #if FELUCCA_ARRANGER
 #define PERSIST_MAGIC 0x50455234u                  /* "PER4": per-track song sections + patch overrides */
 #else
@@ -590,8 +593,10 @@ static void persist_boot(void)                    /* before settings_init / pane
     arr_defaults(&arrangement);
     {   uint32_t mi, mk;
         for (mi = 0; mi < ARR_STEPS; mi++)
-            for (mk = 0; mk < ARR_TRACKS; mk++)
+            for (mk = 0; mk < ARR_TRACKS; mk++) {
                 arr_song_vol[mi][mk] = ARR_VOL_NONE;
+                arr_song_slicer[mi][mk] = ARR_SLCR_NONE;
+            }
     }
 #endif
 #if FELUCCA_FLASH
@@ -643,15 +648,23 @@ static void persist_boot(void)                    /* before settings_init / pane
                             p.arrangement.patch[mi].preset[mk] = ARR_PATCH_NONE;
                         }
                 }
-                if (n < (int)sizeof p) {
+                if (n < (int)PERSIST_SIZE_V66) {
                     /* pre-vol format: init arr_vol to no-override */
                     uint32_t mi, mk;
                     for (mi = 0; mi < ARR_STEPS; mi++)
                         for (mk = 0; mk < ARR_TRACKS; mk++)
                             p.arr_vol[mi][mk] = ARR_VOL_NONE;
                 }
+                if (n < (int)sizeof p) {
+                    /* pre-slicer format: init arr_slcr to no-override */
+                    uint32_t mi, mk;
+                    for (mi = 0; mi < ARR_STEPS; mi++)
+                        for (mk = 0; mk < ARR_TRACKS; mk++)
+                            p.arr_slcr[mi][mk] = ARR_SLCR_NONE;
+                }
                 arrangement = p.arrangement;
                 memcpy(arr_song_vol, p.arr_vol, sizeof arr_song_vol);
+                memcpy(arr_song_slicer, p.arr_slcr, sizeof arr_song_slicer);
             } else {
                 p.arrangement = arrangement;
                 memcpy(p.arr_vol, arr_song_vol, sizeof p.arr_vol);
@@ -701,6 +714,7 @@ static void persist_fill(persist_t *p)              /* the settings as they are 
 #if FELUCCA_ARRANGER
     p->arrangement = arrangement;
     memcpy(p->arr_vol, arr_song_vol, sizeof p->arr_vol);
+    memcpy(p->arr_slcr, arr_song_slicer, sizeof p->arr_slcr);
 #endif
 }
 
@@ -744,7 +758,7 @@ static int panel_valid(const panel_t *q)           /* a permutation of the butto
 static uint32_t settings_restore(const void *raw, uint32_t n)
 {
     persist_t p;
-    if (n != sizeof p && n != PERSIST_SIZE_V55 && n != PERSIST_SIZE_V44 && n != PERSIST_SIZE_V22)
+    if (n != sizeof p && n != PERSIST_SIZE_V66 && n != PERSIST_SIZE_V55 && n != PERSIST_SIZE_V44 && n != PERSIST_SIZE_V22)
         return 2;
     memset(&p, 0, sizeof p);
     memcpy(&p, raw, n);
@@ -761,11 +775,17 @@ static uint32_t settings_restore(const void *raw, uint32_t n)
                 p.arrangement.patch[mi].preset[mk] = ARR_PATCH_NONE;
             }
     }
-    if (n < (uint32_t)sizeof p) {
+    if (n < (uint32_t)PERSIST_SIZE_V66) {
         uint32_t mi, mk;
         for (mi = 0; mi < ARR_STEPS; mi++)
             for (mk = 0; mk < ARR_TRACKS; mk++)
                 p.arr_vol[mi][mk] = ARR_VOL_NONE;
+    }
+    if (n < (uint32_t)sizeof p) {
+        uint32_t mi, mk;
+        for (mi = 0; mi < ARR_STEPS; mi++)
+            for (mk = 0; mk < ARR_TRACKS; mk++)
+                p.arr_slcr[mi][mk] = ARR_SLCR_NONE;
     }
 #endif
     if (!flash_ok || st_save(OBJ_SETTINGS, &p, sizeof p))
@@ -778,6 +798,7 @@ static uint32_t settings_restore(const void *raw, uint32_t n)
 #if FELUCCA_ARRANGER
     arrangement = p.arrangement;
     memcpy(arr_song_vol, p.arr_vol, sizeof arr_song_vol);
+    memcpy(arr_song_slicer, p.arr_slcr, sizeof arr_song_slicer);
 #endif
     lights_from_word(p.lights);
     song.g[G_SYNC] = (int16_t)lights_sync;
@@ -822,7 +843,8 @@ static void arrangement_save(void)
 #if FELUCCA_FLASH
     if (flash_ok) {
         int ok = !memcmp(&persist_saved.arrangement, &arrangement, sizeof arrangement)
-              && !memcmp(persist_saved.arr_vol, arr_song_vol, sizeof arr_song_vol);
+              && !memcmp(persist_saved.arr_vol, arr_song_vol, sizeof arr_song_vol)
+              && !memcmp(persist_saved.arr_slcr, arr_song_slicer, sizeof arr_song_slicer);
         ui_message(ok ? "SONG SAVED" : "SAVE ERROR");
         return;
     }

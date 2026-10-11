@@ -15,6 +15,7 @@
 #define ARR_PATCH_NONE 0xFFu  /* engine/preset override: use whatever the scene set */
 #define ARR_VOL_NONE   0xFFu  /* per-fragment volume override: use whatever the scene set (0xFF) */
 #define ARR_FLAG_INKEY 0x01u  /* rsv[2] bit 0: chromatic transpose snapped to track's scale */
+#define ARR_SLCR_NONE  0xFFu  /* per-fragment slicer override: use whatever the scene set */
 /* Each entry independently selects a scene (A-F = 0-5) or ARR_MUTE per track. */
 typedef struct { uint8_t track[ARR_TRACKS]; uint8_t bars; uint8_t rsv[3]; } arr_entry_t;
 /* Per-entry per-track patch override; 0xFF in either field = use the scene's engine/preset. */

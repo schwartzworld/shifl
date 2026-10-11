@@ -22,6 +22,7 @@ static uint8_t sec_armed;                               /* store over a used sec
 static uint32_t sec_armed_ms;
 static uint8_t chain_tap[CHAIN_MAX], chain_taps;        /* the section keys tapped in this SAVE hold (the first
                                                          * is asked for at once; two or more: a chain on release) */
+static uint8_t lm_chain_tap[CHAIN_MAX], lm_chain_taps;  /* same for live-mode ARP+key chain */
 #define TAP_MS 450u                                     /* a press shorter than this, untouched: a tap */
 #define SHOW_MS 140u                                    /* the layer shows after this (a tap does not flash it) */
 
@@ -337,6 +338,28 @@ static void layer_key(uint32_t layer, uint32_t k, uint32_t down)
         ui_say("KEY ", N_NOTE[root]);
         return;
     }
+    case LY_ROLL: {                                     /* live mode: ARP held selects scenes */
+        if (!live_mode) return;
+        if (w < 0 || w >= (int32_t)ARR_STEPS) return;
+        if (song.playing) {
+            fm1_irq_off();
+            if (!lm_chain_taps) {                       /* first tap: queue it, clear any running chain */
+                lm_chain_n = 0;
+                live_mode_req = (int8_t)w;
+            } else {
+                ui.msg_t = 0;                           /* (the sub line shows the chain being built) */
+            }
+            if (lm_chain_taps < CHAIN_MAX && (fm1_in.buttons & ly_bit[LY_ROLL]))
+                lm_chain_tap[lm_chain_taps++] = (uint8_t)w;
+            fm1_irq_on();
+        } else {
+            fm1_irq_off();
+            arrangement_apply((uint32_t)w);
+            live_mode_scene = (int8_t)w;
+            fm1_irq_on();
+        }
+        return;
+    }
     case LY_SONG: {                                     /* sections A..F: 0-5 play, 6=patch, 7=empty, 8-13 store */
         char b[2] = {0, 0};
         if (w < 0)
@@ -428,6 +451,36 @@ static void chain_sub(char *sub, uint32_t n)
     sub[k] = 0;
 }
 
+/* ARP let go: two or more entry taps while it was held play as a live-mode chain, each for the entry's
+ * bar count, looped; one tap was a plain jump (already done on the first tap) */
+static void lm_chain_release(void)
+{
+    uint32_t i;
+    if (lm_chain_taps >= 2u && song.playing) {
+        fm1_irq_off();
+        for (i = 0; i < lm_chain_taps && i < CHAIN_MAX; i++)
+            lm_chain[i] = lm_chain_tap[i];
+        lm_chain_i = 0;
+        lm_chain_bars = arrangement.entry[lm_chain_tap[0]].bars;
+        lm_chain_n = (uint8_t)(lm_chain_taps < CHAIN_MAX ? lm_chain_taps : CHAIN_MAX);
+        fm1_irq_on();
+    }
+    lm_chain_taps = 0;
+}
+static void lm_chain_sub(char *sub, uint32_t n)
+{
+    uint32_t i, m = lm_chain_taps >= 2u ? lm_chain_taps : lm_chain_n, k = 5;
+    char b[4];
+    str_cpy(sub, "chain", n);
+    for (i = 0; i < m && i < CHAIN_MAX && k + 4u < n; i++) {
+        uint32_t e = lm_chain_taps >= 2u ? lm_chain_tap[i] : lm_chain[i];
+        sub[k++] = ' ';
+        fmt_int(b, (int32_t)e + 1);
+        sub[k++] = b[0];
+        if (b[1]) sub[k++] = b[1];
+    }
+    sub[k] = 0;
+}
 /* KNOB 1..4 while a layer is held: what the layer gives them (the page does not see them) */
 static void layer_knobs(uint32_t layer)
 {
@@ -659,6 +712,27 @@ static void layer_screen_draw(void)
         fmt_int(v[1], t->p[P_SLEN]);
         str_cpy(v[2], is_drum(t) ? "" : "-  +", 8);
         str_cpy(sub, undo.valid ? (undo.undone ? "oct+ redo" : "oct- undo") : sub, sizeof sub);
+        break;
+    }
+    case LY_ROLL: {                                     /* live mode: 16 scene tiles */
+        if (!live_mode) break;
+        col = RGB(0, 200, 240);
+        if (lm_chain_taps >= 2u || lm_chain_n)
+            lm_chain_sub(sub, sizeof sub);
+        else
+            str_cpy(sub, live_select ? "select scene" : "live mode", sizeof sub);
+        for (i = 0; i < ARR_STEPS; i++) {
+            int playing = (live_mode_scene == (int8_t)i);
+            int next = (live_mode_req == (int8_t)i) ||
+                       (lm_chain_n && live_mode_req < 0 &&
+                        lm_chain[(lm_chain_i + 1u) % lm_chain_n] == (uint8_t)i);
+            char n[4];
+            fmt_int(n, (int32_t)i + 1);
+            str_cpy(tl[i].lab, n, 8);
+            tl[i].bg = playing ? TE_COL[i & 3u] : TE_G1;
+            tl[i].fg = playing ? C_BLACK : TE_G4;
+            tl[i].top = next ? col : 0;
+        }
         break;
     }
     case LY_STEP: {                                     /* the 16 steps of the page */

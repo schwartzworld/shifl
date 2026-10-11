@@ -935,6 +935,20 @@ static void key_down(uint32_t k)
     kb_kind[k] = KS_NONE;
     kb_trk[k] = (uint8_t)sel;
     kb_n[k] = 0;
+#if FELUCCA_ARRANGER
+    if (live_mode && live_select && layer == LY_PLAY) {
+        int32_t w = punch_key(k);
+        if (w >= 0 && w < (int32_t)ARR_STEPS) {
+            if (song.playing)
+                live_mode_req = (int8_t)w;
+            else {
+                live_mode_scene = (int8_t)w;
+                arrangement_apply((uint32_t)w);
+            }
+        }
+        return;
+    }
+#endif
     switch (layer) {
     case LY_FX: {                                     /* FX held: the white keys pick a punch-in effect */
         int32_t fx = punch_key(k) + (int32_t)punch.page * 16;
@@ -1164,6 +1178,11 @@ static volatile uint8_t chain_sec[CHAIN_MAX];
 static volatile uint8_t chain_n, chain_i;          /* entries; the one playing (or asked for) */
 static volatile uint8_t chain_bars;                /* the bars it plays */
 static uint32_t section_bars(uint32_t s);          /* project.c (arranger_scene.c) */
+/* LIVE-MODE CHAIN (ARP held, two or more entry keys tapped): same looping logic, but for live mode
+ * entries; each plays for arrangement.entry[s].bars bars; the UI writes it whole with the IRQ off */
+static volatile uint8_t lm_chain[CHAIN_MAX];
+static volatile uint8_t lm_chain_n, lm_chain_i;   /* entries; the one playing */
+static volatile uint8_t lm_chain_bars;             /* the bars this entry plays */
 static volatile uint8_t srec;                      /* SONG REC: 0 off, 1 armed (from the next bar), 2 recording */
 static arr_entry_t srec_e[ARR_STEPS];
 static volatile uint8_t srec_n;                    /* entries so far (the last one still growing) */
@@ -1247,6 +1266,21 @@ static void live_block(void)                       /* once a block while playing
         srec_n = 0;
         srec_add((uint32_t)live_sec);
     }
+    if (live_mode && lm_chain_n && live_mode_req < 0 && live_bar >= lm_chain_bars) {
+        lm_chain_i = (uint8_t)((lm_chain_i + 1u) % lm_chain_n);
+        live_mode_req = (int8_t)lm_chain[lm_chain_i];
+    }
+    if (live_mode && live_mode_req >= 0) {
+        uint32_t s = (uint32_t)live_mode_req;
+        live_mode_req = -1;
+        arrangement_apply(s);
+        song.rec = 0;
+        live_mode_scene = (int8_t)s;
+        seq_reset_tracks(clk_pos);
+        live_bar = 0;
+        if (lm_chain_n)
+            lm_chain_bars = arrangement.entry[lm_chain[lm_chain_i]].bars;
+    }
 }
 #endif
 
@@ -1296,6 +1330,14 @@ static void seq_start(void)
         song_backup();
         chain_n = 0;                               /* (the song, not a quick chain) */
     }
+    if (live_mode && !song.playing) {
+        rec_wait = 0;
+        chain_n = 0;
+        if (live_mode_scene < 0)
+            live_mode_scene = 0;
+        arrangement_apply((uint32_t)(uint8_t)live_mode_scene);
+        song.rec = 0;
+    }
     if (!arrangement_start()) return;
 #endif
     fill_last_bar = 0xFFFFFFFFu;
@@ -1324,6 +1366,11 @@ static void seq_stop(void)
         srec_stop();                                /* SONG REC: the order played so far is the song */
     live_req = -1;
     chain_n = 0;
+    if (live_mode) {
+        live_select = 0;
+        live_mode_req = -1;
+        lm_chain_n = 0;
+    }
 #endif
     song.playing = 0;
     fill_held = 0;
