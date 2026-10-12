@@ -376,14 +376,28 @@ static uint32_t gen_next(uint32_t *r)
     return *r;
 }
 
-/* Pick a random in-scale MIDI note (C4 or C5) using local prng *r. */
-static uint32_t gen_pick_note(const track_t *t, uint32_t *r)
+/* Pick an in-scale MIDI note using local prng *r.
+ * prev != 0: 75% chance to prefer notes within 5 semitones (stepwise melody). */
+static uint32_t gen_pick_note(const track_t *t, uint32_t *r, uint32_t prev)
 {
-    uint32_t mask = scale_mask(t), deg[12], ndeg = 0, i;
-    for (i = 0; i < 12u; i++)
+    uint32_t mask = scale_mask(t), deg[12], ndeg = 0, i, oct;
+    uint32_t near[24], nnear = 0;
+    for (i = 0u; i < 12u; i++)
         if ((mask >> i) & 1u)
             deg[ndeg++] = i;
-    if (!ndeg) { ndeg = 1; deg[0] = 0; }
+    if (!ndeg) { ndeg = 1u; deg[0] = 0u; }
+    if (prev && (gen_next(r) & 3u) != 0u) {      /* 75%: prefer close intervals */
+        for (oct = 0u; oct < 2u; oct++) {
+            for (i = 0u; i < ndeg; i++) {
+                uint32_t n = (uint32_t)clamp((int32_t)60 + t->p[P_ROOT] + (int32_t)deg[i] + (int32_t)oct * 12, 0, 127);
+                uint32_t d = n > prev ? n - prev : prev - n;
+                if (d > 0u && d <= 5u)
+                    near[nnear++] = n;
+            }
+        }
+        if (nnear)
+            return near[gen_next(r) % nnear];
+    }
     i = deg[gen_next(r) % ndeg];
     return (uint32_t)clamp((int32_t)60 + t->p[P_ROOT] + (int32_t)i + (int32_t)(gen_next(r) & 1u) * 12, 0, 127);
 }
@@ -401,13 +415,14 @@ static uint32_t mutate_pick_note(const track_t *t)
 }
 
 /* Full from-scratch generation of a synth part.
- * P_SPICE (0-127) controls density: 0 = ~50% notes, 127 = ~80% notes. */
+ * P_SPICE (0-127) controls density: 0 = ~34% notes, 127 = ~59% notes. */
 static void seq_generate(track_t *t)
 {
     uint32_t len = trk_len(t), i, r;
     uint32_t spice    = (uint32_t)clamp(t->p[P_SPICE], 0, 127);
-    uint32_t note_thr = 64u + spice / 4u;   /* density threshold: 64..96 / 128 */
-    uint32_t acc_thr  = 28u + spice / 8u;   /* accent probability */
+    uint32_t note_thr = 44u + spice / 4u;   /* density threshold: 44..75 / 128 */
+    uint32_t acc_thr  = 22u + spice / 8u;   /* accent probability */
+    uint32_t prev     = 0u;                 /* melodic memory: 0 = none yet */
     step_t   tmp[NSTEP];
     int      any = 0;
 
@@ -416,9 +431,10 @@ static void seq_generate(track_t *t)
     for (i = 0; i < len; i++) {
         step_t *s = &tmp[i];
         if ((gen_next(&r) & 127u) >= note_thr) { s->time = ST_REST; continue; }
-        s->note[0] = (uint8_t)gen_pick_note(t, &r);
+        s->note[0] = (uint8_t)gen_pick_note(t, &r, prev);
         if (i % 4u == 0u && (gen_next(&r) & 127u) < 45u)   /* beat steps: 35% chance of root */
             s->note[0] = (uint8_t)clamp((int32_t)60 + t->p[P_ROOT], 0, 127);
+        prev = s->note[0];
         s->n = 1; s->time = ST_NOTE;
         if ((gen_next(&r) & 127u) < acc_thr) s->flags  = SF_ACCENT;
         if ((gen_next(&r) & 127u) < 22u)     s->flags |= SF_SLIDE;
@@ -441,13 +457,10 @@ static void seq_generate(track_t *t)
 }
 
 /* Full from-scratch generation of the drum part.
- * Lane densities are tuned for a typical kick/snare/hat feel. */
+ * Kick on odd steps (especially beat 1), snare on backbeat, hat regular.
+ * Other lanes very sparse. Even-step kicks are ghost notes. */
 static void drum_generate(track_t *t)
 {
-    static const uint8_t LANE_DENS[DRUM_LANES] = {
-        80, 20, 50, 20, 60, 40, 30, 15,
-        25, 25, 20, 20, 15, 15, 10, 10
-    };
     uint32_t len = trk_len(t), i, l, r;
     dstep_t  tmp[NSTEP];
 
@@ -455,12 +468,37 @@ static void drum_generate(track_t *t)
     memset(tmp, 0, sizeof tmp);
     for (i = 0; i < len; i++) {
         dstep_t *d = &tmp[i];
-        for (l = 0; l < DRUM_LANES; l++) {
-            uint32_t thr = LANE_DENS[l];
-            if (i % 4u == 0u && l == 0u) thr = 120u;    /* kick on the downbeat */
-            if (i % 8u == 4u && l == 2u) thr = 100u;    /* snare on the backbeat */
+        /* Kick (lane 0): odd steps get normal hits, even steps ghost-only */
+        {
+            uint32_t thr = (i == 0u)           ? 110u :   /* beat 1: near-certain */
+                           (i % 4u == 0u)       ?  70u :   /* other downbeats */
+                           (i % 2u == 0u)       ?  35u :   /* other odd steps */
+                                                    8u;    /* even steps: rare */
             if ((gen_next(&r) & 127u) < thr)
-                d->on[l >> 3] |= (uint8_t)(1u << (l & 7u));
+                dstep_set(d, 0u, (i % 2u == 0u) ? LV_NORM : LV_GHOST, 0u);
+        }
+        /* Snare (lane 2): backbeat strong, occasional fills */
+        {
+            uint32_t thr = (i % 8u == 4u) ? 115u :        /* backbeat: near-certain */
+                           (i % 4u == 2u) ?  20u :         /* half positions */
+                                              6u;          /* elsewhere: rare */
+            if ((gen_next(&r) & 127u) < thr)
+                dstep_set(d, 2u, LV_NORM, 0u);
+        }
+        /* Closed hi-hat (lane 4): regular with variation */
+        {
+            uint32_t thr = (i % 2u == 0u) ? 55u : 35u;
+            if ((gen_next(&r) & 127u) < thr)
+                dstep_set(d, 4u, LV_NORM, 0u);
+        }
+        /* Open hi-hat (lane 5): occasional, only when no closed hat */
+        if (!dstep_certain(d, 4u) && (gen_next(&r) & 127u) < 12u)
+            dstep_set(d, 5u, LV_NORM, 0u);
+        /* All other lanes: very sparse ghost hits */
+        for (l = 1u; l < DRUM_LANES; l++) {
+            if (l == 2u || l == 4u || l == 5u) continue;
+            if ((gen_next(&r) & 127u) < 5u)
+                dstep_set(d, l, LV_GHOST, 0u);
         }
     }
     fm1_irq_off();
@@ -470,7 +508,7 @@ static void drum_generate(track_t *t)
     fm1_irq_on();
 }
 
-/* Partial stochastic mutation: ~25% of steps re-rolled (type or pitch).
+/* Partial stochastic mutation: ~50% of steps re-rolled (type or pitch).
  * Works on both synth and drum tracks. */
 static void seq_mutate(track_t *t)
 {
@@ -482,21 +520,23 @@ static void seq_mutate(track_t *t)
 
     fm1_irq_off();
     undo_mark(t, undo_sess++);
-    memcpy(&tmp, t->step, len * 10u);   /* step_t and dstep_t are both 10 bytes */
+    memcpy(&tmp, t->step, len * (is_drum(t) ? sizeof(dstep_t) : sizeof(step_t)));
     fm1_irq_on();
 
     for (i = 0; i < len; i++) {
-        if ((rng() & 3u) != 0u) continue;              /* 75% of steps untouched */
+        if (rng() & 1u) continue;                       /* 50% of steps untouched */
         if (is_drum(t)) {
-            uint32_t l = rng() % DRUM_LANES;
-            tmp.d[i].on[l >> 3] ^= (uint8_t)(1u << (l & 7u));
+            uint32_t l = rng() % DRUM_LANES;            /* toggle 2 lanes so changes are audible */
+            dstep_set_hit(&tmp.d[i], l, dstep_hit(&tmp.d[i], l) == HIT_OFF ? HIT_ON : HIT_OFF);
+            l = rng() % DRUM_LANES;
+            dstep_set_hit(&tmp.d[i], l, dstep_hit(&tmp.d[i], l) == HIT_OFF ? HIT_ON : HIT_OFF);
         } else {
             step_t *s = &tmp.s[i];
             if (rng() & 1u) {                           /* 50%: re-roll step type */
                 if ((rng() & 127u) >= note_thr) {
                     s->time = ST_REST; s->n = 0;
                 } else {
-                    if (!s->n) { s->note[0] = (uint8_t)mutate_pick_note(t); s->n = 1; }
+                    s->note[0] = (uint8_t)mutate_pick_note(t); s->n = 1;
                     s->time = ST_NOTE; s->flags = 0;
                     if ((rng() & 127u) < acc_thr) s->flags  = SF_ACCENT;
                     if ((rng() & 127u) < 22u)     s->flags |= SF_SLIDE;
@@ -514,7 +554,7 @@ static void seq_mutate(track_t *t)
         }
     }
     fm1_irq_off();
-    memcpy(t->step, &tmp, len * 10u);
+    memcpy(t->step, &tmp, len * (is_drum(t) ? sizeof(dstep_t) : sizeof(step_t)));
     fm1_irq_on();
 }
 
@@ -1115,7 +1155,8 @@ static void key_down(uint32_t k)
     case LY_STEP:
     case LY_SCALE:
     case LY_MIX:
-    case LY_SONG:                                     /* the UI's: steps, the key, the mix, the sections */
+    case LY_SONG:
+    case LY_ROLL:                                     /* the UI's: steps, the key, the mix, the sections, gen/mut */
         kb_kind[k] = KS_UI;
         kb_nt[k][0] = (uint8_t)layer;                 /* (its key-up goes to the same layer) */
         lk_push(layer, k, 1);
@@ -1448,6 +1489,7 @@ static void seq_reset_tracks(uint32_t pos)
         t->rskip_lanes = 0;
         t->rskip_abs = SEQ_NONE;
         t->rh_n = 0;
+        t->pass = 0;
     }
     clk_beat = 0;
     clk_pos = pos;
@@ -1472,6 +1514,88 @@ static volatile uint8_t fill_arm;
 static uint8_t fill_bar_on;
 static uint8_t fill_now;
 static uint32_t fill_last_bar = 0xFFFFFFFFu;
+
+/* drum fill state: ROLL + white key 2..7 on a drum track triggers a hardcoded fill pattern
+ * that replaces the drum steps from the current position to the end of the pattern loop.
+ * dstep_t bytes: {on[2], lvl[4], rat[4]}. on bits: lane L = on[L/8] bit (L%8).
+ * Lanes used: 0=kick, 2=snare, 4=hi-hat-closed, 9=tom-lo, 10=tom-hi, 11=crash.
+ * lvl[L/4] bits 2*(L%4): level (0=norm). rat[L/4] bits 2*(L%4): ratchet (0=x1,1=x2,3=x4).
+ * Snare x2: rat[0] |= 1<<4 = 0x10. Snare x4: rat[0] |= 3<<4 = 0x30. */
+#define DS_E      {{0x00,0x00},{0,0,0,0},{0,0,0,0}}  /* empty */
+#define DS_K      {{0x01,0x00},{0,0,0,0},{0,0,0,0}}  /* kick */
+#define DS_S      {{0x04,0x00},{0,0,0,0},{0,0,0,0}}  /* snare */
+#define DS_SX2    {{0x04,0x00},{0,0,0,0},{0x10,0,0,0}} /* snare x2 */
+#define DS_SX4    {{0x04,0x00},{0,0,0,0},{0x30,0,0,0}} /* snare x4 */
+#define DS_KCR    {{0x01,0x08},{0,0,0,0},{0,0,0,0}}  /* kick + crash */
+#define DS_HH     {{0x10,0x00},{0,0,0,0},{0,0,0,0}}  /* closed hi-hat */
+#define DS_HH_K   {{0x11,0x00},{0,0,0,0},{0,0,0,0}}  /* hat + kick */
+#define DS_HH_KS  {{0x15,0x00},{0,0,0,0},{0,0,0,0}}  /* hat + kick + snare */
+#define DS_HH_CR  {{0x10,0x08},{0,0,0,0},{0,0,0,0}}  /* hat + crash */
+#define DS_TH     {{0x00,0x04},{0,0,0,0},{0,0,0,0}}  /* hi tom */
+#define DS_TL     {{0x00,0x02},{0,0,0,0},{0,0,0,0}}  /* lo tom */
+#define DS_THTL   {{0x00,0x06},{0,0,0,0},{0,0,0,0}}  /* hi + lo tom */
+#define DRUM_NFILLS 6
+static const dstep_t drum_fill_pats[DRUM_NFILLS][16] = {
+    { /* Fill 0: Classic snare buildup → crash */
+        DS_E,  DS_E,  DS_E,  DS_E,
+        DS_S,  DS_E,  DS_E,  DS_E,
+        DS_S,  DS_E,  DS_S,  DS_E,
+        DS_S,  DS_S,  DS_SX2, DS_KCR,
+    },
+    { /* Fill 1: 16th hi-hat run → crash */
+        DS_HH, DS_HH, DS_HH, DS_HH,
+        DS_HH, DS_HH, DS_HH, DS_HH,
+        DS_HH, DS_HH, DS_HH, DS_HH,
+        DS_HH, DS_HH, DS_HH, DS_KCR,
+    },
+    { /* Fill 2: Tom roll descending (hi → lo) → crash */
+        DS_E,    DS_E,    DS_E,    DS_E,
+        DS_TH,   DS_TH,   DS_TH,   DS_TH,
+        DS_TL,   DS_TL,   DS_TL,   DS_TL,
+        DS_THTL, DS_THTL, DS_THTL, DS_KCR,
+    },
+    { /* Fill 3: Snare doublets → crash */
+        DS_E,  DS_E,  DS_E,  DS_E,
+        DS_E,  DS_E,  DS_E,  DS_E,
+        DS_S,  DS_S,  DS_S,  DS_S,
+        DS_S,  DS_S,  DS_SX2, DS_KCR,
+    },
+    { /* Fill 4: Kick-snare alternating → snare roll → crash */
+        DS_K,  DS_E,  DS_S,  DS_E,
+        DS_K,  DS_E,  DS_S,  DS_E,
+        DS_K,  DS_E,  DS_S,  DS_E,
+        DS_K,  DS_E,  DS_SX4, DS_KCR,
+    },
+    { /* Fill 5: Full driver — hat throughout, kick/snare accents, crash at end */
+        DS_HH_K, DS_HH, DS_HH, DS_HH,
+        DS_HH_KS, DS_HH, DS_HH, DS_HH,
+        DS_HH_K, DS_HH, DS_HH, DS_HH,
+        DS_HH_KS, DS_HH, DS_HH, DS_HH_CR,
+    },
+};
+#undef DS_E
+#undef DS_K
+#undef DS_S
+#undef DS_SX2
+#undef DS_SX4
+#undef DS_KCR
+#undef DS_HH
+#undef DS_HH_K
+#undef DS_HH_KS
+#undef DS_HH_CR
+#undef DS_TH
+#undef DS_TL
+#undef DS_THTL
+
+static volatile int8_t drum_fill_req = -1;
+static int8_t drum_fill_cur = -1;
+static uint32_t drum_fill_start_abs;
+static uint32_t drum_fill_end_abs;
+
+static void drum_fill_trigger(uint32_t n)
+{
+    drum_fill_req = (int8_t)(n < DRUM_NFILLS ? (int8_t)n : 0);
+}
 
 static void seq_start(void)
 {
@@ -1527,6 +1651,8 @@ static void seq_stop(void)
     fill_held = 0;
     fill_arm = 0;
     fill_bar_on = 0;
+    drum_fill_cur = -1;
+    drum_fill_req = -1;
     for (i = 0; i < NTRK; i++) {
         seq_release(&trk[i]);
         locks_restore(&trk[i]);
@@ -1542,6 +1668,14 @@ static void seq_stop(void)
         song_restore();                            /* back to the loop you were making */
     }
 #endif
+}
+
+/* conditional hit resolution: idx is offset from ST_COND_FIRST / HIT_COND_FIRST */
+static const uint8_t COND_MOD[8] = {2, 3, 4, 4, 4, 4, 8, 8};
+static const uint8_t COND_TGT[8] = {0, 0, 0, 1, 2, 3, 0, 7};
+static int cond_fires_idx(uint32_t idx, uint32_t pass)
+{
+    return (pass % COND_MOD[idx]) == COND_TGT[idx];
 }
 
 /* the velocity of note i of synth step s; accented: resolved at seq_step (may be probabilistic) */
@@ -1588,8 +1722,10 @@ static void seq_step(track_t *t, const step_t *s, uint32_t slen, uint32_t skip)
     uint32_t step_time = s->time, do_accent, do_slide;
     uint32_t acc_t, sld_t;
 
-    /* resolve time probability */
-    if (step_time >= ST_P75) {
+    /* resolve conditional or probability for time */
+    if (step_time >= ST_COND_FIRST) {
+        step_time = cond_fires_idx(step_time - ST_COND_FIRST, t->pass) ? ST_NOTE : ST_REST;
+    } else if (step_time >= ST_P75) {
         uint32_t thresh = step_time == ST_P75 ? 96u : step_time == ST_P50 ? 64u : 32u;
         step_time = ((rng() & 127u) < thresh) ? ST_NOTE : ST_REST;
     }
@@ -1649,30 +1785,30 @@ static void seq_step(track_t *t, const step_t *s, uint32_t slen, uint32_t skip)
 /* play one drum step: each lane a hit (skip: lanes already played by live recording, or rolling) */
 static void drum_step(track_t *t, const dstep_t *s, uint32_t skip)
 {
-    uint32_t l, m;
+    static const uint8_t PRB_THRESH[3] = {96, 64, 32};
+    uint32_t l;
     t->drum_fired = 0;
-    seq_out_track_off(t);                           /* the last step's hits end here */
-    /* certain hits (on=1): always fire, may have ratchets */
-    m = dstep_mask(s) & ~skip;
-    for (l = 0; m; l++, m >>= 1) {
-        if (!(m & 1u)) continue;
-        t->drum_fired |= 1u << l;
-        trk_note_on(t, LANE_NOTE[l], lvl_vel(dstep_lvl(s, l), 100));
-        seq_out_on(t, LANE_NOTE[l], lvl_vel(dstep_lvl(s, l), 100));
-    }
-    /* probabilistic hits (on=0, rat=1-3): fire at 75%/50%/25% */
+    seq_out_track_off(t);
     for (l = 0; l < DRUM_LANES; l++) {
-        uint32_t prb;
+        uint32_t h;
         if ((skip >> l) & 1u) continue;
-        if (dstep_certain(s, l)) continue;
-        prb = dstep_rat(s, l);
-        if (!prb) continue;
-        {
-            uint32_t thresh = prb == 1u ? 96u : prb == 2u ? 64u : 32u;
-            if ((rng() & 127u) < thresh) {
+        h = dstep_hit(s, l);
+        if (h == HIT_OFF) continue;
+        if (h <= HIT_X4) {
+            t->drum_fired |= 1u << l;
+            trk_note_on(t, LANE_NOTE[l], lvl_vel(dstep_lvl(s, l), 100));
+            seq_out_on(t, LANE_NOTE[l], lvl_vel(dstep_lvl(s, l), 100));
+        } else if (h <= HIT_P25) {
+            if ((rng() & 127u) < PRB_THRESH[h - HIT_P75]) {
                 t->drum_fired |= 1u << l;
-                trk_note_on(t, LANE_NOTE[l], lvl_vel(dstep_lvl(s, l), 100));
-                seq_out_on(t, LANE_NOTE[l], lvl_vel(dstep_lvl(s, l), 100));
+                trk_note_on(t, LANE_NOTE[l], 100);
+                seq_out_on(t, LANE_NOTE[l], 100);
+            }
+        } else {
+            if (cond_fires_idx(h - HIT_COND_FIRST, t->pass)) {
+                t->drum_fired |= 1u << l;
+                trk_note_on(t, LANE_NOTE[l], 100);
+                seq_out_on(t, LANE_NOTE[l], 100);
             }
         }
     }
@@ -1935,9 +2071,25 @@ static void seq_tick(track_t *t, uint32_t adv)
             }
         } else if (is_drum(t)) {
             uint32_t skip = t->rskip_abs == nabs ? t->rskip_lanes : 0u;
+            uint32_t fill_len = 0, local = 0, fi = 0;
             lock_step(t, idx);                       /* its parameter locks, before the block renders */
             t->rskip_lanes = 0;
-            drum_step(t, &t->dstep[idx], skip);
+            if (drum_fill_req >= 0) {
+                drum_fill_cur = drum_fill_req;
+                drum_fill_req = (int8_t)-1;
+                drum_fill_start_abs = nabs;
+                drum_fill_end_abs = nabs + (len - idx);
+            }
+            if (drum_fill_cur >= 0 && nabs >= drum_fill_end_abs)
+                drum_fill_cur = -1;
+            if (drum_fill_cur >= 0) {
+                fill_len = drum_fill_end_abs - drum_fill_start_abs;
+                local    = nabs - drum_fill_start_abs;
+                fi       = (16u - fill_len % 16u + local) % 16u;
+                drum_step(t, &drum_fill_pats[(uint32_t)drum_fill_cur][fi], skip);
+            } else {
+                drum_step(t, &t->dstep[idx], skip);
+            }
         } else {
             const step_t *s = &t->step[idx];
             uint32_t skip = 0, i, k;

@@ -6,8 +6,9 @@
  * the transport is stopped and nothing sounds) and comes back at power-on: SHIFL starts where you
  * left it.
  *
- * Formats: 4 ("FUN4", written, SHIFL 2.0): today's P_COUNT / G_COUNT, 10-byte steps (levels and
- * ratchets; the drum track: 16 lanes, with probabilistic hits encoded in on/rat). Read and converted: 3 ("FUN3", SHIFL 1.x: 8-byte steps, the
+ * Formats: 5 ("FUN5", written, SHIFL 2.5): today's P_COUNT / G_COUNT, 12-byte drum steps (4-bit HIT_*
+ * per lane: certain, ratchet, probabilistic, conditional). Read and converted: 4 ("FUN4", SHIFL 2.x:
+ * 10-byte drum steps with on/lvl/rat encoding), 3 ("FUN3", SHIFL 1.x: 8-byte steps, the
  * drum track's notes become its lanes, the swings x 0.8 for the MPC scale), 2 ("FUN2") and 1 ("FUN1"),
  * which held PROJ_NP_V2 parameters per track, mapped by count as user presets are (the first
  * PROJ_NP_V2 - 8 are P_LEVEL.. in order, the last 8 P_E0..P_E7; the parameters added since take their
@@ -16,7 +17,8 @@
  *
  * Built on the host too (tests/project_test.c, -DPROJ_HOST): the part above the #ifndef
  * PROJ_HOST needs core.h, params.c (TP), drums.c (the lanes), the engines and trk_def_engine (ui.c). */
-#define PROJ_MAGIC 0x46554E34u                 /* "FUN4": four tracks, P_COUNT parameters each, 10-byte steps */
+#define PROJ_MAGIC 0x46554E35u                 /* "FUN5": conditional hits, 12-byte drum steps */
+#define PROJ_MAGIC_V4 0x46554E34u              /* "FUN4": SHIFL 2.x; read only */
 #define PROJ_MAGIC_V3 0x46554E33u              /* "FUN3": SHIFL 1.x; read only */
 #define PROJ_MAGIC_V2 0x46554E32u              /* "FUN2": four tracks, PROJ_NP_V2 parameters; read only */
 #define PROJ_MAGIC_V1 0x46554E31u              /* "FUN1": one instrument; loads into track 1 */
@@ -50,12 +52,24 @@ typedef struct {                               /* pre-fenv format 4 (FUN4, P_COU
     proj_trk_v4nofenv_t t[NTRK];
     uint32_t sum;
 } project_v4nofenv_t;
+typedef struct {                               /* one track of format 4 (FUN4, pre-conditional) */
+    int16_t p[P_COUNT];
+    uint8_t engine, preset;
+    union { step_t step[NSTEP]; dstep_t dstep[NSTEP]; };
+} proj_trk_v4_t;
+typedef struct {                               /* format 4 (SHIFL 2.x, FUN4), read only */
+    uint32_t magic, size;
+    int16_t g[G_COUNT];
+    uint8_t sel, rsv[3];
+    proj_trk_v4_t t[NTRK];
+    uint32_t sum;
+} project_v4_t;
 typedef struct {                               /* one track; the drum track ignores engine / preset */
     int16_t p[P_COUNT];
     uint8_t engine, preset;
     union {
         step_t step[NSTEP];
-        dstep_t dstep[NSTEP];                  /* (the drum track: 16 lanes, the same size) */
+        dstep_t dstep[NSTEP];
     };
 } proj_trk_t;
 typedef struct {
@@ -173,13 +187,16 @@ static void proj_trk_from_v4old(proj_trk_t *d, const proj_trk_v4old_t *s, int dr
         d->p[P_E0 + k] = s->p[nc + k];
     d->engine = drum ? 0u : s->engine;
     d->preset = drum ? 0u : s->preset;
-    memcpy(d->step, s->step, sizeof d->step);
+    if (drum)
+        memcpy(d->dstep, s->dstep, sizeof(dstep_t) * NSTEP);
+    else
+        memcpy(d->step, s->step, sizeof(step_t) * NSTEP);
 }
 
 static int proj_from_v4old(project_t *q, const project_v4old_t *v4o, int n)
 {
     uint32_t i;
-    if (n != (int)sizeof *v4o || v4o->magic != PROJ_MAGIC ||
+    if (n != (int)sizeof *v4o || v4o->magic != PROJ_MAGIC_V4 ||
         v4o->size != sizeof *v4o || v4o->sum != proj_hash(v4o, sizeof *v4o - 4u))
         return 0;
     memset(q, 0, sizeof *q);
@@ -203,13 +220,16 @@ static void proj_trk_from_v4nofenv(proj_trk_t *d, const proj_trk_v4nofenv_t *s, 
         d->p[P_E0 + k] = s->p[nc + k];
     d->engine = drum ? 0u : s->engine;
     d->preset = drum ? 0u : s->preset;
-    memcpy(d->step, s->step, sizeof d->step);
+    if (drum)
+        memcpy(d->dstep, s->dstep, sizeof(dstep_t) * NSTEP);
+    else
+        memcpy(d->step, s->step, sizeof(step_t) * NSTEP);
 }
 
 static int proj_from_v4nofenv(project_t *q, const project_v4nofenv_t *v, int n)
 {
     uint32_t i;
-    if (n != (int)sizeof *v || v->magic != PROJ_MAGIC ||
+    if (n != (int)sizeof *v || v->magic != PROJ_MAGIC_V4 ||
         v->size != sizeof *v || v->sum != proj_hash(v, sizeof *v - 4u))
         return 0;
     memset(q, 0, sizeof *q);
@@ -219,6 +239,35 @@ static int proj_from_v4nofenv(project_t *q, const project_v4nofenv_t *v, int n)
     q->sel = v->sel;
     for (i = 0; i < NTRK; i++)
         proj_trk_from_v4nofenv(&q->t[i], &v->t[i], i == TRK_DRUM);
+    q->sum = proj_sum(q);
+    return 1;
+}
+
+/* a V4 track (FUN4, current on-disk before FUN5) -> today's */
+static void proj_trk_from_v4(proj_trk_t *d, const proj_trk_v4_t *s, int drum)
+{
+    memcpy(d->p, s->p, sizeof d->p);
+    d->engine = drum ? 0u : s->engine;
+    d->preset = drum ? 0u : s->preset;
+    if (drum)
+        memcpy(d->dstep, s->dstep, sizeof(dstep_t) * NSTEP);
+    else
+        memcpy(d->step, s->step, sizeof(step_t) * NSTEP);
+}
+
+static int proj_from_v4(project_t *q, const project_v4_t *v, int n)
+{
+    uint32_t i;
+    if (n != (int)sizeof *v || v->magic != PROJ_MAGIC_V4 ||
+        v->size != sizeof *v || v->sum != proj_hash(v, sizeof *v - 4u))
+        return 0;
+    memset(q, 0, sizeof *q);
+    q->magic = PROJ_MAGIC;
+    q->size = sizeof *q;
+    memcpy(q->g, v->g, sizeof q->g);
+    q->sel = v->sel;
+    for (i = 0; i < NTRK; i++)
+        proj_trk_from_v4(&q->t[i], &v->t[i], i == TRK_DRUM);
     q->sum = proj_sum(q);
     return 1;
 }
@@ -304,14 +353,15 @@ static int proj_from_v1(project_t *q, const project_v1_t *v1, int n)
     return 1;
 }
 
-/* n bytes of a stored project (any format) -> slot q as format 4; 0 = not a project */
+/* n bytes of a stored project (any format) -> slot q as format 5; 0 = not a project */
 static int proj_import(project_t *q, const void *b, int n)
 {
     if (n == (int)sizeof *q && proj_ok((const project_t *)b)) {
         memcpy(q, b, sizeof *q);
         return 1;
     }
-    return proj_from_v4nofenv(q, (const project_v4nofenv_t *)b, n) ||
+    return proj_from_v4(q, (const project_v4_t *)b, n) ||
+           proj_from_v4nofenv(q, (const project_v4nofenv_t *)b, n) ||
            proj_from_v4old(q, (const project_v4old_t *)b, n) ||
            proj_from_v3(q, (const project_v3_t *)b, n) || proj_from_v2(q, (const project_v2_t *)b, n) ||
            proj_from_v1(q, (const project_v1_t *)b, n);
@@ -364,7 +414,7 @@ static void proj_apply(const project_t *p, int all)
                 uint32_t j;
                 if (st->n > 4u)
                     st->n = 4;
-                if (st->time > ST_P25)
+                if (st->time > ST_C8OF8)
                     st->time = ST_REST;
                 for (j = 0; j < 4u; j++)
                     st->note[j] &= 127u;
@@ -378,9 +428,10 @@ static void proj_apply(const project_t *p, int all)
 #endif
 static uint8_t sec_dirty, song_dirty;           /* live sections / the song: in RAM, not yet in flash */
 #if FELUCCA_FLASH
-/* slot from flash into RAM (format 4, or an old one converted) */
+/* slot from flash into RAM (format 5, or an old one converted) */
 static union {
-    project_t v4;
+    project_t v5;
+    project_v4_t v4;
     project_v3_t v3;
     project_v2_t v2;
     project_v1_t v1;
@@ -738,7 +789,7 @@ static void persist_boot(void)                    /* before settings_init / pane
                 proj_fetch(i);
             } else {
                 int n = st_load(OBJ_PROJECT0 + i, &proj_tmp, sizeof proj_tmp);
-                if (n != (int)sizeof proj_slot[i] || memcmp(&proj_tmp.v4, &proj_slot[i], sizeof proj_slot[i]))
+                if (n != (int)sizeof proj_slot[i] || memcmp(&proj_tmp.v5, &proj_slot[i], sizeof proj_slot[i]))
                     sec_dirty |= (uint8_t)(1u << i);
             }
     }

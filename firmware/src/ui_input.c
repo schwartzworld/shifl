@@ -313,7 +313,7 @@ static void step_edit(uint32_t slot, int32_t steps)
         last_note = st->note[0];
         break;
     case 2:
-        st->time = (uint8_t)clamp((int32_t)st->time + (steps > 0 ? 1 : -1), ST_NOTE, ST_P25);
+        st->time = (uint8_t)clamp((int32_t)st->time + (steps > 0 ? 1 : -1), ST_NOTE, ST_C8OF8);
         break;
     default: {                                            /* FLAG: - / ACC / SLD / A+S / A75..S25 */
         uint32_t f = st->flags < SF_N ? st->flags : 0u;

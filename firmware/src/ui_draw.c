@@ -888,7 +888,8 @@ static void draw_columns(void)
         return;
     }
     if (cur_page()->scope == SC_STEP) {
-        static const char *const TIME_N[6] = {"NOTE", "TIE", "REST", "P75", "P50", "P25"};
+        static const char *const TIME_N[14] = {"NOTE", "TIE", "REST", "P75", "P50", "P25",
+                                               "1:2", "1:3", "1:4", "2:4", "3:4", "4:4", "1:8", "8:8"};
         const step_t *st = &TSEL->step[ui.cursor];
         char u[8];
         if (st->n) {

@@ -123,40 +123,72 @@ static uint32_t key_of_lane(uint32_t l)
     return (l / 7u) * 12u + K[l % 7u];
 }
 
-/* drum steps: a lane's bit, level, ratchet */
-/* on=1,rat=0: certain hit; on=1,rat=1-3: ratchet x2/x3/x4; on=0,rat=1-3: probabilistic hit 75%/50%/25% */
-static int dstep_certain(const dstep_t *s, uint32_t l) { return (s->on[(l >> 3) & 1u] >> (l & 7u)) & 1u; }
-static int dstep_has(const dstep_t *s, uint32_t l) { return dstep_certain(s, l) || ((s->rat[(l >> 2) & 3u] >> ((l & 3u) * 2u)) & 3u) > 0u; }
-static uint32_t dstep_lvl(const dstep_t *s, uint32_t l) { return (s->lvl[(l >> 2) & 3u] >> ((l & 3u) * 2u)) & 3u; }
-static uint32_t dstep_rat(const dstep_t *s, uint32_t l) { return (s->rat[(l >> 2) & 3u] >> ((l & 3u) * 2u)) & 3u; }
-static uint32_t dstep_mask(const dstep_t *s) { return (uint32_t)s->on[0] | (uint32_t)s->on[1] << 8; }
-static uint32_t dstep_full_mask(const dstep_t *s)                            /* certain + probabilistic lanes */
+/* drum step accessors — encoding: on=1 → certain hit (rat=ratchet, lvl=level);
+ * on=0 → off/prob/cond (lvl=0,rat=0:OFF; lvl=0,rat=1-3:P75/P50/P25;
+ * lvl=1,rat=0-3:C1OF2-C2OF4; lvl=2,rat=0-3:C3OF4-C8OF8) */
+static uint32_t dstep_hit(const dstep_t *s, uint32_t l)
 {
+    uint32_t sh = (l & 3u) << 1;
+    uint32_t on  = (s->on[l >> 3] >> (l & 7u)) & 1u;
+    uint32_t lv  = (s->lvl[l >> 2] >> sh) & 3u;
+    uint32_t rat = (s->rat[l >> 2] >> sh) & 3u;
+    if (on) return HIT_ON + rat;
+    if (lv == 0) return rat ? HIT_P75 + rat - 1u : HIT_OFF;
+    return HIT_C1OF2 + (lv - 1u) * 4u + rat;
+}
+static void dstep_set_hit(dstep_t *s, uint32_t l, uint32_t h)
+{
+    uint32_t sh = (l & 3u) << 1, on_sh = l & 7u;
+    uint32_t on, lv, rat;
+    if (h == HIT_OFF) {
+        on = 0; lv = 0; rat = 0;
+    } else if (h <= HIT_X4) {
+        on = 1; rat = h - HIT_ON;
+        lv = (s->on[l >> 3] >> on_sh) & 1u ? (s->lvl[l >> 2] >> sh) & 3u : LV_NORM;
+    } else if (h <= HIT_P25) {
+        on = 0; lv = 0; rat = h - HIT_P75 + 1u;
+    } else {
+        uint32_t ci = h - HIT_C1OF2;
+        on = 0; lv = ci / 4u + 1u; rat = ci % 4u;
+    }
+    s->on[l >> 3]  = (uint8_t)((s->on[l >> 3]  & ~(1u << on_sh)) | (on << on_sh));
+    s->lvl[l >> 2] = (uint8_t)((s->lvl[l >> 2] & ~(3u << sh)) | (lv  << sh));
+    s->rat[l >> 2] = (uint8_t)((s->rat[l >> 2] & ~(3u << sh)) | (rat << sh));
+}
+static void dstep_set_lvl(dstep_t *s, uint32_t l, uint32_t v) {
+    uint32_t sh = (l & 3u) << 1;
+    s->lvl[l >> 2] = (uint8_t)((s->lvl[l >> 2] & ~(3u << sh)) | ((v & 3u) << sh));
+}
+static int dstep_certain(const dstep_t *s, uint32_t l) { return (s->on[l >> 3] >> (l & 7u)) & 1u; }
+static uint32_t dstep_lvl(const dstep_t *s, uint32_t l) { return (s->lvl[l >> 2] >> ((l & 3u) << 1)) & 3u; }
+static uint32_t dstep_rat(const dstep_t *s, uint32_t l) { return (s->rat[l >> 2] >> ((l & 3u) << 1)) & 3u; }
+static int dstep_has(const dstep_t *s, uint32_t l) {
+    if (dstep_certain(s, l)) return 1;
+    uint32_t sh = (l & 3u) << 1;
+    return ((s->lvl[l >> 2] >> sh) & 3u) || ((s->rat[l >> 2] >> sh) & 3u);
+}
+static uint32_t dstep_mask(const dstep_t *s) { return (uint32_t)s->on[0] | (uint32_t)s->on[1] << 8; }
+static uint32_t dstep_full_mask(const dstep_t *s) {
     uint32_t m = dstep_mask(s), l;
-    for (l = 0; l < DRUM_LANES; l++)
-        if (!dstep_certain(s, l) && dstep_rat(s, l))
-            m |= 1u << l;
+    for (l = 0; l < DRUM_LANES; l++) if (!(m & (1u << l)) && dstep_has(s, l)) m |= 1u << l;
     return m;
 }
-static void dstep_set_prb(dstep_t *s, uint32_t l, uint32_t prb)             /* probabilistic hit: on=0, rat=prb */
+static void dstep_set_prb(dstep_t *s, uint32_t l, uint32_t prb)   /* prb: 1=P75, 2=P50, 3=P25 */
 {
-    uint32_t sh = (l & 3u) * 2u, b = (l >> 2) & 3u;
-    s->on[(l >> 3) & 1u] &= (uint8_t)~(1u << (l & 7u));
-    s->rat[b] = (uint8_t)((s->rat[b] & ~(3u << sh)) | (prb & 3u) << sh);
+    dstep_set_hit(s, l, HIT_P75 + prb - 1u);
 }
-static void dstep_set(dstep_t *s, uint32_t l, uint32_t lvl, uint32_t rat)   /* certain hit: on=1, level, ratchet */
+static void dstep_set(dstep_t *s, uint32_t l, uint32_t lvl, uint32_t rat)   /* certain hit: level, ratchet */
 {
-    uint32_t sh = (l & 3u) * 2u, b = (l >> 2) & 3u;
-    s->on[(l >> 3) & 1u] |= (uint8_t)(1u << (l & 7u));
-    s->lvl[b] = (uint8_t)((s->lvl[b] & ~(3u << sh)) | (lvl & 3u) << sh);
-    s->rat[b] = (uint8_t)((s->rat[b] & ~(3u << sh)) | (rat & 3u) << sh);
+    dstep_set_hit(s, l, HIT_ON + rat);
+    dstep_set_lvl(s, l, lvl);
 }
-static void dstep_clr(dstep_t *s, uint32_t l)                                /* lane off */
+static void dstep_set_cond(dstep_t *s, uint32_t l, uint32_t cond_hit)   /* conditional hit: HIT_C1OF2..HIT_C8OF8 */
 {
-    uint32_t sh = (l & 3u) * 2u, b = (l >> 2) & 3u;
-    s->on[(l >> 3) & 1u] &= (uint8_t)~(1u << (l & 7u));
-    s->lvl[b] &= (uint8_t)~(3u << sh);
-    s->rat[b] &= (uint8_t)~(3u << sh);
+    dstep_set_hit(s, l, cond_hit);
+}
+static void dstep_clr(dstep_t *s, uint32_t l)
+{
+    dstep_set_hit(s, l, HIT_OFF);
 }
 
 /* the velocity of a level: as played (LV_NORM: vel), ghost, soft, hard */

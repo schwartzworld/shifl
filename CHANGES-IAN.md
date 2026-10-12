@@ -6,6 +6,23 @@ All committed changes by Ian Schwartz, plus current uncommitted work-in-progress
 
 ## Committed Changes
 
+### Drum fills (`2026-10-11`)
+
+Hold ARP on a drum track and press white keys 3–8 to trigger one of 6 hardcoded fill patterns. The fill replaces the drum steps from the current position to the end of the pattern loop; when the pattern restarts, normal playback resumes automatically.
+
+Fill alignment: fills are 16-step patterns aligned to the end of the remaining bar, so the crash/landing always falls on the last step regardless of when the fill is triggered. For longer remaining spans (> 16 steps) the fill repeats from the beginning.
+
+- **`drum_fill_pats[6][16]`** (`seq.c`) — 6 hardcoded `dstep_t` fill patterns built at init by `drum_fills_init()`: snare buildup, 16th-hat run, tom roll, snare doublets, kick-snare alternating, full driver.
+- **`drum_fill_trigger()` / fill state** (`seq.c`) — `drum_fill_req`, `drum_fill_cur`, `drum_fill_start_abs`, `drum_fill_end_abs`; fill is consumed in the `is_drum` branch of `seq_tick()`.
+- **ROLL layer key 3–8** (`ui_layers.c LY_ROLL`) — triggers fills only when `!live_mode && is_drum(TSEL)`; displays "FILL 1"–"FILL 6" message.
+- **Draw** (`ui_layers.c LY_ROLL draw`) — shows fill tiles 3–8 on drum track; active fill tile lit in track color.
+- **`drum_fills_init()`** (`main.c felucca_init`) — called at boot before `layers_init()`.
+- Fill state cleared on transport stop (`seq_stop()`).
+
+**Bumped to FM-1_959 / SHIFL 2.8.**
+
+---
+
 ### Live mode scene chaining (`2026-10-10`)
 
 Hold ARP in live mode and tap two or more entry keys to build a scene chain (up to 8 entries). Each scene plays for its configured bar count then auto-advances to the next, looping forever. Releasing ARP commits the chain. A single tap while a chain is playing clears it and jumps to the tapped scene.

@@ -338,10 +338,15 @@ static void layer_key(uint32_t layer, uint32_t k, uint32_t down)
         ui_say("KEY ", N_NOTE[root]);
         return;
     }
-    case LY_ROLL: {                                     /* live mode: ARP held selects scenes; otherwise: GEN / MUT */
+    case LY_ROLL: {                                     /* live mode: ARP held selects scenes; otherwise: GEN / MUT / FILL */
         if (!live_mode) {
             if (w == 0)      { is_drum(TSEL) ? drum_generate(TSEL) : seq_generate(TSEL); ui_say("GEN", ""); }
             else if (w == 1) { seq_mutate(TSEL); ui_say("MUT", ""); }
+            else if (w >= 2 && w <= 7 && is_drum(TSEL)) {
+                static const char *const FILL_NUMS[6] = {"1","2","3","4","5","6"};
+                drum_fill_trigger((uint32_t)(w - 2));
+                ui_say("FILL", FILL_NUMS[w - 2]);
+            }
             return;
         }
         if (w < 0 || w >= (int32_t)ARR_STEPS) return;
@@ -718,11 +723,21 @@ static void layer_screen_draw(void)
         str_cpy(sub, undo.valid ? (undo.undone ? "oct+ redo" : "oct- undo") : sub, sizeof sub);
         break;
     }
-    case LY_ROLL: {                                     /* live mode: 16 scene tiles; otherwise: GEN / MUT */
+    case LY_ROLL: {                                     /* live mode: 16 scene tiles; otherwise: GEN / MUT / FILL */
         if (!live_mode) {
-            str_cpy(sub, "key 1: generate   key 2: mutate", sizeof sub);
             str_cpy(tl[0].lab, "GEN", 8); tl[0].bg = col; tl[0].fg = C_BLACK;
             str_cpy(tl[1].lab, "MUT", 8); tl[1].bg = TE_MID[sel & 3u]; tl[1].fg = C_BLACK;
+            if (is_drum(TSEL)) {
+                static const char *const FILL_LABS[6] = {"FIL 1","FIL 2","FIL 3","FIL 4","FIL 5","FIL 6"};
+                for (i = 0; i < DRUM_NFILLS; i++) {
+                    str_cpy(tl[2 + i].lab, FILL_LABS[i], 8);
+                    tl[2 + i].bg = (drum_fill_cur == (int8_t)i && song.playing) ? col : TE_G2;
+                    tl[2 + i].fg = C_BLACK;
+                }
+                str_cpy(sub, "1:gen  2:mut  3-8:fill", sizeof sub);
+            } else {
+                str_cpy(sub, "key 1: generate   key 2: mutate", sizeof sub);
+            }
             break;
         }
         col = RGB(0, 200, 240);

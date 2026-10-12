@@ -177,7 +177,11 @@ typedef struct {
 static uint8_t voice_was;
 
 /* ------------------------------------------------------------ track --- */
-enum { ST_NOTE, ST_TIE, ST_REST, ST_P75, ST_P50, ST_P25 };
+enum { ST_NOTE, ST_TIE, ST_REST, ST_P75, ST_P50, ST_P25,
+       ST_C1OF2, ST_C1OF3, ST_C1OF4,
+       ST_C2OF4, ST_C3OF4, ST_C4OF4,
+       ST_C1OF8, ST_C8OF8 };
+#define ST_COND_FIRST ST_C1OF2
 #define SF_ACCENT 1u
 #define SF_SLIDE  2u
 /* flag index values 4-9: probabilistic accent / slide */
@@ -202,19 +206,34 @@ enum { LV_NORM, LV_GHOST, LV_SOFT, LV_HARD };
 typedef struct {                 /* a step of a synth part (10 bytes): up to 4 notes (POLY), time, accent, slide */
     uint8_t note[4];
     uint8_t n;                   /* notes in use, 0 = empty */
-    uint8_t time;                /* ST_NOTE / ST_TIE / ST_REST / ST_P75 / ST_P50 / ST_P25 */
+    uint8_t time;                /* ST_NOTE / ST_TIE / ST_REST / ST_P75..ST_P25 / ST_C1OF2..ST_C8OF8 */
     uint8_t flags;               /* SF_ACCENT | SF_SLIDE */
     uint8_t vel;
     uint8_t lvl;                 /* 2 bits per note (note k: bits 2k..2k+1): LV_* */
     uint8_t rat;                 /* 2 bits per note: the hits it plays in its step - 1 (ratchet x1..x4) */
 } step_t;
 #define DRUM_LANES 16            /* the drum track: 16 sounds, one per white key (drums.c LANE_*) */
-typedef struct {                 /* a step of the drum track (10 bytes, the size of a step_t) */
-    uint8_t on[2];               /* bit per lane: 1=certain hit; 0=off or probabilistic (see rat) */
-    uint8_t lvl[4];              /* 2 bits per lane (lane k: byte k / 4, bits 2 (k % 4)..): LV_* */
-    uint8_t rat[4];              /* 2 bits per lane: ratchet when on=1; probability level when on=0 (0=off, 1=75%, 2=50%, 3=25%) */
+enum {
+    HIT_OFF, HIT_ON, HIT_X2, HIT_X3, HIT_X4,
+    HIT_P75, HIT_P50, HIT_P25,
+    HIT_C1OF2, HIT_C1OF3, HIT_C1OF4,
+    HIT_C2OF4, HIT_C3OF4, HIT_C4OF4,
+    HIT_C1OF8, HIT_C8OF8
+};
+#define HIT_COND_FIRST HIT_C1OF2
+/* dstep_t encoding — 5 bits per lane (on bit + 2-bit lvl + 2-bit rat):
+ *   on=1: lane fires; rat=0-3 → HIT_ON/X2/X3/X4; lvl=0-3 → LV_NORM/GHOST/SOFT/HARD
+ *   on=0, lvl=0, rat=0: HIT_OFF
+ *   on=0, lvl=0, rat=1-3: HIT_P75/P50/P25
+ *   on=0, lvl=1, rat=0-3: HIT_C1OF2/C1OF3/C1OF4/C2OF4
+ *   on=0, lvl=2, rat=0-3: HIT_C3OF4/C4OF4/C1OF8/C8OF8
+ * Binary-compatible with the V4 on-disk format (no migration for drum steps). */
+typedef struct {                 /* a step of the drum track (10 bytes) */
+    uint8_t on[2];               /* 1 bit per lane: fires with certainty */
+    uint8_t lvl[4];              /* 2 bits per lane: level (on=1) or cond-group (on=0) */
+    uint8_t rat[4];              /* 2 bits per lane: ratchet (on=1) or OFF/prob/cond-idx (on=0) */
 } dstep_t;
-_Static_assert(sizeof(step_t) == 10 && sizeof(dstep_t) == 10, "a step is 10 bytes on every track");
+_Static_assert(sizeof(step_t) == 10 && sizeof(dstep_t) == 10, "step sizes");
 /* sloopDX: the drum track's lane macros and parameter locks (drums.c), kept with the project. A macro is an
  * offset on the kit's sound (0 = as the kit): TUNE semitones, DECAY / SWEEP / BRIGHT / NOISE -40..40, LEVEL in
  * 1/2 dB -40..20, PAN -64..63, CHOKE 0 the kit's, 1 none, 2..4 groups A..C, REV the send -64..63 (64+REV),
