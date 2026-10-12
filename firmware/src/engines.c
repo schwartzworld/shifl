@@ -8,13 +8,14 @@
 #include "eng_lofi.c"
 #include "eng_dx7.c"
 #include "eng_analog.c"
+#include "eng_ks.c"
 
 /* CZ-1 per-part state (resolves the forward declaration in eng_phase.c) */
 static cz_part_t CZ_PARTS[NPART];
 static cz_part_t *cz_part(uint32_t p) { return &CZ_PARTS[p % NPART]; }
 
 static const engine_t *const ENGINES[NENGINES] = {&ENG_DX7, &ENG_LOFI, &ENG_FORMANT, &ENG_CZ,
-                                                   &ENG_ANALOG};
+                                                   &ENG_ANALOG, &ENG_KS};
 
 /* every factory sound as loud as the others: a level trim per preset, 1/2 dB (tools/level_presets.py
  * writes preset_trim.h); a track keeps it in P_ED_FX */

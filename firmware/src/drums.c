@@ -10,6 +10,7 @@ static const uint8_t LANE_DVT[DRUM_LANES] = {
 #include "x0x/fastmath.h"
 #include "drum_808.c"
 #include "x0x/drum909.c"
+#include "eng_ks_drum.c"
 
 /* Soft-float comparison stubs: the pi32v2 fprev1 provides __addsf3/__mulsf3/__subsf3 in
  * its runtime library but not float comparisons or division. Supply them here via IEEE 754
@@ -48,12 +49,13 @@ int __unordsf2(float a, float b) { (void)a; (void)b; return 0; }
  * then DRIVE and COMP (drums_bus), and a reverb send per lane after the compressor. */
 #define NDRUM 6
 
-static const char *const DRUM_KIT_NAMES[] = {"DX KIT", "808 FM", "ELECTRO", "METAL", "MY KIT", "808", "909"};
-static const char *const DRUM_KIT_STYLES[] = {"CLASSIC", "ROUND", "PUNCHY", "INDUSTRIAL", "YOURS", "ANALOG", "CIRCUIT"};
-#define DRUM_KITS 7u
+static const char *const DRUM_KIT_NAMES[] = {"DX KIT", "808 FM", "ELECTRO", "METAL", "MY KIT", "808", "909", "KS"};
+static const char *const DRUM_KIT_STYLES[] = {"CLASSIC", "ROUND", "PUNCHY", "INDUSTRIAL", "YOURS", "ANALOG", "CIRCUIT", "PHYSICAL"};
+#define DRUM_KITS 8u
 #define KIT_USER 4u                               /* MY KIT */
 #define KIT_808  5u                               /* TR-808 circuit model */
 #define KIT_909  6u                               /* TR-909 circuit model */
+#define KIT_KS   7u                               /* KS membrane/pluck drum kit */
 static uint32_t drum_kit(void) { return (uint32_t)clamp(TDRUM->p[P_E0], 0, DRUM_KITS - 1); }
 #define DRUM_DEFAULT_KIT 0
 
@@ -740,16 +742,27 @@ static void drum_on(uint32_t note, uint32_t vel)
     }
     if (lane <= 1u && d == lane)
         drums.kick = 1;                             /* (DUCK) */
-    choke = drum_dd(kit, d)->choke;
-    if (kit >= KIT_808) choke = 0;               /* 808/909: circuits handle their own choking */
-    if (d < DRUM_LANES) {                           /* the lane's macros, and the step's lock of this lane */
+    if (kit == KIT_KS && d < DRUM_LANES) {          /* KS: own choke groups (hats share group 1) */
         m = dm_get(d, DM_CHOKE);
-        choke = m == 0 ? choke : m == 1 ? 0u : (uint32_t)m - 1u;
-        tune = dm_get(d, DM_TUNE);
+        choke = m == 0 ? KS_CHOKE_DEF[d] : m == 1 ? 0u : (uint32_t)m - 1u;
+        tune  = dm_get(d, DM_TUNE);
         decay = dm_get(d, DM_DECAY);
         if (drum_lock && dlock_lane(drum_lock) == d) {
             tune += dlock_tune(drum_lock);
             decay = clamp(decay + dlock_decay(drum_lock), -40, 40);
+        }
+    } else {
+        choke = drum_dd(kit, d)->choke;
+        if (kit == KIT_808 || kit == KIT_909) choke = 0;   /* circuits handle their own choking */
+        if (d < DRUM_LANES) {
+            m = dm_get(d, DM_CHOKE);
+            choke = m == 0 ? choke : m == 1 ? 0u : (uint32_t)m - 1u;
+            tune  = dm_get(d, DM_TUNE);
+            decay = dm_get(d, DM_DECAY);
+            if (drum_lock && dlock_lane(drum_lock) == d) {
+                tune += dlock_tune(drum_lock);
+                decay = clamp(decay + dlock_decay(drum_lock), -40, 40);
+            }
         }
     }
     if (choke)                                      /* the others of its choke group stop (declicked) */
@@ -820,6 +833,25 @@ static void drum_on(uint32_t note, uint32_t vel)
         drums.drum[i]   = (uint8_t)d;               /* lane (for DM macros) */
         drums.choke[i]  = (uint8_t)ins;             /* 909 instrument index (repurposed; DX choke = 0 for 909) */
         drums.gain[i]   = (int32_t)((uint32_t)DM_GAIN[dm_get(d, DM_LEVEL) + 40] << 3);
+        drums.tune[i]   = 0;
+        drums.swd[i]    = 0;
+        drums.swk[i]    = 65535u;
+        drums.sweep[i]  = 0;
+        drums.pgl[i]    = (int16_t)(4096 - (pan > 0 ? pan * 64 : 0));
+        drums.pgr[i]    = (int16_t)(4096 + (pan < 0 ? pan * 64 : 0));
+        drums.send[i]   = (int16_t)(rev * 256);
+        drums.dsend[i]  = (int16_t)(clamp(dm_get(d, DM_DLY), 0, 63) * 512);
+        drums.ringph[i] = 0;
+        return;
+    }
+    /* KS membrane drum kit */
+    if (kit == KIT_KS) {
+        int32_t pan = dm_get(d, DM_PAN), rev = clamp(64 + dm_get(d, DM_REV), 0, 127);
+        ks_dr_hit(d, v->vel, tune, decay,
+                  dm_get(d, DM_BRIGHT), dm_get(d, DM_SWEEP), dm_get(d, DM_NOISE));
+        drums.burst[i]  = 0;
+        drums.gain[i]   = (int32_t)((uint32_t)DM_GAIN[dm_get(d, DM_LEVEL) + 40] << 3);
+        drums.choke[i]  = (uint8_t)choke;
         drums.tune[i]   = 0;
         drums.swd[i]    = 0;
         drums.swk[i]    = 65535u;
@@ -948,6 +980,8 @@ static inline void drums_mix(int32_t *ml, int32_t *mr, int32_t *rev, int32_t *dl
             drum909_render_voice(&drum_d9, (int)ins, d9_nz, d9_float_buf, DX_N);
             for (j = 0; j < DX_N; j++)
                 buf[j] = (int32_t)(fm_clampf(d9_float_buf[j], -2.0f, 2.0f) * 12000.0f);
+        } else if (drums.kit[k] == KIT_KS) {
+            ks_dr_run(lane, buf, DX_N);
         } else {
             dx_compute(&drums.dx[k], buf, drums.sweep[k]);
             if (drums.sweep[k])
@@ -1013,6 +1047,8 @@ static inline void drums_mix(int32_t *ml, int32_t *mr, int32_t *rev, int32_t *dl
                 voice_done = !drum_dr8[drums.drum[k]].on || drums.t[k] > 8u * FS;
             else if (drums.kit[k] == KIT_909)
                 voice_done = !drum_909_live((int)drums.choke[k]) || drums.t[k] > 8u * FS;
+            else if (drums.kit[k] == KIT_KS)
+                voice_done = drums.quiet[k] >= 8u || drums.t[k] > 8u * FS;
             else
                 voice_done = drums.quiet[k] >= 8u || !dx_playing(&drums.dx[k]) || drums.t[k] > 8u * FS;
             if (voice_done) {

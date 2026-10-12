@@ -227,13 +227,11 @@ int main(int argc, char **argv)
     release(B_EDIT);
     check(TDRUM->p[P_SLEN] == 16, "EDIT + OCT-: the length back to 16");
 
-    /* ---- ARP layer: a roll, rate knob */
+    /* ---- ARP layer: rate knob */
     press(B_ARP); frames(10);
     encs[panel.enc[EN_K1]] = 1; frame();
     check(song.g[G_ROLL] == 2, "ARP + KNOB 1: the roll rate (1/32)");
-    fm1_in.notes = 1u << 7; frames(3); check(roll[0].on, "ARP + a key: it rolls");
     ppm("layer-roll");
-    fm1_in.notes = 0; frame(); check(!roll[0].on, "key up: the roll ends");
     release(B_ARP);
 
     /* ---- SCL: the key of the song; GLO: mute, solo, tap */

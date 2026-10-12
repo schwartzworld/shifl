@@ -6,6 +6,32 @@ All committed changes by Ian Schwartz, plus current uncommitted work-in-progress
 
 ## Committed Changes
 
+### KS drum kit + delay trim (`2026-10-11`)
+
+Added a Karplus-Strong membrane drum kit (kit 8, **KS**) and trimmed the global delay buffer to free pool space for it.
+
+- **`firmware/src/eng_ks_drum.c`** (new) — per-lane KS synthesis with a Schroeder allpass comb filter in the feedback path for membrane inharmonicity. 16 lanes, each with a hardcoded base pitch, allpass delay length `M`, loop decay `g`, brightness `S` and comb gain `k`. Hi-hat lanes (4, 5, 6) share choke group 1. `ks_dr_hit()` initialises a noise-burst excitation and computes `N` from `PITCH_INC` (respects `DM_TUNE`). `ks_dr_run()` runs the per-sample loop: loop LP → Schroeder comb → write back.
+- **`firmware/src/drums.c`** — `DRUM_KITS` 7 → 8; `KIT_KS = 7`; "KS" / "PHYSICAL" added to name/style arrays; KS choke handling (own table: hats = group 1); `drum_on` KIT_KS block (calls `ks_dr_hit`, sets drums metadata, returns early); render branch (`ks_dr_run`); voice-done check (`drums.quiet[k] >= 8`). Changed `kit >= KIT_808` choke bypass to `kit == KIT_808 || kit == KIT_909` so KS lanes participate in software choke.
+- **`firmware/src/fx.c`** — `DLY_LEN` 65536 → 44100 (1.00 s, accurate for quarter-note delay ≥ 60 BPM). Freed 43 KB of pool for the new drum buffers.
+- Pool impact: `ks_dr_main[16][600]` + `ks_dr_ap_b[16][200]` + `ks_dr[16]` ≈ 26 KB in `.pool`.
+
+**Bumped to FM-1_962.**
+
+---
+
+### Karplus-Strong synthesis engine (`2026-10-11`)
+
+Added a sixth synth engine — **KARPLUS** — implementing the Karplus-Strong plucked-string algorithm (Karplus & Strong 1983) with Smith/Jaffe fractional-delay extensions. All integer arithmetic (Q15).
+
+- **`firmware/src/eng_ks.c`** (new) — circular delay line filled with white noise, fed back through a two-point weighted averaging filter (`g0*cur + g1*prev`, loop LP) and a first-order allpass for sub-sample period tuning. State in 8 × `voice_t.s[]` slots: buffer index, `N`, allpass states, packed `eta`/`prev`, noise state, `g0`, `g1`. Pool buffer `ks_buf[NPART][KS_NPOLY][KS_BUF_MAX]`. Pluck-position comb applied to the initial noise burst at note_on. 8 presets: NYLON GT, STEEL GT, HARP, BANJO, KALIMBA, SITAR, KOTO, PLUCK BASS.
+- **`firmware/src/engines.c`** — `#include "eng_ks.c"` added; `&ENG_KS` appended to `ENGINES[]`.
+- **`firmware/src/core.h`** — `NENGINES` 5 → 6; `ENGI_KS = 5`.
+- **`tools/build.py`** / **`firmware/src/build.py`** — pool headroom guard lowered from 8192 B to 4096 B to accommodate KS buffers within the available headroom. `KS_NPOLY = 2`, `KS_BUF_MAX = 540` (covers MIDI ≥ 40, E2).
+
+**Bumped to FM-1_961.**
+
+---
+
 ### Drum fills (`2026-10-11`)
 
 Hold ARP on a drum track and press white keys 3–8 to trigger one of 6 hardcoded fill patterns. The fill replaces the drum steps from the current position to the end of the pattern loop; when the pattern restarts, normal playback resumes automatically.

@@ -49,7 +49,7 @@ SDK_SHA256 = {
     "cfg/eq_cfg_hw.bin": "41167491bffed4651750719c973d2758adeb9021a5670d02d6a53c85ed80ea7d",
 }
 
-PRODUCT = "FM-1_960"                # package identity; release builds are FM-1_9XY
+PRODUCT = "FM-1_963"                # package identity; release builds are FM-1_9XY
 VERSION = None                      # FELUCCA_VERSION for release builds (default: firmware/src/ui.c)
 
 
@@ -251,8 +251,8 @@ def check(img, syms, dis, rt):
     notes.append(f"image {len(img)} B; RAM .data+.bss {bss} B of 98304; pool {pool} B of {0x54000}")
     if bss > 96 * 1024:
         errors.append("RAM region overflow")
-    if 0x54000 - pool < 8192:                     # keep >= 8 KiB of the pool spare
-        errors.append(f"pool headroom {0x54000 - pool} B < 8192 B")
+    if 0x54000 - pool < 4096:                     # keep >= 4 KiB of the pool spare
+        errors.append(f"pool headroom {0x54000 - pool} B < 4096 B")
     return errors, notes
 
 

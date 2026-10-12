@@ -15,34 +15,43 @@ Free and open source (GPL-3.0), based on <a href="https://github.com/hugelton/Fe
 
 SHIFL turns the FM-1 into a six-track groovebox you play live: **five synths and a drum machine** with 16 sounds on the white keys, 116 sounds across five engines — DX7 FM, virtual analogue, Phase Distortion (CZ-1), formant voice and lo-fi chip — three drum kits, your own samples, a song mode you play with your hands — and **USB audio**, a **MIDI keyboard on the jack**, **MIDI CC control**, **MIDI clock**, **lights for playing in the dark** and a **full backup**. House, techno, hip-hop, trap, drum & bass, amapiano, synthwave, lo-fi, ambient, chiptune — it does not pick a style for you. No factory patterns, nothing to load: everything you hear, you play.
 
-> **Status:** 2.7. Still a beta: install at your own risk, and please [report](../../issues) what you find. Your projects, presets, samples and settings are kept when you update, and you can go back at any time (see [Going back](#going-back)).
+> **Status:** 2.8. Still a beta: install at your own risk, and please [report](../../issues) what you find. Your projects, presets, samples and settings are kept when you update, and you can go back at any time (see [Going back](#going-back)).
 
 ## Contents
 
-1. [What's new in 2.7](#whats-new-in-27)
-2. [What's new in 2.6](#whats-new-in-26)
-3. [What's new in 2.5](#whats-new-in-25)
-4. [What's new in 2.4](#whats-new-in-24)
-3. [Screenshots](#screenshots)
-4. [Features](#features)
-5. [Presets](#presets)
-6. [MIDI CC reference](#midi-cc-reference)
-7. [Install](#install)
-8. [Your first beat in 60 seconds](#your-first-beat-in-60-seconds)
-9. [The controls](#the-controls)
-10. [The menu: settings of the FM-1](#the-menu-settings-of-the-fm-1)
-11. [MIDI and USB audio](#midi-and-usb-audio)
-12. [The web editor](#the-web-editor)
-13. [Compatibility](#compatibility)
-14. [Troubleshooting](#troubleshooting)
-15. [Specifications](#specifications)
-16. [Documentation](#documentation)
-17. [Building and tests](#building-and-tests)
-18. [Contributing](#contributing)
-19. [Credits and thanks](#credits-and-thanks)
-20. [Licence](#licence)
+1. [What's new in 2.8](#whats-new-in-28)
+2. [What's new in 2.7](#whats-new-in-27)
+3. [What's new in 2.6](#whats-new-in-26)
+4. [What's new in 2.5](#whats-new-in-25)
+5. [What's new in 2.4](#whats-new-in-24)
+6. [Screenshots](#screenshots)
+7. [Features](#features)
+8. [Presets](#presets)
+9. [MIDI CC reference](#midi-cc-reference)
+10. [Install](#install)
+11. [Your first beat in 60 seconds](#your-first-beat-in-60-seconds)
+12. [The controls](#the-controls)
+13. [The menu: settings of the FM-1](#the-menu-settings-of-the-fm-1)
+14. [MIDI and USB audio](#midi-and-usb-audio)
+15. [The web editor](#the-web-editor)
+16. [Compatibility](#compatibility)
+17. [Troubleshooting](#troubleshooting)
+18. [Specifications](#specifications)
+19. [Documentation](#documentation)
+20. [Building and tests](#building-and-tests)
+21. [Contributing](#contributing)
+22. [Credits and thanks](#credits-and-thanks)
+23. [Licence](#licence)
 
 ---
+
+## What's new in 2.8
+
+| | |
+| --- | --- |
+| **Karplus-Strong engine** | A new sixth synth engine — **KARPLUS** — uses the Karplus-Strong plucked-string algorithm: a noise burst fed through a short delay line and a weighted two-point loop filter, with a first-order allpass for fractional delay tuning. The result is natural-sounding plucked strings with genuine physical decay. 8 presets: NYLON GT, STEEL GT, HARP, BANJO, KALIMBA, SITAR, KOTO, PLUCK BASS. Parameters: DECA (decay time), TONE (loop filter brightness), PLUK (pluck position comb). |
+| **KS drum kit** | A new drum kit — **KS** (kit 8) — applies the Karplus-Strong algorithm to each of the 16 drum lanes. Each lane uses a Schroeder allpass comb filter in the feedback path for membrane inharmonicity, making toms, kicks and snares sound like struck resonant bodies rather than pitched strings. Hi-hat lanes (CHH, OHH, PEDAL) share a choke group. All per-lane macros (TUNE, DECAY, LEVEL, PAN, REV, DRIVE, CRUSH, RING, FOLD) work as with the FM and circuit kits. |
+| **Drum fills** | Hold **ARP** on the drum track and press white keys 3–8 to trigger one of 6 fill patterns. Each fill is a 16-step pattern aligned to the end of the remaining bar — the landing always falls on the last step regardless of when you trigger. |
 
 ## What's new in 2.7
 
