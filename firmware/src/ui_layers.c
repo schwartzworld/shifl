@@ -690,6 +690,7 @@ static void layer_screen_draw(void)
     }
     case LY_ERASE: {                                     /* the keys' sounds: lit = held */
         uint32_t held = fm1_in.notes;
+        int mute = is_drum(t) && er_mute;
         col = TE_RED;
         str_cpy(sub, song.playing ? "as it plays" : "every step", sizeof sub);
         for (i = 0; i < 16u; i++) {
@@ -715,12 +716,23 @@ static void layer_screen_draw(void)
             tl[i].bg = down ? TE_RED : TE_G1;
             tl[i].fg = down ? C_BLACK : present ? C_WHITE : TE_G3;
             tl[i].top = present && !down ? TE_RED : 0;
+            if (mute) {
+                uint32_t off = (drum_mute >> i) & 1u;
+                tl[i].bg = off ? TE_RED : TE_G1;
+                tl[i].fg = off ? C_WHITE : present ? C_WHITE : TE_G3;
+                tl[i].top = 0;
+                if (off)
+                    str_cpy(tl[i].lab, "off", 8);
+            }
         }
+        if (is_drum(t) && !mute && !undo.valid)
+            str_cpy(sub, "black key: mute", sizeof sub);
         lab[0] = "shift", lab[1] = "length", lab[2] = is_drum(t) ? "" : "transp";
         str_cpy(v[0], "<  >", 8);
         fmt_int(v[1], t->p[P_SLEN]);
         str_cpy(v[2], is_drum(t) ? "" : "-  +", 8);
-        str_cpy(sub, undo.valid ? (undo.undone ? "oct+ redo" : "oct- undo") : sub, sizeof sub);
+        if (!mute)
+            str_cpy(sub, undo.valid ? (undo.undone ? "oct+ redo" : "oct- undo") : sub, sizeof sub);
         break;
     }
     case LY_ROLL: {                                     /* live mode: 16 scene tiles; otherwise: GEN / MUT / FILL */

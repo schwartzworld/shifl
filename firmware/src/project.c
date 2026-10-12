@@ -468,6 +468,7 @@ static void project_save(uint32_t slot)
 static void project_apply(const project_t *p)
 {
     uint32_t k;
+    drum_mute = 0;
     transport_req = 2;
     panic_req = (1u << NTRK) - 1u;
     fm1_irq_off();                                      /* the audio ISR must not see half a project */

@@ -328,6 +328,7 @@ static void step_edit(uint32_t slot, int32_t steps)
 static void project_new(void)
 {
     uint32_t i;
+    drum_mute = 0;
     transport_req = 2;
     panic_req = (1u << NTRK) - 1u;
     for (i = 0; i < NTRK; i++) {

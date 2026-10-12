@@ -373,7 +373,7 @@ static volatile uint32_t clk_beat, clk_pos;
 static const uint8_t DIV_DEN[6] = {1, 2, 4, 8, 3, 6};    /* N_DIV 0..5: beats = 1 / DEN */
 #define NDIV_SHORT 6u            /* the divisions inside a beat (N_DIV, the arp's RATE) */
 #define NDIV_STEP 9u             /* N_SDIV: + 1/2 note, a bar, two bars (whole beats: DIV_BEATS) */
-#define NDIV_DLY 8u              /* N_DLY: + 1/8 and 1/16 dotted */
+#define NDIV_DLY 9u              /* N_DLY: + 1/8, 1/16 and 1/4 dotted */
 static const uint8_t DIV_BEATS[3] = {2, 4, 8};
 /* a step's length in clock units (N_SDIV order; the arp's RATE uses 0..5) */
 static uint32_t div_units(uint32_t div)
@@ -383,7 +383,8 @@ static uint32_t div_units(uint32_t div)
 /* the delay's TIME in clock units (N_DLY order) */
 static uint32_t dly_units(uint32_t d)
 {
-    return d < NDIV_SHORT ? BEAT_U / DIV_DEN[d] : d == NDIV_SHORT ? BEAT_U * 3u / 4u : BEAT_U * 3u / 8u;
+    return d < NDIV_SHORT ? BEAT_U / DIV_DEN[d] : d == NDIV_SHORT ? BEAT_U * 3u / 4u : d == NDIV_SHORT + 1u ? BEAT_U * 3u / 8u
+                                                                                         : BEAT_U * 3u / 2u;   /* 1/4D */
 }
 /* length of one step (N_SDIV order) in samples at the song tempo (rounded down) */
 static uint32_t div_samples(uint32_t div) { return div_units(div) / (uint32_t)song.g[G_BPM]; }

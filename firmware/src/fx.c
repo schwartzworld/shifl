@@ -51,11 +51,64 @@ static void track_dist(track_t *t, int32_t *b, uint32_t n)
     }
 }
 
-/* master: peak limiter in front of the soft clipper. Fast attack (~0.1 ms),
- * ~150 ms release, threshold where tanh is still nearly linear, so chords
- * get quieter instead of crushed. */
+/* master: peak limiter in front of the soft clipper, a 35 ms hold then ~46 ms release (2.6), threshold where tanh is still nearly linear,
+ * so chords get quieter instead of crushed. SLOOP 2.6: it looks one block ahead (lim_block): the output is the mix
+ * CTL samples late (0.73 ms) and the gain glides over each block to what the loudest sample of it and of the next one
+ * needs, so a hot kick or bass is already turned down when it comes. Before, the gain caught up in ~4 samples and the
+ * first ones went through the tanh knee at up to 4x: a crackle on the beats with the MASTER up (in headphones most) */
 #define LIM_T 18000
-static int32_t lim_env = LIM_T;
+typedef struct {
+    int32_t dl[CTL], dr[CTL];           /* the mix of the last block (the delay) */
+    uint32_t w;                         /* its oldest sample (the next out) */
+    int32_t env;                        /* the peak the gain fits under LIM_T (LIM_T: none) */
+    int32_t g;                          /* the gain at the end of the last block, Q15 (32768: 1) */
+    uint32_t hold;                      /* blocks before the release starts (LIM_HOLD after a peak near env) */
+} lim_t;
+#define LIM_HOLD 48u
+#define LIM_REL 11                      /* the release after the hold: ~46 ms */
+static lim_t lim_dac __attribute__((section(".pool")));
+static lim_t lim_usb __attribute__((section(".pool")));
+/* l, r: n (<= CTL) samples in; out: the n samples of CTL before, limited (before the knee) */
+static void lim_block(lim_t *s, int32_t *l, int32_t *r, uint32_t n)
+{
+    uint32_t i, w = s->w;
+    int32_t pk = 0, a, g0 = s->g, g1, dg, e = s->env;
+    for (i = 0; i < CTL; i++) {
+        a = s->dl[i] < 0 ? -s->dl[i] : s->dl[i], pk = a > pk ? a : pk;
+        a = s->dr[i] < 0 ? -s->dr[i] : s->dr[i], pk = a > pk ? a : pk;
+    }
+    for (i = 0; i < n; i++) {
+        a = l[i] < 0 ? -l[i] : l[i], pk = a > pk ? a : pk;
+        a = r[i] < 0 ? -r[i] : r[i], pk = a > pk ? a : pk;
+    }
+    if ((int64_t)pk * 17 >= (int64_t)e * 16)
+        s->hold = LIM_HOLD;
+    if (s->hold)
+        s->hold--;
+    else if (e > LIM_T)
+        e -= (int32_t)((((int64_t)(e - LIM_T) * (int32_t)n) >> LIM_REL) + 1);
+    if (e < LIM_T)
+        e = LIM_T;
+    if (pk > e)
+        e = pk, s->hold = LIM_HOLD;
+    s->env = e;
+    g1 = e > LIM_T ? (int32_t)(((uint32_t)LIM_T << 15) / (uint32_t)e) : 32768;
+    s->g = g1;
+    dg = (g1 - g0) / (int32_t)(n ? n : 1u);
+    for (i = 0; i < n; i++) {
+        int32_t xl = s->dl[w], xr = s->dr[w], g = g0 + dg * (int32_t)(i + 1u);
+        s->dl[w] = l[i], s->dr[w] = r[i];
+        w = (w + 1u) & (CTL - 1u);
+        if (i + 1u == n)
+            g = g1;
+        if (g < 32768) {
+            xl = (int32_t)(((int64_t)xl * g) >> 15);
+            xr = (int32_t)(((int64_t)xr * g) >> 15);
+        }
+        l[i] = xl, r[i] = xr;
+    }
+    s->w = w;
+}
 static volatile uint8_t fx_lowcut;     /* settings: 12 dB/oct ~110 Hz for the small speaker */
 static int32_t lc_l1, lc_l2, lc_r1, lc_r2, dc_l, dc_r, dce_l, dce_r;
 
@@ -95,14 +148,13 @@ static inline int32_t knee(int32_t x)
 
 /* the USB audio input at full level (menu USB AUDIO = FULL): the same output stage with its own state,
  * fed as if MASTER were all the way up, so the recording level does not follow the knob. The DAC path
- * (master_out) is untouched. audio.c sets usb_full_now for a render while the computer records. */
-static uint8_t usb_full;                 /* menu USB AUDIO: 0 MASTER (follows the knob), 1 FULL (panel.c lights_word) */
+ * (master_pre, lim_dac) is untouched. audio.c sets usb_full_now for a render while the computer records. */
+static uint8_t usb_full;                 /* menu USB AUDIO: 0 MASTER (follows the knob), 1 FULL */
 static uint8_t usb_full_now;             /* this render fills usb_out (audio.c) */
 static int32_t usb_out[2u * CTL];
-static struct { int32_t lim, dc[2], dce[2], lc[4], lce[4]; } uo = {LIM_T, {0, 0}, {0, 0}, {0, 0, 0, 0}, {0, 0, 0, 0}};
-static void master_out_usb(int32_t *l, int32_t *r)
+static struct { int32_t dc[2], dce[2], lc[4], lce[4]; } uo;
+static void master_pre_usb(int32_t *l, int32_t *r)
 {
-    int32_t al, ar, a;
     *l = dc_block(*l, &uo.dc[0], &uo.dce[0]);
     *r = dc_block(*r, &uo.dc[1], &uo.dce[1]);
     if (fx_lowcut) {
@@ -111,25 +163,10 @@ static void master_out_usb(int32_t *l, int32_t *r)
         *r = lowcut1(*r, &uo.lc[2], &uo.lce[2]);
         *r = lowcut1(*r, &uo.lc[3], &uo.lce[3]);
     }
-    al = *l < 0 ? -*l : *l;
-    ar = *r < 0 ? -*r : *r;
-    a = al > ar ? al : ar;
-    if (a > uo.lim)
-        uo.lim += (a - uo.lim) >> 2;
-    else if (uo.lim > LIM_T)
-        uo.lim -= ((uo.lim - LIM_T) >> 12) + 1;
-    if (uo.lim > LIM_T) {
-        int32_t g = (int32_t)(((uint32_t)LIM_T << 15) / (uint32_t)uo.lim);
-        *l = ((*l >> 4) * g) >> 11;
-        *r = ((*r >> 4) * g) >> 11;
-    }
-    *l = knee(*l);
-    *r = knee(*r);
 }
 
-static inline void master_out(int32_t *l, int32_t *r)
+static inline void master_pre(int32_t *l, int32_t *r)
 {
-    int32_t al, ar, a;
     *l = dc_block(*l, &dc_l, &dce_l);
     *r = dc_block(*r, &dc_r, &dce_r);
     if (fx_lowcut) {                  /* two one-pole high-passes, error feedback as dc_block (the */
@@ -138,20 +175,6 @@ static inline void master_out(int32_t *l, int32_t *r)
         *r = lowcut1(*r, &lc_r1, &lce[2]);
         *r = lowcut1(*r, &lc_r2, &lce[3]);
     }
-    al = *l < 0 ? -*l : *l;
-    ar = *r < 0 ? -*r : *r;
-    a = al > ar ? al : ar;
-    if (a > lim_env)
-        lim_env += (a - lim_env) >> 2;
-    else if (lim_env > LIM_T)
-        lim_env -= ((lim_env - LIM_T) >> 12) + 1;
-    if (lim_env > LIM_T) {
-        int32_t g = (int32_t)(((uint32_t)LIM_T << 15) / (uint32_t)lim_env);   /* < 32768 */
-        *l = ((*l >> 4) * g) >> 11;                      /* >> 4 first: |l| may be far above Q15 */
-        *r = ((*r >> 4) * g) >> 11;
-    }
-    *l = knee(*l);
-    *r = knee(*r);
 }
 
 
@@ -262,7 +285,8 @@ static int32_t send_c[CTL], send_d[CTL], send_r[CTL], wet_l[CTL], wet_r[CTL], mi
 typedef struct {
     int32_t cut;                                        /* now, 0..127 << 8 (CUTOFF_HZ index) */
     int8_t mode;                                        /* -1 LP, 1 HP, 0 off */
-    int32_t z[3][2];                                    /* the SVF states, per channel */
+    uint8_t seed;                                       /* bit per channel: seed the LP state from the first sample */
+    int32_t z[4][2];                                    /* SVF states; 4 channels: L, R, reverb send, delay send */
 } djf_t;
 static djf_t djf, tflt[NTRK];
 
@@ -274,6 +298,7 @@ static int djf_block(djf_t *f, int32_t v, tsvf_t *c)
         f->mode = -1;
         f->cut = 127 << 8;
         memset(f->z, 0, sizeof f->z);
+        f->seed = 15;
     } else if (v > 0 && f->mode <= 0) {
         f->mode = 1;
         f->cut = 0;
@@ -295,6 +320,13 @@ static void djf_run(djf_t *f, const tsvf_t *c, int32_t *b, uint32_t n, uint32_t 
 {
     uint32_t i;
     int32_t *z = f->z[ch];
+    if ((f->seed >> ch) & 1u) {
+        f->seed &= (uint8_t)~(1u << ch);
+        if (f->mode < 0 && n) {
+            z[0] = 0;
+            z[1] = clamp(b[0], -140000, 140000);
+        }
+    }
     for (i = 0; i < n; i++) {
         int32_t x = clamp(b[i], -140000, 140000), y = tsvf_lp(c, x, &z[0], &z[1]);
         b[i] = f->mode < 0 ? y : x - y;
@@ -517,18 +549,36 @@ static void mix_block(int32_t *out, uint32_t n)
     m1 = (int32_t)song.master_q12;
     m0 = master_cur < 0 ? m1 : master_cur;
     master_cur = m1;
-    for (i = 0; i < n; i++) {
-        int32_t m = m0 + (((m1 - m0) * (int32_t)i) >> CTL_LOG2);
-        int32_t l = ((mix_l[i] >> 2) * m) >> 10;
-        int32_t r = ((mix_r[i] >> 2) * m) >> 10;
-        master_out(&l, &r);
-        out[2u * i] = l;
-        out[2u * i + 1u] = r;
-        if (usb_full_now && i < CTL) {                  /* USB AUDIO = FULL: MASTER all the way up (4096) */
-            int32_t ul = (mix_l[i] >> 2) << 2, ur = (mix_r[i] >> 2) << 2;
-            master_out_usb(&ul, &ur);
-            usb_out[2u * i] = ul;
-            usb_out[2u * i + 1u] = ur;
+    if (n > CTL)
+        n = CTL;
+    {   /* send_c/send_d/send_r/wet_l are scratch: free after fx_buses */
+        static uint8_t usb_was;
+        for (i = 0; i < n; i++) {
+            int32_t m = m0 + (((m1 - m0) * (int32_t)i) >> CTL_LOG2);
+            send_c[i] = ((mix_l[i] >> 2) * m) >> 10;
+            send_d[i] = ((mix_r[i] >> 2) * m) >> 10;
+            master_pre(&send_c[i], &send_d[i]);
+            if (usb_full_now) {
+                send_r[i] = (mix_l[i] >> 2) << 2, wet_l[i] = (mix_r[i] >> 2) << 2;
+                master_pre_usb(&send_r[i], &wet_l[i]);
+            }
+        }
+        lim_block(&lim_dac, send_c, send_d, n);
+        for (i = 0; i < n; i++) {
+            out[2u * i] = knee(send_c[i]);
+            out[2u * i + 1u] = knee(send_d[i]);
+        }
+        if (usb_full_now && !usb_was) {
+            memset(&lim_usb, 0, sizeof lim_usb);
+            lim_usb.env = LIM_T, lim_usb.g = 32768, lim_usb.hold = 0;
+        }
+        usb_was = usb_full_now;
+        if (usb_full_now) {
+            lim_block(&lim_usb, send_r, wet_l, n);
+            for (i = 0; i < n; i++) {
+                usb_out[2u * i] = knee(send_r[i]);
+                usb_out[2u * i + 1u] = knee(wet_l[i]);
+            }
         }
     }
 }

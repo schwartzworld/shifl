@@ -5,7 +5,7 @@ static const char *const N_LWAVE[] = {"SIN", "TRI", "SAW", "SQR", "S&H"};
 static const char *const N_AMODE[] = {"OFF", "UP", "DN", "UPDN", "RND", "ORD"};
 static const char *const N_DIV[]  = {"1/4", "1/8", "1/16", "1/32", "8T", "16T"};
 static const char *const N_SDIV[] = {"1/4", "1/8", "1/16", "1/32", "8T", "16T", "1/2", "1BAR", "2BAR"};   /* core.h div_units */
-static const char *const N_DLY[]  = {"1/4", "1/8", "1/16", "1/32", "8T", "16T", "1/8D", "1/16D"};          /* core.h dly_units */
+static const char *const N_DLY[]  = {"1/4", "1/8", "1/16", "1/32", "8T", "16T", "1/8D", "1/16D", "1/4D"};  /* core.h dly_units */
 static const char *const N_SCALE[] = {"CHR", "MAJ", "MIN", "DOR", "MIX", "PEN", "MPEN", "HARM",
                                     "PHRY", "LYD", "LOC", "MEL", "BLUES", "WHOLE", "DIMHW", "DIMWH"};
 static const char *const N_ONOFF[] = {"OFF", "ON"};
@@ -168,7 +168,7 @@ static void param_format(const param_desc_t *d, int32_t v, char *val, const char
         *unit = "%";
         break;
     case F_SWING:                                     /* MPC style: the share of a step pair the first one gets */
-        fmt_int(val, 50 + (clamp(v, 0, 100) + 2) / 4);
+        fmt_int(val, clamp(v, 0, 100));
         *unit = "%";
         break;
     case F_FILT:                                      /* LP 1..100 % closed, HP 1..100 % */

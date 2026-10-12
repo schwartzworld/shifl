@@ -908,6 +908,10 @@ static uint8_t er_trk;
 static uint16_t er_lanes;                     /* drums: lanes held */
 static uint32_t er_notes[4];                  /* synth: notes held (bit per MIDI note) */
 static volatile uint8_t er_flash;             /* something was erased (the UI flashes) */
+/* live mutes: EDIT + a black key enters mute mode; a white key mutes/unmutes
+ * its sound (the sequencer skips it). Performance state: not saved, not undone */
+static volatile uint16_t drum_mute;
+static volatile uint8_t er_mute;
 
 static int er_has(uint32_t note) { return (er_notes[(note >> 5) & 3u] >> (note & 31u)) & 1u; }
 static void erase_step(track_t *t, uint32_t idx)
@@ -1163,6 +1167,14 @@ static void key_down(uint32_t k)
         return;
     case LY_ERASE:
         kb_kind[k] = KS_ERASE;
+        if (is_drum(t) && punch_key(k) < 0) {        /* a black key: erase <-> mute */
+            er_mute = (uint8_t)!er_mute;
+            return;
+        }
+        if (is_drum(t) && er_mute) {                  /* mute mode: toggle the lane */
+            drum_mute ^= (uint16_t)(1u << lane_of_key(k));
+            return;
+        }
         if (!erasing(t) || er_trk != sel)
             undo_erase_sess = (undo_sess += 4u) | 2u;  /* a new erase: one undo */
         if (er_trk != sel) {
@@ -1316,6 +1328,8 @@ static void keyboard_block(void)
 {
     uint32_t cur = fm1_in.notes, ch = cur ^ kb_prev, k;
     audition_block();
+    if (er_mute && layer_now() != LY_ERASE)
+        er_mute = 0;                              /* EDIT let go: back to erase mode */
     if (!ch)
         return;
     for (k = 0; k < 27u; k++) {
@@ -2086,9 +2100,9 @@ static void seq_tick(track_t *t, uint32_t adv)
                 fill_len = drum_fill_end_abs - drum_fill_start_abs;
                 local    = nabs - drum_fill_start_abs;
                 fi       = (16u - fill_len % 16u + local) % 16u;
-                drum_step(t, &drum_fill_pats[(uint32_t)drum_fill_cur][fi], skip);
+                drum_step(t, &drum_fill_pats[(uint32_t)drum_fill_cur][fi], skip | (uint32_t)drum_mute);
             } else {
-                drum_step(t, &t->dstep[idx], skip);
+                drum_step(t, &t->dstep[idx], skip | (uint32_t)drum_mute);
             }
         } else {
             const step_t *s = &t->step[idx];
