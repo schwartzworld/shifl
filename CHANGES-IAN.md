@@ -6,6 +6,20 @@ All committed changes by Ian Schwartz, plus current uncommitted work-in-progress
 
 ## Committed Changes
 
+### Knob reliability + acceleration (`2026-10-11`)
+
+Improved encoder input so fast turns register reliably and large, fast sweeps cover more ground.
+
+- **`firmware/hal/fm1_input.h`** — added `enc_dir` (1-byte bitmask, bit N = last confirmed direction of encoder N) to the input struct. Valid single-step forward/backward transitions now update this bitmask. Previously, a 2-state quadrature jump arriving when `enc_sub == 0` (the first missed transition of a fast turn starting from rest) was silently dropped because neither the `sub > 0` nor `sub < 0` branch could fire; that detent was then under-counted or lost entirely. Now the `enc_dir` bit resolves direction for those jumps.
+- **`firmware/src/ui_input.c` — `accel()`** — replaced the single time threshold with three tiers:
+  - dt < 15 ms (very fast): 10× for wide-range params, 6× for normal — new tier
+  - dt < 60 ms (fast): 6× / 3× — unchanged rates, same threshold
+  - dt < 120 ms (moderate): 2× — new tier; replaces the hard stop at 60 ms
+
+**Bumped to FM-1_965.**
+
+---
+
 ### KS drum kit + delay trim (`2026-10-11`)
 
 Added a Karplus-Strong membrane drum kit (kit 8, **KS**) and trimmed the global delay buffer to free pool space for it.

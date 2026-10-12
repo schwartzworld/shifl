@@ -271,8 +271,14 @@ static int32_t accel(uint32_t role, int32_t s, int32_t range)
 {
     uint32_t now = fm1_ticks(), dt = now - ui.enc_t[role];
     ui.enc_t[role] = now;
-    if (range > 40 && dt < 60u * 1000u * FM1_TICKS_PER_US)
-        return s * (range > 150 ? 6 : 3);
+    if (range > 40) {
+        if (dt < 15u * 1000u * FM1_TICKS_PER_US)
+            return s * (range > 150 ? 10 : 6);
+        if (dt < 60u * 1000u * FM1_TICKS_PER_US)
+            return s * (range > 150 ? 6 : 3);
+        if (dt < 120u * 1000u * FM1_TICKS_PER_US)
+            return s * 2;
+    }
     return s;
 }
 

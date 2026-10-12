@@ -93,6 +93,7 @@ static volatile struct {
     uint16_t enc_still[FM1_NENC]; /* frames since the last state change */
     int8_t enc_sub[FM1_NENC];    /* net transitions since the last rest state */
     int16_t enc_steps[FM1_NENC]; /* + = clockwise */
+    uint8_t enc_dir;             /* bit N = last confirmed direction of encoder N: 1=CW, 0=CCW */
     uint32_t frames;
 } fm1_in;
 static uint8_t fm1_led[FM1_NCOL];
@@ -258,14 +259,20 @@ static void fm1__frame(void)
         if (cur == fm1_in.enc_prev[e])
             continue;
         idx = (uint32_t)fm1_in.enc_prev[e] << 2 | cur;
-        if ((0x4182u >> idx) & 1u)
+        if ((0x4182u >> idx) & 1u) {
             (*sub)++;
-        else if ((0x2814u >> idx) & 1u)
+            fm1_in.enc_dir |= (uint8_t)(1u << e);
+        } else if ((0x2814u >> idx) & 1u) {
             (*sub)--;
-        else if (*sub > 0)                         /* two states in one sample: a fast turn, */
-            *sub = (int8_t)(*sub + 2);             /* the way it was going */
+            fm1_in.enc_dir &= (uint8_t)~(1u << e);
+        } else if (*sub > 0)                       /* two states in one sample: a fast turn, */
+            *sub = (int8_t)(*sub + 2);             /* use last direction when sub is non-zero */
         else if (*sub < 0)
             *sub = (int8_t)(*sub - 2);
+        else if ((fm1_in.enc_dir >> e) & 1u)       /* sub==0: first jump of a fast turn — use */
+            *sub = 2;                              /* last known direction to avoid losing it */
+        else
+            *sub = -2;
         fm1_in.enc_prev[e] = (uint8_t)cur;
         if (*sub > 100 || *sub < -100)
             *sub = 0;                              /* (never off the detent that long) */
