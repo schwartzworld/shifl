@@ -541,7 +541,7 @@ static void project_load(uint32_t slot)
  * ~50 ms: never while something plays); loaded at power-on (autosave_resume) */
 #define AUTOSAVE_IDLE 2500u                    /* ms without input */
 #define AUTOSAVE_GAP 20000u                    /* ms between two saves at least */
-static project_t autosave_buf;
+static project_t autosave_buf __attribute__((section(".pool")));
 static uint32_t autosave_hash, autosave_ms, autosave_checked;
 
 static int audio_quiet(void)

@@ -2,7 +2,7 @@
  * Copyright (C) 2026 Leo Kuroshita (@kurogedelic), Hügelton Instruments */
 /* Effects: per-track DIST insert, then sends into three shared buses (chorus, tempo delay, reverb).
  * Stereo dry mix; the chorus and the reverb come back in stereo, the delay in the middle. */
-#define DLY_LEN 44100u           /* 1.00 s at 44.1 kHz; NOT power-of-2 — use explicit wrap, not bitmask */
+#define DLY_LEN 33075u           /* 0.75 s at 44.1 kHz; NOT power-of-2 — use explicit wrap, not bitmask */
 #define CHO_LEN 2048u
 static int16_t dly_buf[DLY_LEN] __attribute__((section(".pool")));
 static int16_t cho_buf[CHO_LEN] __attribute__((section(".pool")));
@@ -12,7 +12,7 @@ static int16_t cho_buf[CHO_LEN] __attribute__((section(".pool")));
 #define REV_MOD 12               /* samples the modulated line moves (+-) */
 static const uint16_t REV_LINE[4] = {1559, 1931, 2389, 2791};   /* 35..63 ms, coprime */
 static const uint16_t REV_AP[2] = {556, 441};
-static int16_t rev_line[1559 + 1931 + 2389 + 2791 + REV_MOD + 2];   /* (.bss: the pool is full) */
+static int16_t rev_line[1559 + 1931 + 2389 + 2791 + REV_MOD + 2] __attribute__((section(".pool")));  /* FDN reverb delay lines */
 static int16_t rev_ap[556 + 441] __attribute__((section(".pool")));
 static struct {
     uint32_t dly_w, cho_w, cho_ph, rev_ph;

@@ -6,6 +6,45 @@ All committed changes by Ian Schwartz, plus current uncommitted work-in-progress
 
 ## Committed Changes
 
+### Microtonal engine (`2026-10-13`)
+
+Added full microtonal support: 54 new scale choices beyond the 16 legacy Western scales, covering equal divisions of the octave (EDO), just intonation, historical temperaments, world music scales, and maqam modes.
+
+- **`firmware/src/scales.h`** (new) — generated scale catalog: `SCALE_TOTAL 70` (16 legacy + 54 new). Each microtonal scale is a `micro_scale_t` with a degree count and a pitch table in hundredths of a cent; the last entry is the period. Covers: 5–53 EDO, JI major/minor/chromatic/7-limit, harmonic series 8 and 16, Partch 43-tone, Pythagorean, quarter/third/sixth-comma meantone, Werckmeister III, Kirnberger III, Vallotti, Young II, Indian shruti (22), Slendro, Pelog, Bohlen-Pierce (equal + just), Rast, Bayati, Hijaz, Saba, Husayni, Sikah, Harrison, and more.
+- **`firmware/src/microtonal.h`** (new) — engine that treats 7-bit MIDI note numbers as **scale-degree addresses** rather than chromatic semitones (degree 0 = root at C4 + ROOT + TRANS). `micro_pitch()` resolves any degree to a pitch in hundredths of a cent across any number of octaves. `micro_snap()` snaps a chromatic pitch to the nearest degree. `scale_note_period()` returns the period of the scale (replaces hardcoded 12).
+- **`firmware/src/voice.c`** — `voice_micro_pitch16()` converts a degree address to the hardware `pitch16` value via the microtonal pitch table. Active at note-on and during portamento.
+- **`firmware/src/seq.c`** — scale quantization, keyboard input (`micro_snap`), chord generation, ARP, generative sequences, and arranger transpose all dispatch through `micro_active()`; microtonal tracks bypass the 12-chromatic degree walk and use the scale's own degree count. Scale index clamped to `SCALE_TOTAL - 1` throughout (was `NSCALES - 1 = 15`). Scale display updated to show all 70 names.
+
+Note identity is unchanged (7-bit note IDs still function as degree addresses), so recorded sequences, chords, independent voice releases and project files are all compatible.
+
+**Bumped to FM-1_967.**
+
+---
+
+### LFO K modulation + wah FX + delay wrap fix (`2026-10-13`)
+
+Three independent improvements shipped together.
+
+**LFO → engine knob modulation (P_LD_K1..K4)**
+
+- **`firmware/src/params.c`** — added `P_LD_K1`..`P_LD_K4` (four new bipolar −64..+63 LFO destination params); new `GR_LDHOME` display group; new **LFO K** page `{"LFO K", FAM_LFO, SC_TRACK, GR_LDHOME, {P_LD_K1..K4}}`. The K1–K4 slots correspond to the engine's four home-page knobs.
+- **`firmware/src/voice.c`** — `render()` applies P_LD_K1..K4 by temporarily patching `t->p[e->knob[kk]]` before calling `e->render()` and restoring afterwards. Clamped to the engine edit param's min/max (or 0..127 for engine params).
+- **`firmware/src/ui_draw.c`** — `GR_LDHOME` draws the engine-knob labels (from `home_param`) as the column headers with the LFO depth values below.
+- **`firmware/src/upreset.c`** — user preset version bumped `UP_VER 3 → 4`; `UP_PMAX 76 → 80` to accommodate P_LD_K1..K4; static-assert updated.
+- **`firmware/src/project.c`** — `PROJ_NP_V5OLD 74` marks the layout before P_LD_K1..K4. Migration in `proj_trk_from_v4()` inserts default values for the 4 new params and shifts P_E0..P_E15 (engine params) up by 4. Old FUN5 projects (same magic, 74 params) handled by new `proj_from_v5old()`. `proj_slot[6]` moved to `.pool` (saves ~900 B of BSS RAM).
+
+**Wah FX rework (PX_LPFS..PX_LPFU → WAH SLW/MED/FST/XFS)**
+
+- **`firmware/src/punch.c`** — the four one-shot LPF sweep effects are replaced by four sinusoidal wah LFOs at 0.25 / 0.5 / 1 / 2 Hz. LFO rates stored as unsigned 32-bit accumulators; `punch.lfo` (new field) drives `sine_i()`; filter sweeps cut 45..85 symmetrically around 65.
+
+**Delay buffer wrap fix**
+
+- **`firmware/src/fx.c`** — `DLY_LEN = 44100` is not a power of 2, so the previous bitmask wrap `& (DLY_LEN - 1)` was reading/writing garbage offsets. Fixed: read uses explicit conditional subtract; write uses `if (++dly_w >= DLY_LEN) dly_w = 0`.
+
+**Bumped to FM-1_966.**
+
+---
+
 ### Knob reliability + acceleration (`2026-10-11`)
 
 Improved encoder input so fast turns register reliably and large, fast sweeps cover more ground.
