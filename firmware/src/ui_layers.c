@@ -558,7 +558,7 @@ static void layer_knobs(uint32_t layer)
                     t->p[P_CHORD] = (int16_t)clamp(t->p[P_CHORD] + s, 0, 5);
             } else if (k == 1u) {
                 uint32_t i;
-                int16_t v = (int16_t)clamp(trk[0].p[P_SCALE] + s, 0, NSCALES - 1);
+                int16_t v = (int16_t)clamp(trk[0].p[P_SCALE] + s, 0, (int32_t)SCALE_TOTAL - 1);
                 for (i = 0; i < NPART; i++)
                     trk[i].p[P_SCALE] = v;
             } else if (k == 2u) {
@@ -837,12 +837,12 @@ static void layer_screen_draw(void)
         break;
     }
     case LY_SCALE: {                                    /* the white keys' notes / chords; the root lit */
-        uint32_t root = (uint32_t)trk[0].p[P_ROOT] % 12u, mask = SCALE_MASK[clamp(trk[0].p[P_SCALE], 0, NSCALES - 1)];
+        uint32_t root = (uint32_t)trk[0].p[P_ROOT] % 12u, mask = scale_mask(&trk[0]);
         col = TE_COL[1];
         str_cpy(sub, "key: ", sizeof sub);
         str_cpy(sub + 5, N_NOTE[root], 4);
         str_cpy(sub + str_len(sub), " ", 2);
-        te_lower(sub + str_len(sub), N_SCALE[clamp(trk[0].p[P_SCALE], 0, NSCALES - 1)], 8);
+        te_lower(sub + str_len(sub), N_SCALE[clamp(trk[0].p[P_SCALE], 0, (int32_t)SCALE_TOTAL - 1)], 8);
         for (i = 0; i < 16u; i++) {
             uint32_t k = key_of_white(i), pc = (53u + k) % 12u, in = (mask >> ((pc + 12u - root) % 12u)) & 1u;
             if (!is_drum(t) && t->p[P_CHORD]) {       /* chord mode: the chord this key plays (the i chord lit) */
@@ -866,13 +866,13 @@ static void layer_screen_draw(void)
         }
         lab[0] = "chord", lab[1] = "scale", lab[2] = "keys", lab[3] = "transp";
         te_lower(v[0], N_CHORD[clamp(t->p[P_CHORD], 0, 5)], 8);
-        te_lower(v[1], N_SCALE[clamp(trk[0].p[P_SCALE], 0, NSCALES - 1)], 8);
+        te_lower(v[1], N_SCALE[clamp(trk[0].p[P_SCALE], 0, (int32_t)SCALE_TOTAL - 1)], 8);
         te_lower(v[2], N_QUANT[clamp(t->p[P_QUANT], 0, 2)], 8);
         fmt_int(v[3], t->p[P_TRANS]);
         if (is_drum(t))
             v[0][0] = v[2][0] = v[3][0] = 0;
         ratio[0] = t->p[P_CHORD] * 200;
-        ratio[1] = trk[0].p[P_SCALE] * 1000 / (NSCALES - 1);
+        ratio[1] = trk[0].p[P_SCALE] * 1000 / ((int32_t)SCALE_TOTAL - 1);
         ratio[2] = t->p[P_QUANT] * 500;
         ratio[3] = (t->p[P_TRANS] + 24) * 1000 / 48;
         break;

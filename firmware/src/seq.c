@@ -19,25 +19,6 @@
  *   ARP  note repeat (roll) at G_ROLL     SEQ   steps 1..16 (the UI: ui_layers.c)
  *   SCL  the key of the song (the UI)     GLO   mute / solo / tap tempo (the UI)
  * On the drum track OCT- / OCT+ held play (and record) ghost / hard hits. */
-static const uint16_t SCALE_MASK[] = {
-    0xFFF,                                   /* CHR */
-    (1 << 0) | (1 << 2) | (1 << 4) | (1 << 5) | (1 << 7) | (1 << 9) | (1 << 11),   /* MAJ */
-    (1 << 0) | (1 << 2) | (1 << 3) | (1 << 5) | (1 << 7) | (1 << 8) | (1 << 10),   /* MIN */
-    (1 << 0) | (1 << 2) | (1 << 3) | (1 << 5) | (1 << 7) | (1 << 9) | (1 << 10),   /* DOR */
-    (1 << 0) | (1 << 2) | (1 << 4) | (1 << 5) | (1 << 7) | (1 << 9) | (1 << 10),   /* MIX */
-    (1 << 0) | (1 << 2) | (1 << 4) | (1 << 7) | (1 << 9),                          /* PEN */
-    (1 << 0) | (1 << 3) | (1 << 5) | (1 << 7) | (1 << 10),                         /* MPEN */
-    (1 << 0) | (1 << 2) | (1 << 3) | (1 << 5) | (1 << 7) | (1 << 8) | (1 << 11),   /* HARM */
-    (1 << 0) | (1 << 1) | (1 << 3) | (1 << 5) | (1 << 7) | (1 << 8) | (1 << 10),   /* PHRY */
-    (1 << 0) | (1 << 2) | (1 << 4) | (1 << 6) | (1 << 7) | (1 << 9) | (1 << 11),   /* LYD */
-    (1 << 0) | (1 << 1) | (1 << 3) | (1 << 5) | (1 << 6) | (1 << 8) | (1 << 10),   /* LOC */
-    (1 << 0) | (1 << 2) | (1 << 3) | (1 << 5) | (1 << 7) | (1 << 9) | (1 << 11),   /* MEL (ascending) */
-    (1 << 0) | (1 << 3) | (1 << 5) | (1 << 6) | (1 << 7) | (1 << 10),              /* BLUES (minor) */
-    (1 << 0) | (1 << 2) | (1 << 4) | (1 << 6) | (1 << 8) | (1 << 10),              /* WHOLE */
-    (1 << 0) | (1 << 1) | (1 << 3) | (1 << 4) | (1 << 6) | (1 << 7) | (1 << 9) | (1 << 10), /* DIMHW */
-    (1 << 0) | (1 << 2) | (1 << 3) | (1 << 5) | (1 << 6) | (1 << 8) | (1 << 9) | (1 << 11), /* DIMWH */
-};
-#define NSCALES (sizeof SCALE_MASK / sizeof SCALE_MASK[0])
 #define SEQ_NONE 0xFFFFFFFFu
 
 
@@ -63,7 +44,14 @@ static uint32_t trk_midi_ch(uint32_t i)    /* MIDI channel 0..15 of track i (key
 
 static uint32_t scale_mask(const track_t *t)
 {
-    return SCALE_MASK[clamp(t->p[P_SCALE], 0, NSCALES - 1)];
+    const micro_scale_t *s = micro_scale(t);
+    if (s) {    /* approximate pitch classes for LED highlighting; not used for audio when micro_active */
+        uint32_t mask = 0, i;
+        for (i = 0; i < (uint32_t)s->count; i++)
+            mask |= 1u << ((uint32_t)((s->pitch[i] + 5000) / 10000) % 12u);
+        return mask;
+    }
+    return SCALE_MASK[clamp(t->p[P_SCALE], 0, (int32_t)SCALE_LEGACY - 1)];
 }
 
 /* ---------------------------------------------------------- layers --- */
@@ -115,6 +103,10 @@ static uint32_t kb_map(const track_t *t, uint32_t k)
         return (uint32_t)clamp(SLC_BASE + t->p[P_ROOT] + 12 * song.octave + (int32_t)k, 0, 127);
 #endif
     if (t->p[P_QUANT] == 1 && !t->p[P_CHORD]) {  /* SNAP: every key, rounded down to the scale (the old ON) */
+        if (micro_active(t)) {
+            uint32_t note = micro_snap(t, n + t->p[P_TRANS]);
+            return note == KB_SILENT ? note : micro_degree_map(t, (int32_t)note - 60, 12 * song.octave, 1);
+        }
         uint32_t mask = scale_mask(t), guard = 12;
         n += 12 * song.octave + t->p[P_TRANS];
         while (guard-- && !((mask >> (uint32_t)((n - t->p[P_ROOT] + 120) % 12)) & 1u))
@@ -122,13 +114,15 @@ static uint32_t kb_map(const track_t *t, uint32_t k)
         return (uint32_t)clamp(n, 0, 127);
     }
     if (t->p[P_QUANT] == 2 || t->p[P_CHORD]) {   /* WHITE: white keys walk the scale, black keys are silent */
-        uint32_t mask = t->p[P_CHORD] && !t->p[P_SCALE] ? SCALE_MASK[2] : scale_mask(t), i;
-        int32_t count = 0, degree = DEGREE[n % 12], oct;
+        int32_t degree = DEGREE[n % 12], oct;
         if (degree < 0)
             return KB_SILENT;
-        /* C4 is the root. Walk scale degrees on successive white keys, including
-         * below C4; scales with 5, 6, 8 or 12 notes still have no duplicated degrees. */
+        /* C4 is the root. Walk scale degrees on successive white keys. */
         degree += (n / 12 - 5) * 7;
+        if (micro_active(t))
+            return micro_degree_map(t, degree, 12 * song.octave, 0);
+        uint32_t mask = t->p[P_CHORD] && !t->p[P_SCALE] ? SCALE_MASK[2] : scale_mask(t), i;
+        int32_t count = 0;
         for (i = 0; i < 12u; i++)
             count += (mask >> i) & 1u;
         oct = degree / count;
@@ -160,7 +154,7 @@ static const int8_t CHORD_DEG[6][4] = {
 };
 static uint32_t chord_notes(const track_t *t, uint32_t n, uint8_t *c)
 {
-    uint32_t type = (uint32_t)clamp(t->p[P_CHORD], 0, 5), mask = t->p[P_SCALE] ? scale_mask(t) : SCALE_MASK[2];
+    uint32_t type = (uint32_t)clamp(t->p[P_CHORD], 0, 5);
     uint32_t k = 0, j;
     if (type == 5u) {
         static const uint8_t PW[3] = {0, 7, 12};
@@ -170,6 +164,12 @@ static uint32_t chord_notes(const track_t *t, uint32_t n, uint8_t *c)
         return k;
     }
     for (j = 0; j < 4u && CHORD_DEG[type][j] >= 0; j++) {
+        if (micro_active(t)) {
+            uint32_t m = n + (uint32_t)CHORD_DEG[type][j];
+            if (m < 128u) c[k++] = (uint8_t)m;
+            continue;
+        }
+        uint32_t mask = t->p[P_SCALE] ? scale_mask(t) : SCALE_MASK[2];
         int32_t m = (int32_t)n, d = CHORD_DEG[type][j], guard = 48;
         while (d > 0 && guard--) {                       /* d scale degrees up */
             m++;
@@ -201,6 +201,8 @@ static uint32_t chord_mod_of_key(uint32_t k)            /* key k's modifier (0: 
 static uint8_t vl_prev[NPART][4], vl_n[NPART];          /* the last chord played on each part (voice leading) */
 static uint32_t scale_up(const track_t *t, uint32_t n, uint32_t deg)   /* deg scale degrees above n */
 {
+    if (micro_active(t))
+        return (uint32_t)clamp((int32_t)n + (int32_t)deg, 0, 127);
     uint32_t mask = t->p[P_SCALE] ? scale_mask(t) : SCALE_MASK[2];
     int32_t m = (int32_t)n, guard = 48;
     while (deg > 0 && guard--) {
@@ -380,6 +382,10 @@ static uint32_t gen_next(uint32_t *r)
  * prev != 0: 75% chance to prefer notes within 5 semitones (stepwise melody). */
 static uint32_t gen_pick_note(const track_t *t, uint32_t *r, uint32_t prev)
 {
+    if (micro_active(t)) {
+        uint32_t count = micro_scale(t)->count;
+        return (uint32_t)clamp((int32_t)60 + t->p[P_ROOT] + (int32_t)(gen_next(r) % count), 0, 127);
+    }
     uint32_t mask = scale_mask(t), deg[12], ndeg = 0, i, oct;
     uint32_t near[24], nnear = 0;
     for (i = 0u; i < 12u; i++)
@@ -405,6 +411,10 @@ static uint32_t gen_pick_note(const track_t *t, uint32_t *r, uint32_t prev)
 /* Same but uses the global rng (for mutation, where reproducibility is not needed). */
 static uint32_t mutate_pick_note(const track_t *t)
 {
+    if (micro_active(t)) {
+        uint32_t count = micro_scale(t)->count;
+        return (uint32_t)clamp((int32_t)60 + t->p[P_ROOT] + (int32_t)(rng() % count), 0, 127);
+    }
     uint32_t mask = scale_mask(t), deg[12], ndeg = 0, i;
     for (i = 0; i < 12u; i++)
         if ((mask >> i) & 1u)
@@ -1705,6 +1715,7 @@ static uint32_t seq_snap_scale(uint32_t n, const track_t *t)
 {
     uint32_t mask = scale_mask(t), d, pc;
     int32_t root = t->p[P_ROOT];
+    if (micro_active(t)) return n;  /* microtonal: note = degree address, arranger transpose leaves it */
     if (mask == 0xFFFu) return n;   /* CHR: all notes in scale, nothing to snap */
     pc = (uint32_t)((int32_t)n - root + 120) % 12u;
     if (mask & (1u << pc)) return n;

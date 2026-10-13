@@ -253,6 +253,15 @@ static void glide_set(track_t *t, voice_t *v, int glide)
     }
 }
 
+static int32_t voice_micro_pitch16(const track_t *t, uint32_t note)
+{
+    if (micro_active(t)) {
+        int32_t p = clamp(micro_pitch(t, (int32_t)note), 0, 1270000);
+        return p * 16 / 10000;
+    }
+    return (int32_t)note * 16;
+}
+
 static void voice_start(track_t *t, voice_t *v, uint32_t note, uint32_t vel, int glide)
 {
     const engine_t *e = ENGINES[t->engine];
@@ -264,7 +273,7 @@ static void voice_start(track_t *t, voice_t *v, uint32_t note, uint32_t vel, int
     v->active = 1;
     v->stage = 1;
     v->age = ++vage;
-    v->pitch16 = (int32_t)note * 16;
+    v->pitch16 = voice_micro_pitch16(t, note);
     glide_set(t, v, glide);
     v->penv = 32767;                                    /* the pitch envelope starts over (not on legato) */
     if (!sounding) {
@@ -304,7 +313,7 @@ static void mono_play(track_t *t, uint32_t note, uint32_t vel, int retrig, int g
             }
         } else {                                            /* legato: new pitch, same envelope */
             v->note = (uint8_t)note;
-            v->pitch16 = (int32_t)note * 16;
+            v->pitch16 = voice_micro_pitch16(t, note);
             if (vel > v->vel && nv == 1u)
                 v->vel = (uint8_t)vel;
             glide_set(t, v, glide);

@@ -79,7 +79,7 @@ static uint32_t keys_sounding(const track_t *t)
 
 static uint32_t scale_keys(uint32_t root_only)   /* SCL: the keys in the scale (or its roots only) */
 {
-    uint32_t i, m = 0, root = (uint32_t)trk[0].p[P_ROOT] % 12u, mask = SCALE_MASK[clamp(trk[0].p[P_SCALE], 0, NSCALES - 1)];
+    uint32_t i, m = 0, root = (uint32_t)trk[0].p[P_ROOT] % 12u, mask = scale_mask(&trk[0]);
     for (i = 0; i < 27u; i++) {
         uint32_t d = (53u + i - root + 120u) % 12u;
         if ((mask >> d) & 1u && (!root_only || !d))
