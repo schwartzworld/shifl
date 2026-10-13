@@ -15,9 +15,9 @@
  * With -DUP_HOST (host test) only the part above #ifndef UP_HOST is built;
  * it needs nothing but core.h. */
 #define UP_PER_BANK 16u
-#define UP_PMAX 76u                              /* room for P_COUNT to grow */
+#define UP_PMAX 80u                              /* room for P_COUNT to grow */
 #define UP_USED 0xA5u
-#define UP_VER 3u
+#define UP_VER 4u
 #define UP_BANK_MAGIC 0x31425055u                /* "UPB1" */
 typedef struct {
     uint8_t used, ver, engine, np;               /* UP_USED, UP_VER, engine, P_COUNT when stored */
@@ -30,7 +30,7 @@ typedef struct {
     uint16_t rsize, nslot;
     up_rec_t r[UP_PER_BANK];
 } up_bank_t;
-_Static_assert(sizeof(up_rec_t) == 200, "user preset record layout");
+_Static_assert(sizeof(up_rec_t) == 208, "user preset record layout");
 _Static_assert(P_COUNT <= UP_PMAX && P_COUNT < 128, "user preset record: P_COUNT");
 static up_bank_t up_bank[UP_SLOTS / UP_PER_BANK];
 

@@ -72,6 +72,7 @@ enum {                          /* per-track parameters */
     P_VLEAD,                                   /* SLOOP 2.4: chord mode, each chord voiced nearest the last (seq.c) */
     P_SPICE,                                   /* SLOOP 2.5: spice & dice randomisation blend (0=dry, 127=full) */
     P_FATK, P_FDEC, P_FSUS, P_FREL,           /* filter envelope: independent ADSR for the filter cutoff mod */
+    P_LD_K1, P_LD_K2, P_LD_K3, P_LD_K4,       /* LFO depth for home knobs 1-4 (engine-specific) */
     P_E0, P_E1, P_E2, P_E3, P_E4, P_E5, P_E6, P_E7,
     P_E8, P_E9, P_E10, P_E11, P_E12, P_E13, P_E14, P_E15,
     P_COUNT

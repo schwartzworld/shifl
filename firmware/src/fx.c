@@ -2,7 +2,7 @@
  * Copyright (C) 2026 Leo Kuroshita (@kurogedelic), Hügelton Instruments */
 /* Effects: per-track DIST insert, then sends into three shared buses (chorus, tempo delay, reverb).
  * Stereo dry mix; the chorus and the reverb come back in stereo, the delay in the middle. */
-#define DLY_LEN 44100u           /* 1.00 s: 1/4 note accurate >= 60 BPM */
+#define DLY_LEN 44100u           /* 1.00 s at 44.1 kHz; NOT power-of-2 — use explicit wrap, not bitmask */
 #define CHO_LEN 2048u
 static int16_t dly_buf[DLY_LEN] __attribute__((section(".pool")));
 static int16_t cho_buf[CHO_LEN] __attribute__((section(".pool")));
@@ -222,11 +222,11 @@ static void fx_buses(const int32_t *cho_in, const int32_t *dly_in, const int32_t
         }
         fx.cho_w++;
         /* delay with a low-passed feedback (in the middle) */
-        x = dly_buf[(fx.dly_w - dl) & (DLY_LEN - 1u)];
+        x = dly_buf[fx.dly_w >= dl ? fx.dly_w - dl : fx.dly_w + DLY_LEN - dl];
         fx.dly_lp += mulq15(x - fx.dly_lp, col);
-        dly_buf[fx.dly_w & (DLY_LEN - 1u)] =
+        dly_buf[fx.dly_w] =
             (int16_t)clamp((dly_in[i] >> 1) + mulq15(fx.dly_lp, fb), -32768, 32767);
-        fx.dly_w++;
+        if (++fx.dly_w >= DLY_LEN) fx.dly_w = 0;
         x = mulq15(x << 1, dmix);
         yl += x;
         yr += x;

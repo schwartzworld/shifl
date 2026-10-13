@@ -866,6 +866,22 @@ static void draw_columns(void)
         }
         return;
     }
+    if (cur_page()->graph == GR_LDHOME) {       /* LFO K page: depth values with engine knob labels */
+        for (c = 0; c < 4u; c++) {
+            int16_t *vp;
+            const param_desc_t *d = page_desc(cur_page(), c, &vp);
+            int16_t *hp;
+            const param_desc_t *dh = home_param(c, &hp);
+            char val[12]; const char *unit;
+            if (!d || !d->label || d->label[0] == '-') {
+                draw_column(c, "", "", "", C_HI, -1, ICON_AUTO);
+                continue;
+            }
+            param_format(d, *vp, val, &unit);
+            draw_column(c, dh ? dh->label : d->label, val, unit, VAL(c), RATIO(d, *vp), param_icon(d, *vp));
+        }
+        return;
+    }
     if (cur_page()->graph == GR_BROWSE) {
         uint32_t total, cur = preset_pos(&total);
         char u[8];

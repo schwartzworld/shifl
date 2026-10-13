@@ -20,7 +20,7 @@ enum { PX_LOOP4, PX_LOOP8, PX_LOOP16, PX_LOOP32, PX_OCT, PX_STPF, PX_STPS, PX_SL
 static const char *const PUNCH_NAME[PUNCH_NFX] = {
     "LOOP 4",  "LOOP 8",  "LOOP 16", "LOOP 32", "OCT UP",  "STOP F",  "STOP S",  "SLAP",
     "ECHO L",  "ECHO 2",  "ECHO",    "PHONE",   "CRUSH",   "ALIAS",   "GATE",    "GATE 2",
-    "LPF SLW", "LPF FST", "LPF DWN", "LPF UP",  "RETRIG",  "RETRIG F","STUT L",  "STUT LL",
+    "WAH SLW", "WAH MED", "WAH FST", "WAH XFS", "RETRIG",  "RETRIG F","STUT L",  "STUT LL",
     "SHUF",    "OCT DN",  "SCRATCH", "VIBRATO", "GLITCH",  "FEEDBK",  "DISTORT", "BLINDS"};
 static int16_t punch_ring[PUNCH_N] __attribute__((section(".pool")));
 static struct {
@@ -105,11 +105,8 @@ static void punch_start(int32_t fx)
     punch.k = punch.t % len;
     punch.lfo = 0;
     punch.hn = 0;
-    if      (fx == PX_LPFS)  punch.cut = 100 << 8;   /* slow sweep from bright */
-    else if (fx == PX_LPFF)  punch.cut = 100 << 8;   /* fast sweep from bright */
-    else if (fx == PX_LPFD)  punch.cut = 100 << 8;   /* sweep from bright */
-    else if (fx == PX_LPFU)  punch.cut = 20 << 8;    /* sweep from dark */
-    else                     punch.cut = 127 << 8;
+    if (fx >= PX_LPFS && fx <= PX_LPFU) punch.cut = 65 << 8;   /* LFO filter: start at midpoint */
+    else                                 punch.cut = 127 << 8;
     punch.f1l = punch.f2l = punch.f1r = punch.f2r = punch.f3l = punch.f4l = punch.f3r = punch.f4r = 0;
 }
 
@@ -230,15 +227,10 @@ static void punch_process(int32_t *l, int32_t *r, uint32_t n)
         tsvf_coef(&c1, 96 << 8, 90);                  /* PHONE: bandpass < 2.5 kHz */
         tsvf_coef(&c2, 58 << 8, 40);                  /* PHONE: low cut ~500 Hz */
     } else if (punch.cur >= PX_LPFS && punch.cur <= PX_LPFU) {
-        int32_t b = (int32_t)beat;
-        if (punch.cur == PX_LPFS)
-            punch.cut = punch.cut > (20 << 8) ? punch.cut - (int32_t)n * (80 << 8) / (b * 3) : (20 << 8);
-        else if (punch.cur == PX_LPFF)
-            punch.cut = punch.cut > (20 << 8) ? punch.cut - (int32_t)n * (80 << 8) / (b / 2 > 1 ? b / 2 : 1) : (20 << 8);
-        else if (punch.cur == PX_LPFD)
-            punch.cut = punch.cut > (20 << 8) ? punch.cut - (int32_t)n * (80 << 8) / b : (20 << 8);
-        else if (punch.cur == PX_LPFU)
-            punch.cut = punch.cut < (100 << 8) ? punch.cut + (int32_t)n * (80 << 8) / b : (100 << 8);
+        static const uint32_t WAH_RATE[4] = {24347u, 48695u, 97391u, 194782u};  /* 0.25/0.5/1/2 Hz per sample */
+        punch.lfo += WAH_RATE[punch.cur - PX_LPFS] * (uint32_t)n;
+        int32_t s = sine_i(punch.lfo);
+        punch.cut = (65 << 8) + ((s * (20 << 8)) >> 15);   /* sweeps cut 45..85 */
         tsvf_coef(&c1, punch.cut, 20);
     }
     for (i = 0; i < n; i++) {

@@ -53,6 +53,10 @@ static const param_desc_t TP[P_COUNT] = {
     [P_LD_FLT] = PD("FLT", F_BIPCT, -64, 63, 0),
     [P_LD_SHP] = PD("SHP", F_BIPCT, -64, 63, 0),
     [P_LD_AMP] = PD("AMP", F_PCT, 0, 127, 0),
+    [P_LD_K1] = PD("K1", F_BIPCT, -64, 63, 0),
+    [P_LD_K2] = PD("K2", F_BIPCT, -64, 63, 0),
+    [P_LD_K3] = PD("K3", F_BIPCT, -64, 63, 0),
+    [P_LD_K4] = PD("K4", F_BIPCT, -64, 63, 0),
     [P_AMODE] = PE("MODE", N_AMODE, 0),
     [P_ARATE] = PE("RATE", N_DIV, 2),
     [P_AOCT] = PD("OCT", F_INT, 1, 4, 1),
@@ -283,7 +287,7 @@ enum { FAM_HOME, FAM_ENV, FAM_LFO, FAM_FX, FAM_SCL, FAM_EDIT, FAM_GLO, FAM_SAVE,
        FAM_COUNT };
 enum { SC_TRACK, SC_GLOBAL, SC_ENGINE, SC_STEP, SC_TRK, SC_SONG, SC_DRUM, SC_VOICE };
 enum { GR_NONE, GR_ADSR, GR_LFO, GR_STEPS, GR_ARP, GR_SCALE, GR_FX, GR_ROLL, GR_BROWSE, GR_SLOTS, GR_USER, GR_TRK,
-       GR_SLCR };
+       GR_SLCR, GR_LDHOME };
 
 typedef struct {
     const char *title;
@@ -297,6 +301,7 @@ static const page_t PAGES[] = {
     {"FENV", FAM_ENV, SC_TRACK, GR_ADSR, {P_FATK, P_FDEC, P_FSUS, P_FREL}},
     {"LFO", FAM_LFO, SC_TRACK, GR_LFO, {P_LRATE, P_LWAVE, P_LPHASE, P_LFADE}},
     {"LFO DEST", FAM_LFO, SC_TRACK, GR_NONE, {P_LD_PIT, P_LD_FLT, P_LD_SHP, P_LD_AMP}},
+    {"LFO K", FAM_LFO, SC_TRACK, GR_LDHOME, {P_LD_K1, P_LD_K2, P_LD_K3, P_LD_K4}},
     {"FX", FAM_FX, SC_TRACK, GR_FX, {P_DIST, P_CHOR, P_DLY, P_REV}},
     {"SLICER", FAM_FX, SC_TRACK, GR_SLCR, {P_SLCR, P_SLPAT, P_SLRATE, P_SLDEPTH}},   /* drum track too */
     {"DLY", FAM_FX, SC_GLOBAL, GR_NONE, {G_DTIME, G_DFDBK, G_DCOLOR, G_DMIX}},

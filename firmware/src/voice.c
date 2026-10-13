@@ -694,7 +694,25 @@ static uint32_t track_render(track_t *t, int32_t *out, uint32_t n)
         if (v->vel > 110)                               /* accent opens the filter with the amp env */
             m.cutoff += (m.envq15 * 24) >> 7;
         m.shape = (64 << 8) + ((lfo * p[P_LD_SHP]) >> 7) + ((m.envq15 * p[P_ED_SHP]) >> 7);
-        e->render(t, v, out, n, &m);
+        {   /* LFO -> home knobs (K1..K4): temporarily patch t->p then restore after render */
+            int16_t k_save[4];
+            uint32_t kk;
+            for (kk = 0u; kk < 4u; kk++) {
+                uint8_t kid = e->knob[kk];
+                k_save[kk] = t->p[kid];
+                if (p[P_LD_K1 + kk]) {
+                    int16_t lo, hi;
+                    if (kid < (uint8_t)P_E0) { lo = TP[kid].min; hi = TP[kid].max; }
+                    else { const param_desc_t *ep = &e->edit[kid - P_E0];
+                           lo = ep->max > ep->min ? ep->min : 0;
+                           hi = ep->max > ep->min ? ep->max : 127; }
+                    t->p[kid] = (int16_t)clamp((int32_t)k_save[kk] + ((lfo * (int32_t)p[P_LD_K1 + kk]) >> 15), lo, hi);
+                }
+            }
+            e->render(t, v, out, n, &m);
+            for (kk = 0u; kk < 4u; kk++)
+                t->p[e->knob[kk]] = k_save[kk];
+        }
         nr++;
         if (e->ownenv && v->active && e->done && e->done(t, v)) {
             v->active = 0;

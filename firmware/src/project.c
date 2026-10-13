@@ -28,6 +28,7 @@
 #define PROJ_NG_V2 27u                         /* G_COUNT of formats 1 and 2 */
 #define PROJ_NP_V4OLD 61u                      /* P_COUNT before P_SPICE was added */
 #define PROJ_NP_V4NOFENV 70u                   /* P_COUNT before the filter envelope (P_FATK..P_FREL) */
+#define PROJ_NP_V5OLD 74u                      /* P_COUNT before P_LD_K1..K4 were added */
 typedef struct {                               /* a track of the pre-spice V4 format, read only */
     int16_t p[PROJ_NP_V4OLD];
     uint8_t engine, preset;
@@ -53,7 +54,7 @@ typedef struct {                               /* pre-fenv format 4 (FUN4, P_COU
     uint32_t sum;
 } project_v4nofenv_t;
 typedef struct {                               /* one track of format 4 (FUN4, pre-conditional) */
-    int16_t p[P_COUNT];
+    int16_t p[PROJ_NP_V5OLD];                  /* frozen at 74 (same as PROJ_NP_V5OLD) */
     uint8_t engine, preset;
     union { step_t step[NSTEP]; dstep_t dstep[NSTEP]; };
 } proj_trk_v4_t;
@@ -112,7 +113,7 @@ typedef struct {                               /* format 1 (until 0.5 beta), rea
 } project_v1_t;
 _Static_assert(sizeof(project_v2_t) == 2552u && sizeof(project_v1_t) == 688u && sizeof(project_v3_t) == 2584u,
                "formats 1 / 2 / 3 as they were stored");
-project_t proj_slot[6];
+project_t proj_slot[6] __attribute__((section(".pool")));
 
 static uint32_t proj_hash(const void *p, uint32_t n)   /* FNV-1a over n bytes */
 {
@@ -243,16 +244,47 @@ static int proj_from_v4nofenv(project_t *q, const project_v4nofenv_t *v, int n)
     return 1;
 }
 
-/* a V4 track (FUN4, current on-disk before FUN5) -> today's */
+/* a V4 track (FUN4) or old V5 track (pre-P_LD_K1..K4, 74 params) -> today's */
 static void proj_trk_from_v4(proj_trk_t *d, const proj_trk_v4_t *s, int drum)
 {
-    memcpy(d->p, s->p, sizeof d->p);
+    uint32_t k, nc = PROJ_NP_V5OLD - 16u;   /* nc = 58 = old P_E0 position */
+    for (k = 0; k < (uint32_t)P_E0; k++)
+        d->p[k] = k < nc ? s->p[k] : TP[k].def;   /* P_LD_K1..K4 (new 58..61) take defaults */
+    for (k = 0; k < 16u; k++)
+        d->p[P_E0 + k] = s->p[nc + k];             /* P_E0..P_E15 shift from old 58..73 */
     d->engine = drum ? 0u : s->engine;
     d->preset = drum ? 0u : s->preset;
     if (drum)
         memcpy(d->dstep, s->dstep, sizeof(dstep_t) * NSTEP);
     else
         memcpy(d->step, s->step, sizeof(step_t) * NSTEP);
+}
+
+/* old FUN5 format (pre-P_LD_K1..K4, same layout as FUN4 but PROJ_MAGIC) */
+typedef proj_trk_v4_t proj_trk_v5old_t;
+typedef struct {
+    uint32_t magic, size;
+    int16_t g[G_COUNT];
+    uint8_t sel, rsv[3];
+    proj_trk_v5old_t t[NTRK];
+    uint32_t sum;
+} project_v5old_t;
+
+static int proj_from_v5old(project_t *q, const project_v5old_t *v, int n)
+{
+    uint32_t i;
+    if (n != (int)sizeof *v || v->magic != PROJ_MAGIC ||
+        v->size != sizeof *v || v->sum != proj_hash(v, sizeof *v - 4u))
+        return 0;
+    memset(q, 0, sizeof *q);
+    q->magic = PROJ_MAGIC;
+    q->size = sizeof *q;
+    memcpy(q->g, v->g, sizeof q->g);
+    q->sel = v->sel;
+    for (i = 0; i < NTRK; i++)
+        proj_trk_from_v4(&q->t[i], &v->t[i], i == TRK_DRUM);
+    q->sum = proj_sum(q);
+    return 1;
 }
 
 static int proj_from_v4(project_t *q, const project_v4_t *v, int n)
@@ -360,7 +392,8 @@ static int proj_import(project_t *q, const void *b, int n)
         memcpy(q, b, sizeof *q);
         return 1;
     }
-    return proj_from_v4(q, (const project_v4_t *)b, n) ||
+    return proj_from_v5old(q, (const project_v5old_t *)b, n) ||
+           proj_from_v4(q, (const project_v4_t *)b, n) ||
            proj_from_v4nofenv(q, (const project_v4nofenv_t *)b, n) ||
            proj_from_v4old(q, (const project_v4old_t *)b, n) ||
            proj_from_v3(q, (const project_v3_t *)b, n) || proj_from_v2(q, (const project_v2_t *)b, n) ||
@@ -431,6 +464,7 @@ static uint8_t sec_dirty, song_dirty;           /* live sections / the song: in 
 /* slot from flash into RAM (format 5, or an old one converted) */
 static union {
     project_t v5;
+    project_v5old_t v5old;
     project_v4_t v4;
     project_v3_t v3;
     project_v2_t v2;
@@ -507,7 +541,7 @@ static void project_load(uint32_t slot)
  * ~50 ms: never while something plays); loaded at power-on (autosave_resume) */
 #define AUTOSAVE_IDLE 2500u                    /* ms without input */
 #define AUTOSAVE_GAP 20000u                    /* ms between two saves at least */
-static project_t autosave_buf __attribute__((section(".pool")));
+static project_t autosave_buf;
 static uint32_t autosave_hash, autosave_ms, autosave_checked;
 
 static int audio_quiet(void)
