@@ -90,7 +90,7 @@ The FM-1 restarts on the SHIFL logo. The editor is at `http://localhost:8766/web
 3. **Press REC on the "1" after your last bar.** The loop closes: its length sets the tempo, the hits snap to the grid, the loop plays at once.
 4. **REC** again while it plays: you record on top (overdub).
 5. Turn **ALGORITHM** to track **1** (blue, *808 BOOM*), **REC**, play a bass line. Hold **SCL** and press the key of your song (e.g. D); on track 2 hold SCL and turn **KNOB 1** to *7TH*: every white key is now a chord of the key.
-6. Hold **FX** and press a white key for a punch-in effect; still holding FX, turn **KNOB 2** for DUST, **KNOB 3** for DUCK.
+6. Tap **FX** until you reach the **PUNCH FX** page, then press a white key for a punch-in effect. Or hold **FX** and press a key anywhere on any page.
 7. Made a mistake? Hold **EDIT** and press **OCT−**: undo.
 
 ## The colour code
@@ -114,7 +114,7 @@ The tiles are four rows of four, keys 1–4, 5–8, 9–12, 13–16. To find the
 
 | Hold | Keys | KNOB 1 · 2 · 3 · 4 | Tap |
 | --- | --- | --- | --- |
-| **FX** — *punch* | a punch-in effect while the key is held · OCT−: page 2 (16 more FX) · OCT+: latch mode (effects stay on after release) | FILTER · DUST · DUCK · — | FX pages |
+| **FX** — *punch* | a punch-in effect while the key is held · OCT−: page 2 (16 more FX) · OCT+: latch mode (effects stay on after release) | FILTER · DUST · DUCK · — | FX pages, incl. PUNCH FX |
 | **EDIT** — *erase* | erase that sound / note from the pattern | SHIFT · LENGTH ×2 / ½ · TRANSPOSE · — | EDIT pages (drums: grid / kit) |
 | **SEQ** — *steps* | steps 1–16 of the page | SOUND / NOTE · DIV · SWING · LENGTH | SEQ pages (drums: grid / kit) |
 | **SCL** — *key* | the key of the song | CHORD · SCALE · KEYS · TRANSPOSE | SCL pages |
@@ -236,7 +236,7 @@ On the whole mix, after the tracks' sends (FX + KNOB 1–3, or GLO → MASTER):
 - **FILT**: a DJ filter. Left of centre a low-pass closing, right a high-pass opening, centre OFF. It glides (no zipper noise).
 ## Punch-in effects
 
-Hold **FX**, then hold a white key — the 16 white keys from the lowest F to the highest G. The effect runs on the whole mix while the key is held and lets go cleanly when you release it. Loops and the gate are locked to the tempo and start on the grid.
+Tap **FX** to reach the **PUNCH FX** page, or hold **FX** on any page. Press a white key — the effect runs on the whole mix while the key is held and lets go cleanly when you release it. Loops and the gate are locked to the tempo and start on the grid. OCT− toggles between two banks of effects; OCT+ toggles latch mode (effects stay after release).
 
 | Key | Effect | Key | Effect |
 | --- | --- | --- | --- |

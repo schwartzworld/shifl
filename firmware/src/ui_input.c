@@ -656,7 +656,14 @@ static int layers_input(uint32_t note_edges, uint32_t *pressed, uint32_t home)
         held = ly_lock;
         used[held] = 1;
     }
-    punch.hold = (uint8_t)(held == LY_FX);
+    {
+        uint8_t new_pp = (uint8_t)(!ui.home && cur_page()->graph == GR_PUNCH);
+        if (new_pp && !punch_page_on)
+            punch_page_on_t = now;
+        punch_page_on = new_pp;
+        punch_showing = (uint8_t)(punch_page_on && (now - punch_page_on_t >= SHOW_MS));
+    }
+    punch.hold = (uint8_t)(held == LY_FX || punch_page_on);
     if (held != LY_PLAY && held != ui.layer && ui.layer != LY_PLAY)
         ui.layer = (uint8_t)held;                         /* (from one layer straight to another) */
     if (held == LY_PLAY) {
@@ -677,6 +684,22 @@ static int layers_input(uint32_t note_edges, uint32_t *pressed, uint32_t home)
             ui.force = 1;                                 /* the page comes back */
         }
         ui.step_sess = 0;
+        if (punch_page_on) {                              /* PUNCH FX page active with no layer held */
+            {                                             /* KNOB 4: toggle latch mode */
+                int32_t s = panel_enc(EN_K1 + 3u);
+                if (s != 0) {
+                    if (punch.latch_mode) {
+                        punch.latch_mode = 0;
+                        punch.latch = -1;
+                        ui_message("FX LATCH OFF");
+                    } else {
+                        punch.latch_mode = 1;
+                        ui_message("FX LATCH ON");
+                    }
+                }
+            }
+            layer_knobs(LY_FX);                           /* KNOB 1 FILTER · KNOB 2 DUST · KNOB 3 DUCK */
+        }
         return 0;
     }
     ui.layer_used = used[held];
@@ -729,6 +752,7 @@ static int layers_input(uint32_t note_edges, uint32_t *pressed, uint32_t home)
             }
         }
     }
+
     if (held == LY_STEP) {                                /* SEQ + OCT- / OCT+: the page; a step held: OCT- its nudge, locks and
                                                            * condition go, OCT+ its fill condition (normal, fill only, no fill) */
         uint32_t ob = 1u << panel.btn[B_OCTDN], pb = 1u << panel.btn[B_OCTUP];

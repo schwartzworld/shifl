@@ -6,6 +6,33 @@ All committed changes by Ian Schwartz, plus current uncommitted work-in-progress
 
 ## Committed Changes
 
+### Punch FX page bug fixes (`2026-10-13`)
+
+- **Flash on page cycle (A)**: display now waits `SHOW_MS` before switching to the punch tile overlay, preventing a one-frame flash when cycling through FX pages quickly. (`punch_showing` flag gated on dwell time, `punch_page_on_t` tracks entry.)
+- **OCT− now toggles FX bank (B)**: suppressed octave change when `punch_page_on` and `b == B_OCTDN`; OCT− toggles between effect banks as intended. OCT+ still changes octave normally.
+- **Latch on KNOB 4 (C)**: removed OCT+ latch from punch page (OCT+ changes octave normally); any turn of KNOB 4 on the punch screen toggles latch mode.
+- **Knobs working (D)**: `layer_knobs(LY_FX)` now called inside the `held == LY_PLAY` branch when `punch_page_on`, wiring up FILTER (KNOB 1), DUST (KNOB 2), DUCK (KNOB 3). Also fixed: the previous `if (punch_page_on && held == LY_PLAY)` block at the bottom of `layers_input` was dead code (unreachable after the early `return 0`); all punch-page input is now handled correctly before that return.
+
+**Bumped to FM-1_969.**
+
+---
+
+### Punch FX as scrollable page + page 2 cleanup (`2026-10-13`)
+
+The punch-in FX screen is now reachable by tapping FX and scrolling to the **PUNCH FX** page (the fifth page in the FX family, after REV/CHO), in addition to the existing hold-FX shortcut.
+
+- **`params.c`** — Added `GR_PUNCH` graph type; added `{"PUNCH FX", FAM_FX, SC_GLOBAL, GR_PUNCH, ...}` page at the end of the FAM_FX family.
+- **`seq.c`** — Added `punch_page_on` flag (set by ui_input each frame). `key_down()` routes white-key presses to punch effects when `punch_page_on && layer == LY_PLAY`, mirroring the LY_FX case.
+- **`ui_input.c`** — Sets `punch_page_on` and ORs it into `punch.hold`. When on the PUNCH FX page, OCT−/OCT+ toggle the effect page and latch mode (same as when FX is physically held).
+- **`ui_draw.c`** — When `punch_page_on`, temporarily sets `ui.layer = LY_FX` and calls `layer_screen_draw()` so the existing punch tile layout is shown as the page content.
+- **`ui_layers.c`** — Subtitle shows "press key" (vs "hold + key") when on the PUNCH FX page.
+
+Removed 10 rarely-used page-2 effects (RETRIG, RETRIG F, STUT L, STUT LL, SHUF, SCRATCH, VIBRATO, GLITCH, DISTORT, BLINDS) by clearing their names — the slots are blank and available for future effects. Kept: WAH SLW/MED/FST/XFS, OCT DN, FEEDBK (and all 16 page-1 effects unchanged).
+
+**Bumped to FM-1_968.**
+
+---
+
 ### Microtonal engine (`2026-10-13`)
 
 Added full microtonal support: 54 new scale choices beyond the 16 legacy Western scales, covering equal divisions of the octave (EDO), just intonation, historical temperaments, world music scales, and maqam modes.

@@ -662,18 +662,20 @@ static void layer_screen_draw(void)
         static const char *const PSHORT[32] = {
             "loop 4", "loop 8", "loop16", "loop32", "oct up", "stop f", "stop s", "slap",
             "echo l", "echo 2", "echo",   "phone",  "crush",  "alias",  "gate",   "gate 2",
-            "lpf slw","lpf fst","lpf dwn","lpf up",  "retrig","retrig f","stut l","stut ll",
-            "shuf",   "oct dn", "scratch","vibrato", "glitch", "feedbk", "distort","blinds"
+            "lpf slw","lpf med","lpf fst","lpf xfs", "",      "",       "",       "",
+            "",       "oct dn", "",       "",        "",      "feedbk",  "",      ""
         };
         uint32_t pg = (uint32_t)punch.page * 16u;
         col = TE_DRUM;
-        str_cpy(sub, punch.page ? "page 2 + key" : "hold + key", sizeof sub);
+        str_cpy(sub, punch_page_on ? (punch.page ? "press key (p.2)" : "press key") :
+                     (punch.page ? "page 2 + key" : "hold + key"), sizeof sub);
         for (i = 0; i < 16u; i++) {
             int on = punch.req == (int8_t)(i + pg);
+            int empty = !PSHORT[i + pg][0];
             str_cpy(tl[i].lab, PSHORT[i + pg], 8);
-            tl[i].bg = on ? C_WHITE : TE_G1;
-            tl[i].fg = on ? C_BLACK : TE_G4;
-            tl[i].top = on ? 0 : TE_DIM[i / 4u];
+            tl[i].bg = (on && !empty) ? C_WHITE : TE_G1;
+            tl[i].fg = (on && !empty) ? C_BLACK : (empty ? TE_G2 : TE_G4);
+            tl[i].top = (on && !empty) ? 0 : TE_DIM[i / 4u];
         }
         lab[0] = "filter", lab[1] = "dust", lab[2] = "duck";
         {

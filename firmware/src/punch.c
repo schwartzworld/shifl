@@ -10,7 +10,7 @@
 static uint32_t clk_samples(void) { return clk_pos / (uint32_t)song.g[G_BPM]; }   /* samples into the beat */
 #define PUNCH_NFX 32u
 /* Page 1 (physical keys 0-15): 0-3 loops | 4-7 pitch/stop/slap | 8-10 delay tails | 11-13 character | 14-15 gate */
-/* Page 2 (MIDI CC 118-133):   16-19 LPF  | 20-23 retrigger     | 24-27 pitch mangle | 28-31 glitch/texture */
+/* Page 2 (MIDI CC 118-133):   16-19 LPF  | 20-23 (open)        | 24-25 oct dn/(open) | 26-29 feedbk/(open) | 30-31 (open) */
 enum { PX_LOOP4, PX_LOOP8, PX_LOOP16, PX_LOOP32, PX_OCT, PX_STPF, PX_STPS, PX_SLAP,
        PX_ECH4, PX_ECH2, PX_ECHO, PX_TEL, PX_CRUSH, PX_DOWN, PX_GATE, PX_GATE2,
        PX_LPFS, PX_LPFF, PX_LPFD, PX_LPFU,
@@ -20,8 +20,8 @@ enum { PX_LOOP4, PX_LOOP8, PX_LOOP16, PX_LOOP32, PX_OCT, PX_STPF, PX_STPS, PX_SL
 static const char *const PUNCH_NAME[PUNCH_NFX] = {
     "LOOP 4",  "LOOP 8",  "LOOP 16", "LOOP 32", "OCT UP",  "STOP F",  "STOP S",  "SLAP",
     "ECHO L",  "ECHO 2",  "ECHO",    "PHONE",   "CRUSH",   "ALIAS",   "GATE",    "GATE 2",
-    "WAH SLW", "WAH MED", "WAH FST", "WAH XFS", "RETRIG",  "RETRIG F","STUT L",  "STUT LL",
-    "SHUF",    "OCT DN",  "SCRATCH", "VIBRATO", "GLITCH",  "FEEDBK",  "DISTORT", "BLINDS"};
+    "WAH SLW", "WAH MED", "WAH FST", "WAH XFS", "",        "",        "",        "",
+    "",        "OCT DN",  "",        "",        "",        "FEEDBK",  "",        ""};
 static int16_t punch_ring[PUNCH_N] __attribute__((section(".pool")));
 static struct {
     volatile int8_t req;          /* effect asked for by the keys (-1 none), ISR keyboard_block */

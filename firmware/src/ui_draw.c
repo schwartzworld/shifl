@@ -999,11 +999,17 @@ static void ui_draw(void)
         if (!ui.msg_t)
             ui_message("ERASED");
     }
-    if (!ui.menu && (ui.layer != LY_PLAY || ui.hold_kind)) {   /* a layer held / a hold to confirm */
+    if (!ui.menu && (ui.layer != LY_PLAY || punch_showing || ui.hold_kind)) {   /* a layer held / punch page / a hold to confirm */
         if (ui.hold_kind)
             hold_screen_draw();
-        else
+        else if (punch_showing && ui.layer == LY_PLAY) {
+            uint32_t saved_layer = ui.layer;
+            ui.layer = LY_FX;
             layer_screen_draw();
+            ui.layer = saved_layer;
+        } else {
+            layer_screen_draw();
+        }
         ui_timers();
         ui.force = 0;
         return;

@@ -61,6 +61,9 @@ static uint32_t dyn_bit[2];              /* OCT- / OCT+: ghost / hard on the dru
 /* a layer locked open (its button held + HOME tapped: ui_input.c), LY_PLAY = none: the keys and knobs
  * stay in it with the button let go, as if it were held */
 static volatile uint8_t ly_lock = LY_PLAY;
+static volatile uint8_t punch_page_on;   /* set by ui_input when PUNCH FX page is current */
+static volatile uint32_t punch_page_on_t; /* fm1_ms when punch_page_on last went true */
+static volatile uint8_t punch_showing;   /* punch_page_on && dwell >= SHOW_MS (no flash on quick scroll) */
 static uint32_t layer_buttons(void) { return fm1_in.buttons | (ly_lock != LY_PLAY ? ly_bit[ly_lock % LY_COUNT] : 0u); }
 /* the layer the keys are in: the held function button (FX, EDIT, ARP, SEQ, SCL, GLO in that order),
  * else the locked one */
@@ -1154,6 +1157,17 @@ static void key_down(uint32_t k)
         return;
     }
 #endif
+    if (layer == LY_PLAY && punch_page_on) {
+        int32_t fx = punch_key(k) + (int32_t)punch.page * 16;
+        kb_kind[k] = KS_FX;
+        if (fx >= 0 && fx < (int32_t)PUNCH_NFX && PUNCH_NAME[fx][0]) {
+            if (punch.latch_mode)
+                punch.latch = (punch.latch == (int8_t)fx) ? (int8_t)-1 : (int8_t)fx;
+            punch.req = (int8_t)fx;
+            punch.keybit = 1u << k;
+        }
+        return;
+    }
     switch (layer) {
     case LY_FX: {                                     /* FX held: the white keys pick a punch-in effect */
         int32_t fx = punch_key(k) + (int32_t)punch.page * 16;
