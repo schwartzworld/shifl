@@ -1135,7 +1135,9 @@ function dxPack(u) {
   for (let i = 0; i < 10; i++) b[118 + i] = u[145 + i] & 0x7F;
   return b;
 }
-/* Parse a .syx file: returns array of packed 128-byte voices (1 or 32), or null if unrecognised. */
+/* Parse a .syx file: returns array of packed 128-byte voices (1..32), or null if unrecognised.
+ * Handles: standard 32-voice bulk dump (4104 B), standard single-voice dump (163 B), and
+ * non-standard files (e.g. multi-part editor dumps) by scanning for embedded single-voice messages. */
 function parseSyx(bytes) {
   const b = bytes instanceof Uint8Array ? bytes : new Uint8Array(bytes);
   /* bulk 32-voice dump: F0 43 0n 09 20 00 [4096] checksum F7 = 4104 bytes */
@@ -1145,12 +1147,16 @@ function parseSyx(bytes) {
     for (let i = 0; i < 32; i++) voices.push(b.slice(6 + i * 128, 6 + i * 128 + 128));
     return voices;
   }
-  /* single voice dump: F0 43 0n 00 01 1B [155] checksum F7 = 163 bytes */
-  if (b.length >= 163 && b[0] === 0xF0 && b[1] === 0x43 && (b[2] & 0xF0) === 0x00 &&
-      b[3] === 0x00 && b[4] === 0x01 && b[5] === 0x1B && b[162] === 0xF7) {
-    return [dxPack(b.slice(6, 161))];
+  /* scan for single-voice dumps: F0 43 0n 00 01 1B [155] checksum F7 = 163 bytes each */
+  const voices = [];
+  for (let i = 0; i <= b.length - 163; i++) {
+    if (b[i] === 0xF0 && b[i+1] === 0x43 && (b[i+2] & 0xF0) === 0x00 &&
+        b[i+3] === 0x00 && b[i+4] === 0x01 && b[i+5] === 0x1B && b[i+162] === 0xF7) {
+      voices.push(dxPack(b.slice(i+6, i+161)));
+      i += 162;
+    }
   }
-  return null;
+  return voices.length ? voices : null;
 }
 
 /* -------------------------------------------------------------- librarian --- */
@@ -1546,25 +1552,31 @@ function makeMockDevice(opt = {}) {
   };
   const NONE = D("-", F.INT, 0, 0, 0);
   const P = (name, e, env = [10, 70, 90, 60], mono = 0, pat = 0) => ({ name, e, env, mono, pat });
-  const DX7_VOICES = ["EPIANO 1","EPIANO 2","FM BASS","SLAP BASS","SUB BASS","BRASS","STRINGS","GLASS PAD","BELLS","MARIMBA","ORGAN","CLAV","PLUCK","FLUTE","SAW LEAD","KOTO","DEEP SUB","808 SUB","REESE","INIT VOICE",
-    "TINE EP","GLASS BELL","ROUND BASS","BRASS SECT","SOFT PAD","WOOD BARS","DRAWBARS","NYLON PICK",
+  const DX7_VOICES = ["AFRYKA MW","ALEX F. BS","ALEX F. LD","ATTAKER MW","BASS 90 MW","BASS KLAS.","BLUNT BASS","BUTTER BSS",
+    "CHOIR EFKT","CHOIRUS MW","CRUNCHIPS","CYKADY MW","DIRE STRTS","DOTTED SAW","DOWNSAMPLE","DZWONNICA",
+    "ECHOTRIX","EQ BASS MW","FIX PIANO","FLUTE BLOW","FORMANT MW","FORTEPIANO","GEARBOX","GIT BASS",
+    "GITARA AKU","GITARA ELE","HARFA LSR","iPAD MV","KWATRO SAW","LASERDANCE","LFO PLS MW","MACARENA",
+    "METAL BCKT","METALOZA","MONO SQ MW","MUSIC BOX","NIBYLANDIA","NOISE BASS","OX STRINGS","OXYGENE BS",
+    "PHASER STR","PREDATOR B","REVOLUTION","ROLAND BRS","RYTHM BASS","SH LFO MW","SLAP GITAR","SQR BASS",
+    "ST.SPORT80","STRING MW","STRING PAD","SWEEPER MW","TRABOLERO","TSQR DECAY","TUBE BASS","UNI-GUITAR",
+    "UNIBELLA","UNIPULS MW","UNISAW MW","VANGELIS Q","VELO BASS","VOICE PAD","WIOLETTA","WIRE VOICE",
     "U01","U02","U03","U04","U05","U06","U07","U08","U09","U10","U11","U12","U13","U14","U15","U16","U17","U18","U19","U20","U21","U22","U23","U24","U25","U26","U27","U28","U29","U30","U31","U32"];
   const ENG = [
     { name: "DX7", titles: ["VOICE", "SHAPE"], edit: [
         E("VOICE", DX7_VOICES, 0), D("BRITE", F.INT, -40, 40, 0), D("ATK", F.INT, -40, 40, 0), D("DEC", F.INT, -40, 40, 0),
         D("REL", F.INT, -40, 40, 0), D("FDBK", F.INT, -7, 7, 0), D("CUT", F.CUTOFF, 0, 127, 127), D("RESO", F.PCT, 0, 127, 0)],
       presets: [
-        P("EPIANO 1", [0, 0, 0, 0, 0, 0, 127, 0], [0, 0, 127, 0]),
-        P("EPIANO 2", [1, 0, 0, 0, 0, 0, 127, 0], [0, 0, 127, 0]),
-        P("FM BASS", [2, 0, 0, 0, 0, 0, 127, 0], [0, 0, 127, 0], 1),
-        P("BRASS", [5, 0, 0, 0, 0, 0, 127, 0], [0, 0, 127, 0]),
-        P("STRINGS", [6, 0, 0, 0, 0, 0, 127, 0], [0, 0, 127, 0]),
-        P("BELLS", [8, 0, 0, 0, 0, 0, 127, 0], [0, 0, 127, 0]),
-        P("ORGAN", [10, 0, 0, 0, 0, 0, 127, 0], [0, 0, 127, 0]),
-        P("PLUCK", [12, 0, 0, 0, 0, 0, 127, 0], [0, 0, 127, 0]),
-        P("SAW LEAD", [14, 0, 0, 0, 0, 0, 127, 0], [0, 0, 127, 0], 1),
-        P("808 SUB", [17, 0, 0, 0, 0, 0, 127, 0], [0, 0, 127, 0], 1),
-        P("REESE", [18, 0, 0, 0, 0, 0, 127, 0], [0, 0, 127, 0], 1)] },
+        P("FIX PIANO", [18, 0, 0, 0, 0, 0, 127, 0], [0, 0, 127, 0]),
+        P("FORTEPIANO", [21, 0, 0, 0, 0, 0, 127, 0], [0, 0, 127, 0]),
+        P("BASS KLAS.", [5, 0, 0, 0, 0, 0, 127, 0], [0, 0, 127, 0], 1),
+        P("TUBE BASS", [54, 0, 0, 0, 0, 0, 127, 0], [0, 0, 127, 0], 1),
+        P("OX STRINGS", [38, 0, 0, 0, 0, 0, 127, 0], [0, 0, 127, 0]),
+        P("STRING PAD", [50, 0, 0, 0, 0, 0, 127, 0], [0, 0, 127, 0]),
+        P("CHOIR EFKT", [8, 0, 0, 0, 0, 0, 127, 0], [0, 0, 127, 0]),
+        P("ROLAND BRS", [43, 0, 0, 0, 0, 0, 127, 0], [0, 0, 127, 0]),
+        P("MUSIC BOX", [35, 0, 0, 0, 0, 0, 127, 0], [0, 0, 127, 0]),
+        P("LASERDANCE", [29, 0, 0, 0, 0, 0, 127, 0], [0, 0, 127, 0], 1),
+        P("UNISAW MW", [58, 0, 0, 0, 0, 0, 127, 0], [0, 0, 127, 0], 1)] },
     { name: "LOFI", titles: ["CHIP", "MOTN"], edit: [
         E("CHIP", ["4BIT", "4B/2", "8BIT", "1BIT", "STEP"], 0), E("WAVE", ["PLS", "TRI", "SAW", "NOIS", "WRAM"], 0), D("DUTY", F.INT, 0, 127, 64),
         D("CRSH", F.PCT, 0, 127, 0), D("SWP", F.PCT, 0, 127, 0), D("VIB", F.PCT, 0, 127, 0), E("ARP", ["OFF", "OCT", "MAJ", "MIN"], 0), D("TONE", F.PCT, 0, 127, 127)],
