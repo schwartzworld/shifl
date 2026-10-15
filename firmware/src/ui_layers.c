@@ -10,19 +10,11 @@
  *   SCL   any key: the key of the song     knobs: CHORD  SCALE  KEYS  TRANSPOSE
  *   GLO   keys 1..4 mute, 5..8 solo,       knobs: the levels of tracks 1..4
  *         the last white key: tap tempo
- *   SAVE  keys 1..8 play section A..H (on the next bar), 9..16 store the loop into A..H
  * The keys' part runs in the audio ISR (seq.c layer_now: no lag, no lost press); the SEQ, SCL and
- * GLO keys come to the UI through seq.c lk_q. HOLD: REC held clears the track, SAVE held saves the
- * project (a ring fills; let go before and nothing happens). */
+ * GLO keys come to the UI through seq.c lk_q. HOLD: REC held clears the track. */
 static const uint8_t LAYER_BTN[LY_COUNT] = {NB, B_FX, B_EDIT, B_ARP, B_SEQ, B_SCL, B_GLO, B_SAVE};
 static const char *const LAYER_NAME[LY_COUNT] = {"", "punch", "erase", "roll", "chord", "key", "mix", "song"};
-static void section_store(uint32_t s);                  /* project.c */
-static void section_load(uint32_t s);
-static uint8_t sec_armed;                               /* store over a used section: the key again within 3 s */
-static uint32_t sec_armed_ms;
-static uint8_t chain_tap[CHAIN_MAX], chain_taps;        /* the section keys tapped in this SAVE hold (the first
-                                                         * is asked for at once; two or more: a chain on release) */
-static uint8_t lm_chain_tap[CHAIN_MAX], lm_chain_taps;  /* same for live-mode ARP+key chain */
+static uint8_t lm_chain_tap[CHAIN_MAX], lm_chain_taps;  /* live-mode ARP+key chain */
 #define TAP_MS 450u                                     /* a press shorter than this, untouched: a tap */
 #define SHOW_MS 140u                                    /* the layer shows after this (a tap does not flash it) */
 
@@ -415,51 +407,6 @@ static void layer_key(uint32_t layer, uint32_t k, uint32_t down)
         }
         return;
     }
-    case LY_SONG: {                                     /* sections A..F: 0-5 play, 6=patch, 7=empty, 8-13 store */
-        char b[2] = {0, 0};
-        if (w < 0)
-            return;
-        if (w < (int)ARR_SCENES) {
-            b[0] = (char)('A' + w);
-            if (arrangement_clock.running) {
-                ui_message("SONG PLAYS");
-            } else if (!((arrangement_ready() >> w) & 1u)) {
-                ui_say("EMPTY ", b);
-            } else if (song.playing) {
-                if (!chain_taps) {                          /* the first tap: as ever, and any chain stops */
-                    fm1_irq_off();
-                    chain_n = 0;
-                    live_req = (int8_t)w;
-                    fm1_irq_on();
-                    ui_say("NEXT: ", b);
-                } else {
-                    ui.msg_t = 0;                           /* (the sub line shows the chain) */
-                }
-                if (chain_taps < CHAIN_MAX && (fm1_in.buttons & ly_bit[LY_SONG]))
-                    chain_tap[chain_taps++] = (uint8_t)w;   /* (SAVE held: more taps make a chain) */
-            } else {
-                section_load((uint32_t)w);
-                ui_say("LOADED ", b);
-            }
-        } else if (w == (int)ARR_SCENES) {
-            up_ui(2u, ui.uslot);                        /* quick save: overwrite current user preset slot */
-        } else if (w > (int)ARR_SCENES + 1) {
-            uint32_t s = (uint32_t)w - ((uint32_t)ARR_SCENES + 2u);
-            if (s < (uint32_t)ARR_SCENES) {
-                b[0] = (char)('A' + s);
-                if (((arrangement_ready() >> s) & 1u) && !(sec_armed == s + 1u && fm1_ms - sec_armed_ms < 3000u)) {
-                    sec_armed = (uint8_t)(s + 1u);
-                    sec_armed_ms = fm1_ms;
-                    ui_say("AGAIN: ", b);
-                } else {
-                    sec_armed = 0;
-                    section_store(s);
-                    ui_say("SAVED ", b);
-                }
-            }
-        }
-        return;
-    }
     case LY_MIX:
         if (w >= 0 && w < 4) {
             trk[w].p[P_MUTE] = (int16_t)!trk[w].p[P_MUTE];
@@ -476,34 +423,6 @@ static void layer_key(uint32_t layer, uint32_t k, uint32_t down)
     default:
         return;
     }
-}
-
-/* SAVE let go (ui_input.c): two or more section taps while it was held play as a chain, from the one
- * already asked for (the first), each for the bars of its pattern, looped; one tap was a plain jump */
-static void chain_release(void)
-{
-    uint32_t i;
-    if (chain_taps >= 2u && song.playing && !arrangement_clock.running) {
-        fm1_irq_off();
-        for (i = 0; i < chain_taps && i < CHAIN_MAX; i++)
-            chain_sec[i] = chain_tap[i];
-        chain_i = 0;
-        chain_bars = (uint8_t)section_bars(chain_tap[0]);   /* (the first plays already, or is asked for) */
-        chain_n = (uint8_t)(chain_taps < CHAIN_MAX ? chain_taps : CHAIN_MAX);
-        fm1_irq_on();
-    }
-    chain_taps = 0;
-}
-/* "chain A B B C": the chain being built (SAVE held) or playing */
-static void chain_sub(char *sub, uint32_t n)
-{
-    uint32_t i, m = chain_taps >= 2u ? chain_taps : chain_n, k = 5;
-    str_cpy(sub, "chain", n);
-    for (i = 0; i < m && i < CHAIN_MAX && k + 2u < n; i++) {
-        sub[k++] = ' ';
-        sub[k++] = (char)('A' + ((chain_taps >= 2u ? chain_tap[i] : chain_sec[i]) & 3u));
-    }
-    sub[k] = 0;
 }
 
 /* ARP let go: two or more entry taps while it was held play as a live-mode chain, each for the entry's
@@ -1005,41 +924,6 @@ static void layer_screen_draw(void)
             fmt_int(v[i], (int32_t)lv * 100 / 127);
             ratio[i] = (int32_t)lv * 1000 / 127;
         }
-        break;
-    }
-    case LY_SONG: {                                     /* A..F: 0-5 play, 6=patch, 7=empty, 8-13 store */
-        uint32_t ready = arrangement_ready();
-        static const char *const SL[ARR_SCENES] = {"A", "B", "C", "D", "E", "F"};
-        col = C_WHITE;
-        if (srec == 2u) {
-            char b[8];
-            str_cpy(sub, "rec ", sizeof sub);
-            str_cpy(sub + 4, SL[srec_e[srec_n ? srec_n - 1u : 0u].track[0] & 7u], 2);
-            str_cpy(sub + str_len(sub), " bar ", 6);
-            fmt_int(b, srec_n ? srec_e[srec_n - 1u].bars + 1 : 1);
-            str_cpy(sub + str_len(sub), b, 6);
-        } else if (chain_taps >= 2u || chain_n) {
-            chain_sub(sub, sizeof sub);                 /* "chain A B B C" */
-        } else {
-            str_cpy(sub, arrangement_enabled ? "song mode" : srec ? "rec armed" : "play  store", sizeof sub);
-        }
-        for (i = 0; i < ARR_SCENES; i++) {
-            int used = (ready >> i) & 1u, playing = live_sec == (int8_t)i && !arrangement_clock.running;
-            int next = live_req == (int8_t)i ||
-                       (chain_n && live_req < 0 && (chain_sec[((chain_i + 1u) % chain_n) % CHAIN_MAX] & 3u) == i);
-            str_cpy(tl[i].lab, SL[i], 8);
-            tl[i].bg = used ? (playing ? TE_COL[i & 3u] : TE_DIM[i & 3u]) : TE_G1;
-            tl[i].fg = used ? C_BLACK : TE_G3;
-            tl[i].top = next ? C_WHITE : 0;
-            str_cpy(tl[8 + i].lab, "save A", 8);
-            tl[8 + i].lab[5] = (char)('A' + i);
-            tl[8 + i].bg = sec_armed == i + 1u ? TE_RED : TE_G1;
-            tl[8 + i].fg = sec_armed == i + 1u ? C_BLACK : TE_G4;
-            tl[8 + i].top = TE_DIM[i & 3u];
-        }
-        str_cpy(tl[6].lab, "patch", 8);               /* quick save current preset to user slot */
-        tl[6].bg = TE_G2;
-        tl[6].fg = TE_G4;
         break;
     }
     default:

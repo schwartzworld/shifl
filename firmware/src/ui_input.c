@@ -564,8 +564,10 @@ static void layer_tap(uint32_t layer)
         open_family(layer == LY_STEP ? FAM_SEQ : FAM_EDIT);
         break;
     case LY_ROLL:
-        if (on_song_page())
-            song_clone_fragment();
+        if (on_song_page()) {
+            if (song_delete_armed) song_delete_armed = 0;
+            else song_clone_fragment();
+        }
         else if (live_mode) {
             live_mode = 0;
             live_select = 0;
@@ -627,6 +629,7 @@ static int layers_input(uint32_t note_edges, uint32_t *pressed, uint32_t home)
 {
     static uint8_t down[LY_COUNT], used[LY_COUNT];
     static uint32_t t0[LY_COUNT];
+    static uint8_t song_nav_done;
     uint32_t l, now = fm1_ms, held = LY_PLAY, eat = 0;
     if (ly_lock != LY_PLAY) {
         uint32_t keep = 1u << panel.btn[B_PLAY] | 1u << panel.btn[B_REC] | 1u << panel.btn[B_OCTDN] | 1u << panel.btn[B_OCTUP];
@@ -652,7 +655,7 @@ static int layers_input(uint32_t note_edges, uint32_t *pressed, uint32_t home)
         if (!d && down[l] && !used[l] && now - t0[l] < TAP_MS && !ui.menu && !ui.confirm)
             layer_tap(l);
         if (!d && down[l] && l == LY_SONG)
-            chain_release();                              /* SAVE let go: commit a quick chain if ≥2 taps */
+            song_nav_done = 0;
         if (!d && down[l] && l == LY_ROLL)
             lm_chain_release();                           /* ARP let go: commit a live-mode chain if ≥2 taps */
         down[l] = (uint8_t)d;
@@ -733,12 +736,20 @@ static int layers_input(uint32_t note_edges, uint32_t *pressed, uint32_t home)
     if (ui.layer_used)
         used[held] = 1;
     if (ui.layer == LY_PLAY && (used[held] || now - t0[held] >= SHOW_MS)) {
-        ui.layer = (uint8_t)held;                         /* show it (not for a quick tap) */
-        if (held == LY_STEP) {
-            if ((uint32_t)ui.chord_page * 16u >= (uint32_t)clen)
-                ui.chord_page = 0;
-            if (ui.chord_cursor >= (uint32_t)clen)
-                ui.chord_cursor = (uint8_t)(clen > 0u ? clen - 1u : 0u);
+        if (held == LY_SONG) {
+            if (!song_nav_done) {
+                open_family(FAM_SAVE);
+                song_nav_done = 1;
+                used[held] = 1;
+            }
+        } else {
+            ui.layer = (uint8_t)held;                     /* show it (not for a quick tap) */
+            if (held == LY_STEP) {
+                if ((uint32_t)ui.chord_page * 16u >= (uint32_t)clen)
+                    ui.chord_page = 0;
+                if (ui.chord_cursor >= (uint32_t)clen)
+                    ui.chord_cursor = (uint8_t)(clen > 0u ? clen - 1u : 0u);
+            }
         }
     }
     if (held == LY_ERASE) {                               /* EDIT + OCT- / OCT+: undo / redo */

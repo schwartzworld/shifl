@@ -4,6 +4,7 @@
  * (A-D) or MUTE. All changes and flash saves require stopped transport. */
 static uint8_t song_cursor, song_sub;
 static uint8_t song_store_armed, song_load_armed;
+static uint8_t song_delete_armed;
 static uint32_t song_store_deadline;
 
 static uint32_t song_patch_count(void)
@@ -72,6 +73,25 @@ static void song_clone_fragment(void)
     arrangement.count++;
     song_cursor++;
     ui_message("CLONED");
+}
+
+/* Remove the current fragment, shifting subsequent ones left. */
+static void song_delete_fragment(void)
+{
+    uint32_t i;
+    if (song.playing || transport_req) { ui_message("STOP FIRST"); return; }
+    if (arrangement.count <= 1u) { ui_message("ONLY STEP"); return; }
+    for (i = (uint32_t)song_cursor; i < arrangement.count - 1u; i++) {
+        arrangement.entry[i] = arrangement.entry[i + 1u];
+        arrangement.patch[i] = arrangement.patch[i + 1u];
+        memcpy(arr_song_vol[i], arr_song_vol[i + 1u], ARR_TRACKS);
+        memcpy(arr_song_slicer[i], arr_song_slicer[i + 1u], ARR_TRACKS);
+        arr_song_chord[i] = arr_song_chord[i + 1u];
+    }
+    arrangement.count--;
+    if (song_cursor >= arrangement.count)
+        song_cursor = (uint8_t)(arrangement.count - 1u);
+    ui_message("DELETED");
 }
 
 /* SONG: each entry as a header row (bars) + four track rows */
@@ -320,7 +340,7 @@ static void song_screen_draw(void)
                 cv_text((int32_t)i * 60 + 30 - text_w(&FONT_S, L[i]) / 2, 8, &FONT_S, L[i], RGB(118, 118, 126));
             }
             cv_text(4, 22, &FONT_S, "rec: store   save: chain", RGB(196, 196, 204));
-            cv_text(4, 33, &FONT_S, "oct-: loop/song/live  arp: clone", RGB(118, 118, 126));
+            cv_text(4, 33, &FONT_S, "oct-: mode  arp: clone  +rec: del", RGB(118, 118, 126));
         }
         cv_blit(0, 198);
     }
@@ -348,6 +368,9 @@ static void song_screen_input(uint32_t pressed, uint32_t home)
             }
         } else if (b == B_SEQ) {
             open_family(FAM_SEQ);
+        } else if (b == B_REC && ui.layer == LY_ROLL) {
+            song_delete_fragment();
+            song_delete_armed = 1;
         } else if (b == B_SAVE || b == B_REC || b == B_OCTDN || b == B_OCTUP) {
             uint32_t scene = 0;
             if (song.playing || transport_req) { ui_message("STOP FIRST"); continue; }
