@@ -12,12 +12,14 @@
   /* Fukiai: Hügelton Instruments' icon font (MIT, FUKIAI-LICENSE.txt). Icons are text in .ic spans;
      they stay hidden until the face has loaded (html.fk), so a missing font never shows boxes. */
   @font-face { font-family: "Fukiai"; src: url("fukiai.ttf") format("truetype"); font-display: block; unicode-range: U+EA00-EB09; }
-  :root { --bg: #fff; --fg: #000; --dim: #777; --line: #ccc; }
-  @media (prefers-color-scheme: dark) {
-    :root:not([data-theme="light"]) { --bg: #000; --fg: #fff; --dim: #888; --line: #444; }
+  :root { --bg: #291720; --fg: #f2f2f2; --dim: #a090a0; --line: #4a2a3a;
+          --accent: #D90368; --accent2: #FB8B24; --teal: #04A777; }
+  @media (prefers-color-scheme: light) {
+    :root:not([data-theme="dark"]) { --bg: #f9f0f5; --fg: #1a0a14; --dim: #7a5070; --line: #d9b8cc; }
   }
-  :root[data-theme="dark"] { --bg: #000; --fg: #fff; --dim: #888; --line: #444; }
-  html { color-scheme: light dark; }
+  :root[data-theme="light"] { --bg: #f9f0f5; --fg: #1a0a14; --dim: #7a5070; --line: #d9b8cc; }
+  :root[data-theme="dark"] { --bg: #291720; --fg: #f2f2f2; --dim: #a090a0; --line: #4a2a3a; }
+  html { color-scheme: dark light; }
   body { margin: 0; background: var(--bg); color: var(--fg);
          font: 13px/1.4 -apple-system, BlinkMacSystemFont, "Helvetica Neue", Arial, sans-serif;
          font-variant-numeric: tabular-nums; }
@@ -29,6 +31,7 @@
   .lang { float: right; font-size: 12px; color: var(--dim); text-decoration: underline; background: none; padding: 0; }
   button { font: inherit; background: var(--fg); color: var(--bg); border: 0; padding: 2px 10px; cursor: pointer; }
   button:disabled { opacity: .3; cursor: default; }
+  button#connect { background: var(--accent); color: #fff; }
   button.lang { color: var(--dim); background: none; }
   select, input[type=text], input[type=number], input[type=search] {
     font: inherit; color: var(--fg); background: var(--bg); border: 1px solid var(--line); padding: 1px 3px; border-radius: 0; }
@@ -123,7 +126,7 @@
   .tabs { display: flex; flex-wrap: wrap; gap: 0; border-bottom: 1px solid var(--fg); margin: 6px 0 0; }
   .tabs button { background: none; color: var(--dim); padding: 4px 10px; border: 1px solid transparent; border-bottom: 0; white-space: nowrap; }
   .tabs button:hover { color: var(--fg); }
-  .tabs button[aria-selected="true"] { background: var(--fg); color: var(--bg); }
+  .tabs button[aria-selected="true"] { background: var(--accent); color: #fff; border-color: var(--accent); }
   .trackbar { display: flex; flex-wrap: wrap; gap: 4px 8px; align-items: center; padding: 6px 0; border-bottom: 1px solid var(--line); }
   .seg { display: inline-flex; flex-wrap: wrap; }
   .seg button, button.tog { background: var(--bg); color: var(--fg); border: 1px solid var(--fg); padding: 1px 10px; }
@@ -213,7 +216,9 @@
           <button id="factlib" data-t="factoryToLib" data-ic="symbol_folder"></button></p>
         <p class="bar"><button id="savefile" data-t="saveFile" data-ic="symbol_download"></button>
           <button id="loadfile" data-t="loadFile" data-ic="symbol_upload"></button>
-          <input type="file" id="file" accept=".json,application/json" hidden></p>
+          <input type="file" id="file" accept=".json,application/json" hidden>
+          <button id="dx7voiceimp" data-t="dx7VoiceImport" data-ic="symbol_upload" hidden></button>
+          <input type="file" id="dx7voicefile" accept=".syx" hidden></p>
       </div>
     </div>
     <p class="dim" id="drumnote" data-t="drumNote" hidden></p>
@@ -288,6 +293,14 @@
             <span class="dim" data-t="dndHelp"></span>
           </p>
         </div>
+        <div style="margin-top:12px">
+          <h2 data-t="syxTitle" data-ic="note_eight"></h2>
+          <p class="dim" data-t="syxHelp"></p>
+          <p class="bar">
+            <button id="syximport" data-t="syxImport" data-ic="symbol_upload"></button>
+            <input type="file" id="syxfile" accept=".syx" hidden>
+          </p>
+        </div>
       </div>
     </div>
   </section>
@@ -336,7 +349,10 @@ const CMD = { INFO: 1, GET: 2, SET: 3, DUMP: 4, DESC: 5, STEP_GET: 6, STEP_SET: 
   TRACK: 27, TRACK_MIX: 28, TRACK_DUMP: 29, TRACK_STEP: 30,
   TRACK_PARAM: 31, TRACK_CHANGED: 32,
   DRUM_STEP: 33,
-  BK_LIST: 34, BK_GET: 35, BK_PUT: 36 };              /* v6: backup / restore */
+  BK_LIST: 34, BK_GET: 35, BK_PUT: 36,                /* v6: backup / restore */
+  LOCK_GET: 37, LOCK_SET: 38, MICRO_GET: 39, MICRO_SET: 40, /* v7 */
+  FILL_GET: 41, FILL_SET: 42,                         /* v8 */
+  FM6_GET: 43, FM6_PUT: 44 };                         /* v9: DX7 user voice bank */
 /* frames the device sends on its own (while WATCH is on); never replies */
 const PUSH = new Set([CMD.CHANGED, CMD.RELOAD, CMD.STEP_CHANGED, CMD.TRACK_CHANGED]);
 /* user preset bank: name 1..12 printable ASCII, a 16-step pattern of (note, flags 1 acc 2 slide 4 tie) */
@@ -507,6 +523,9 @@ const parse = {
   /* v4: a parameter of any track (the selection stays), and its push for a track that is not selected */
   [CMD.TRACK_PARAM](a) { const r = new Reader(a); return { track: r.b(), id: r.b(), value: r.v() }; },
   [CMD.TRACK_CHANGED](a) { return parse[CMD.TRACK_PARAM](a); },
+  /* v9: DX7 user voice bank */
+  [CMD.FM6_GET](a) { return { slot: a[0], rc: a[1], voice: a.length > 2 ? a.slice(2) : null }; },
+  [CMD.FM6_PUT](a) { return { slot: a[0], rc: a[1] }; },
 };
 
 /* a name the device accepts: printable ASCII, 1..12 characters */
@@ -567,6 +586,9 @@ const req = {
   bkData: (id, off, bytes) => [CMD.BK_PUT, [1, id & 0x7F, ...u35enc(off), ...pack7(bytes)]],
   bkCommit: (id) => [CMD.BK_PUT, [2, id & 0x7F]],
   bkAbort: (id) => [CMD.BK_PUT, [3, id & 0x7F]],
+  /* v9: DX7 user voice bank — voice is a 128-byte packed DX7 voice (all bytes 0-127) */
+  fm6Get: (slot) => [CMD.FM6_GET, [slot & 0x7F]],
+  fm6Put: (slot, voice128) => [CMD.FM6_PUT, [slot & 0x7F, ...Array.from(voice128).map((b) => b & 0x7F)]],
 };
 
 /* which reply belongs to which request (the device echoes these) */
@@ -583,6 +605,7 @@ function replyMatches(cmd, args, a) {
     case CMD.TRACK_STEP: case CMD.TRACK_PARAM: return a[0] === args[0] && a[1] === args[1];
     case CMD.BK_GET: return a[0] === args[0] && [0, 1, 2, 3, 4].every((k) => a[2 + k] === args[1 + k]);
     case CMD.BK_PUT: return a[0] === args[0] && a[1] === args[1];
+    case CMD.FM6_GET: case CMD.FM6_PUT: return a[0] === args[0];
     default: return true;
   }
 }
@@ -1059,6 +1082,48 @@ function zipStore(files) {
   let o = 0;
   for (const p of [...parts, ...dir, end]) { out.set(p, o); o += p.length; }
   return out;
+}
+
+/* ---------------------------------------------------------- DX7 sysex --- */
+/* Pack 155 unpacked bytes (from a single-voice .syx) to the 128-byte packed format dx_user_put expects.
+ * Matches dx_pack() in eng_dx7.c exactly. */
+function dxPack(u) {
+  const b = new Uint8Array(128);
+  for (let op = 0; op < 6; op++) {
+    const o = op * 21, q = op * 17;
+    for (let i = 0; i < 11; i++) b[q + i] = u[o + i] & 0x7F;
+    b[q + 11] = (u[o + 11] | u[o + 12] << 2) & 0x7F;
+    b[q + 12] = (u[o + 13] | u[o + 20] << 3) & 0x7F;
+    b[q + 13] = (u[o + 14] | u[o + 15] << 2) & 0x7F;
+    b[q + 14] = u[o + 16] & 0x7F;
+    b[q + 15] = (u[o + 17] | u[o + 18] << 1) & 0x7F;
+    b[q + 16] = u[o + 19] & 0x7F;
+  }
+  for (let i = 0; i < 8; i++) b[102 + i] = u[126 + i] & 0x7F;
+  b[110] = u[134] & 0x7F;
+  b[111] = (u[135] | u[136] << 3) & 0x7F;
+  b[112] = u[137] & 0x7F; b[113] = u[138] & 0x7F; b[114] = u[139] & 0x7F; b[115] = u[140] & 0x7F;
+  b[116] = (u[141] | u[142] << 1 | u[143] << 4) & 0x7F;
+  b[117] = u[144] & 0x7F;
+  for (let i = 0; i < 10; i++) b[118 + i] = u[145 + i] & 0x7F;
+  return b;
+}
+/* Parse a .syx file: returns array of packed 128-byte voices (1 or 32), or null if unrecognised. */
+function parseSyx(bytes) {
+  const b = bytes instanceof Uint8Array ? bytes : new Uint8Array(bytes);
+  /* bulk 32-voice dump: F0 43 0n 09 20 00 [4096] checksum F7 = 4104 bytes */
+  if (b.length >= 4104 && b[0] === 0xF0 && b[1] === 0x43 && (b[2] & 0xF0) === 0x00 &&
+      b[3] === 0x09 && b[4] === 0x20 && b[5] === 0x00 && b[4103] === 0xF7) {
+    const voices = [];
+    for (let i = 0; i < 32; i++) voices.push(b.slice(6 + i * 128, 6 + i * 128 + 128));
+    return voices;
+  }
+  /* single voice dump: F0 43 0n 00 01 1B [155] checksum F7 = 163 bytes */
+  if (b.length >= 163 && b[0] === 0xF0 && b[1] === 0x43 && (b[2] & 0xF0) === 0x00 &&
+      b[3] === 0x00 && b[4] === 0x01 && b[5] === 0x1B && b[162] === 0xF7) {
+    return [dxPack(b.slice(6, 161))];
+  }
+  return null;
 }
 
 /* -------------------------------------------------------------- librarian --- */
@@ -2108,6 +2173,10 @@ const TEXT = {
     bkStale: "本体の内容が途中で変わりました。もう一度バックアップしてください: ", bkRead: "読み取りエラー: ", bkWrite: "書き込みエラー: ", bkRc4: "フラッシュがありません",
     system: "システム", firmware: "ファームウェア", sync: "同期", tracksN: "トラック", stepsN: "ステップ数", enginesL: "エンジン",
     smpSlots: "サンプルスロット", userBank: "ユーザープリセット", none: "なし",
+    syxTitle: "DX7 ボイスバンク", syxHelp: "Dexed / DX7 の 32 ボイス .syx ファイルを読み込んで、本体の U01〜U32 を差し替えます。接続中のみ有効です。",
+    syxImport: ".syx を読み込む", syxSending: "ボイスバンクを送信中", syxDone: "ボイスバンクを読み込みました",
+    syxBad: "認識できる DX7 .syx ファイルではありません",
+    dx7VoiceImport: ".syx からボイスを読込", dx7SrcPrompt: "ファイル内のボイス番号 (1–32):", dx7DstPrompt: "書き込み先のユーザースロット (1–32):", dx7BadSlot: "無効なスロット番号です",
   },
   en: {
     other: "日本語", connect: "Connect", disconnect: "Disconnect", mock: "Mock device (no hardware)",
@@ -2188,6 +2257,10 @@ const TEXT = {
     bkStale: "The FM-1 changed during the backup; back up again: ", bkRead: "Read error: ", bkWrite: "Write error: ", bkRc4: "No flash",
     system: "System", firmware: "Firmware", sync: "Sync", tracksN: "Tracks", stepsN: "Steps", enginesL: "Engines",
     smpSlots: "Sample slots", userBank: "User presets", none: "none",
+    syxTitle: "DX7 Voice Bank", syxHelp: "Import a Dexed / DX7 32-voice .syx file to replace all 32 device voices (U01–U32). Requires a connected device.",
+    syxImport: "Import .syx", syxSending: "Loading voice bank", syxDone: "Voice bank loaded",
+    syxBad: "Not a recognised DX7 .syx file",
+    dx7VoiceImport: "Import voice (.syx)", dx7SrcPrompt: "Which voice from the file? (1–32):", dx7DstPrompt: "Write to which user slot? (1–32):", dx7BadSlot: "Invalid slot number",
   },
 };
 let lang = (navigator.language || "en").toLowerCase().startsWith("ja") ? "ja" : "en";
@@ -2540,6 +2613,8 @@ function updateBrowser() {
   $("groups").hidden = drum;
   $("ctlhelp").hidden = drum;
   if (document.activeElement !== sel) sel.value = drum ? "" : String(e);
+  const dx7eng = dev.info.engines.indexOf("DX7");
+  $("dx7voiceimp").hidden = !(dx7eng >= 0 && e === dx7eng && !drum && dev.info.proto >= 9);
   const ps = $("preset");
   const names = dev.names[e] || [];
   if (ps.dataset.engine !== String(e)) {
@@ -4386,6 +4461,74 @@ $("bkexport").addEventListener("click", () => libOp(async () => {
   download(`felucca-bank-${today()}.json`, libraryFile("bank", out, libCtx()));
   sayK("ready");
 }));
+
+/* shared: after FM6_PUT finishes, refresh DX7 names and preset dropdown */
+async function dx7NamesRefresh() {
+  const dx7 = dev.info.engines.indexOf("DX7");
+  if (dx7 < 0) return;
+  const r = parse[CMD.NAMES](await rq(req.names(dx7)));
+  dev.names[dx7] = r.names;
+  dev.titles[dx7] = r.titles;
+  delete $("preset").dataset.engine;
+  updateBrowser();
+}
+
+$("syximport").addEventListener("click", () => {
+  if (!dev) { sayK("nodevice"); return; }
+  $("syxfile").value = "";
+  $("syxfile").click();
+});
+$("syxfile").addEventListener("change", async () => {
+  const f = $("syxfile").files[0];
+  if (!f || !dev) return;
+  const voices = parseSyx(new Uint8Array(await f.arrayBuffer()));
+  if (!voices || voices.length !== 32) {
+    sayK("badfile", `${f.name}: ${t("syxBad")}`);
+    return;
+  }
+  sayK("syxSending");
+  try {
+    for (let i = 0; i < 32; i++) {
+      if (i % 8 === 0) sayK("syxSending", ` ${i + 1}/32`);
+      const r = parse[CMD.FM6_PUT](await rq(req.fm6Put(i, voices[i]), { timeout: 500 }));
+      if (r.rc) throw new Error(`slot ${i + 1} write failed`);
+    }
+    await dx7NamesRefresh();
+    sayK("syxDone");
+  } catch (e) { sayK("error", e.message); }
+});
+
+/* Sound tab: import a single DX7 voice from a .syx into a chosen user slot */
+$("dx7voiceimp").addEventListener("click", () => { $("dx7voicefile").value = ""; $("dx7voicefile").click(); });
+$("dx7voicefile").addEventListener("change", async () => {
+  const f = $("dx7voicefile").files[0];
+  if (!f || !dev) return;
+  const voices = parseSyx(new Uint8Array(await f.arrayBuffer()));
+  if (!voices) { sayK("badfile", `${f.name}: ${t("syxBad")}`); return; }
+  /* pick source voice if bulk */
+  let srcIdx = 0;
+  if (voices.length > 1) {
+    const s = prompt(t("dx7SrcPrompt"), "1");
+    if (s == null) return;
+    srcIdx = Math.max(0, Math.min(31, parseInt(s, 10) - 1));
+    if (isNaN(srcIdx)) { sayK("badfile", t("dx7BadSlot")); return; }
+  }
+  /* pick destination slot; default to current user voice if applicable */
+  const curVoice = dev.dump.p[dev.info.pe0] ?? 0;
+  const names = dev.names[dev.dump.engine] || [];
+  const defSlot = /^U\d\d$/.test(names[curVoice]) ? parseInt(names[curVoice].slice(1), 10) : 1;
+  const ds = prompt(t("dx7DstPrompt"), String(defSlot));
+  if (ds == null) return;
+  const dstSlot = Math.max(0, Math.min(31, parseInt(ds, 10) - 1));
+  if (isNaN(dstSlot)) { sayK("badfile", t("dx7BadSlot")); return; }
+  sayK("syxSending");
+  try {
+    const r = parse[CMD.FM6_PUT](await rq(req.fm6Put(dstSlot, voices[srcIdx]), { timeout: 500 }));
+    if (r.rc) throw new Error(t("flashFail").replace("{rc}", r.rc));
+    await dx7NamesRefresh();
+    sayK("syxDone");
+  } catch (e) { sayK("error", e.message); }
+});
 
 $("connect").addEventListener("click", () => {
   if (dev) { wantConnected = false; disconnect(); } else connect();

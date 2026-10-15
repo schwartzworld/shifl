@@ -7,46 +7,51 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>SHIFL installer</title>
 <style>
-  :root { --bg: #000; --fg: #f2f2f2; --dim: #8a8a92; --tile: #16161a; --line: #2a2a30;
-          --blue: #287cff; --green: #1ecc70; --yellow: #ffc618; --orange: #ff621a; --red: #ff2c34; }
-  :root[data-theme="light"] { --bg: #f4f4f2; --fg: #111; --dim: #666; --tile: #e6e6e2; --line: #d0d0cc; }
+  :root { --bg: #291720; --fg: #f2f2f2; --dim: #a090a0; --tile: #3a1f2e; --line: #4a2a3a;
+          --pink: #D90368; --orange: #FB8B24; --purple: #820263; --teal: #04A777; --yellow: #ffc618; }
+  :root[data-theme="light"] { --bg: #f9f0f5; --fg: #1a0a14; --dim: #7a5070; --tile: #eedde8; --line: #d9b8cc; }
   * { box-sizing: border-box; }
   body { margin: 0; background: var(--bg); color: var(--fg);
          font: 15px/1.6 "Helvetica Neue", -apple-system, BlinkMacSystemFont, Arial, sans-serif; }
   main { max-width: 560px; margin: 0 auto; padding: 32px 16px 48px; }
   .top { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
-  .logo svg { display: block; width: 220px; height: auto; }
-  .logo rect:first-child { fill: transparent; }
+  .logo svg, .logo img, .logo image { display: block; width: 420px; height: auto; }
   .lang { font-size: 12px; color: var(--dim); cursor: pointer; text-decoration: underline; background: none;
           border: 0; padding: 0; text-transform: lowercase; }
-  .strip { display: flex; height: 4px; margin: 20px 0 24px; }
-  .strip i { flex: 1; } .strip i:nth-child(1) { background: var(--blue); } .strip i:nth-child(2) { background: var(--green); }
-  .strip i:nth-child(3) { background: var(--yellow); } .strip i:nth-child(4) { background: var(--orange); }
+  .strip { display: flex; height: 5px; margin: 20px 0 24px; border-radius: 3px; overflow: hidden; }
+  .strip i { flex: 1; }
+  .strip i:nth-child(1) { background: var(--pink); }
+  .strip i:nth-child(2) { background: var(--orange); }
+  .strip i:nth-child(3) { background: var(--teal); }
+  .strip i:nth-child(4) { background: var(--purple); }
   h1 { font-size: 13px; font-weight: 500; letter-spacing: .12em; text-transform: uppercase; color: var(--dim); margin: 0 0 8px; }
-  .lead { font-size: 20px; line-height: 1.35; margin: 0 0 24px; }
+  .lead { font-size: 19px; line-height: 1.4; margin: 0 0 24px; }
   .tiles { display: grid; grid-template-columns: repeat(4, 1fr); gap: 6px; margin: 0 0 28px; }
-  .tile { background: var(--tile); padding: 10px 10px 12px; border-top: 3px solid var(--c); min-height: 92px; }
-  .tile b { display: block; font-size: 22px; font-weight: 600; color: var(--c); line-height: 1.1; }
-  .tile span { display: block; font-size: 12px; color: var(--dim); text-transform: lowercase; margin-top: 4px; }
+  .tile { background: var(--tile); padding: 10px 10px 12px; border-top: 3px solid var(--c); min-height: 92px; border-radius: 0 0 4px 4px; }
+  .tile b { display: block; font-size: 22px; font-weight: 700; color: var(--c); line-height: 1.1; }
+  .tile span { display: block; font-size: 11px; color: var(--dim); text-transform: lowercase; margin-top: 4px; }
   p { margin: 0 0 14px; }
-  button#go { font: 600 15px/1 inherit; font-family: inherit; background: var(--orange); color: #000; border: 0;
-              padding: 16px 0; width: 100%; cursor: pointer; letter-spacing: .08em; text-transform: uppercase; }
+  button#go { font: 700 15px/1 inherit; font-family: inherit; background: var(--pink); color: #fff; border: 0;
+              padding: 16px 0; width: 100%; cursor: pointer; letter-spacing: .1em; text-transform: uppercase;
+              border-radius: 3px; }
   button#go:disabled { background: var(--tile); color: var(--dim); cursor: default; }
   #status { margin-top: 14px; min-height: 1.6em; font-variant-numeric: tabular-nums; }
   .small { color: var(--dim); font-size: 12.5px; }
   .small a, a { color: inherit; }
-  progress { -webkit-appearance: none; appearance: none; width: 100%; height: 6px; margin-top: 16px; border: 0; background: var(--tile); }
-  progress::-webkit-progress-bar { background: var(--tile); }
-  progress::-webkit-progress-value { background: var(--orange); }
-  progress::-moz-progress-bar { background: var(--orange); }
+  progress { -webkit-appearance: none; appearance: none; width: 100%; height: 6px; margin-top: 16px; border: 0; background: var(--tile); border-radius: 3px; }
+  progress::-webkit-progress-bar { background: var(--tile); border-radius: 3px; }
+  progress::-webkit-progress-value { background: var(--teal); border-radius: 3px; }
+  progress::-moz-progress-bar { background: var(--teal); }
   pre { color: var(--dim); font-size: 11px; white-space: pre-wrap; margin-top: 12px; max-height: 160px; overflow: auto; }
   hr { border: 0; border-top: 1px solid var(--line); margin: 28px 0 18px; }
-  .ed { display: inline-block; margin: 8px 0 0; padding: 10px 14px; background: var(--tile); text-decoration: none; }
+  .ed { display: inline-block; margin: 8px 0 0; padding: 10px 14px; background: var(--tile); text-decoration: none;
+        border-radius: 3px; border: 1px solid var(--line); }
+  .ed:hover { border-color: var(--teal); color: var(--teal); }
   details { margin: 22px 0 0; } summary { cursor: pointer; font-weight: 600; }
   button#stock-go { font: 600 14px/1 inherit; font-family: inherit; background: var(--tile); color: var(--fg); border: 1px solid var(--line);
-                    padding: 12px 16px; cursor: pointer; }
+                    padding: 12px 16px; cursor: pointer; border-radius: 3px; }
   button#stock-go:disabled { color: var(--dim); cursor: default; }
-  @media (max-width: 420px) { .tiles { grid-template-columns: repeat(2, 1fr); } .logo svg { width: 170px; } }
+  @media (max-width: 420px) { .tiles { grid-template-columns: repeat(2, 1fr); } .logo svg, .logo img, .logo image { width: 280px; } }
 </style>
 </head>
 <body>
@@ -55,13 +60,13 @@
   <div class="strip"><i></i><i></i><i></i><i></i></div>
   <!--STUDIO_GUIDE-->
   <!--BANNER-->
-  <h1>Firmware for the M-VAVE FM-1</h1>
-  <p class="lead">A groovebox you play live: four tracks — three synths and a drum machine — 10 synth engines (with six-operator FM and DX7 patches), 76 sounds, 37 drum kits from 808 to techno, amapiano and ambient, your own samples and drum kits, 16 punch-in effects. House, techno, hip-hop, drum &amp; bass, synthwave, lo-fi, ambient: make what you want. No factory patterns, nothing to load: everything you hear, you play.</p>
+  <h1 data-t="title">Custom firmware for the M-VAVE FM-1</h1>
+  <p class="lead" data-t="lead">Six tracks, six synth engines — DX7 FM, analogue, Phase Distortion, formant voice, lo-fi chip, plucked strings — a drum machine with circuit-modelled 808 &amp; 909, your own samples, a chord sequencer with 14-mode chord follow, a 32-step global chord progression, song mode you play with your hands, evolving generative patterns and fills, USB audio, MIDI keyboard and clock. No factory patterns, no presets to scroll through: everything you hear, you play.</p>
   <div class="tiles">
-    <div class="tile" style="--c: var(--blue)"><b>76</b><span>sounds, 10 engines, your samples</span></div>
-    <div class="tile" style="--c: var(--green)"><b>37</b><span>drum kits, 909 to afro, + your own</span></div>
-    <div class="tile" style="--c: var(--yellow)"><b>16</b><span>punch-in fx: hold fx + key</span></div>
-    <div class="tile" style="--c: var(--orange)"><b>rec</b><span>no click: the loop follows you</span></div>
+    <div class="tile" style="--c: var(--pink)"><b>6</b><span data-t="tile1">synth engines + DX7 patches</span></div>
+    <div class="tile" style="--c: var(--orange)"><b>song</b><span data-t="tile2">32-step chord progressions</span></div>
+    <div class="tile" style="--c: var(--teal)"><b>evl</b><span data-t="tile3">patterns that evolve themselves</span></div>
+    <div class="tile" style="--c: var(--purple)"><b>808</b><span data-t="tile4">circuit-modelled kits + your own</span></div>
   </div>
   <p data-t="intro"></p>
   <p data-t="warn"></p>
@@ -96,44 +101,39 @@
 /*LIB*/
 const $ = (id) => document.getElementById(id);
 const TEXT = {
-  ja: {
-    intro: "FM-1 を USB で接続してください。（Chrome か Edge で使えます）",
-    warn: "書き込み中は USB を抜かないでください。",
-    install: "インストール", other: "English",
-    editor: "エディタ（インストール後、パソコンから音色やシーケンスを編集）",
-    direct: "USB ケーブルはパソコンに直接つないでください。Probe や Transporter などの機材は不要です。",
-    brick: "万一インストールに失敗して起動しなくなった場合は、復旧に Transporter が必要です:",
-    beta: "これはベータ版で、不安定な場合があります。このカスタムファームウェアを使ったことで FM-1 が壊れたり不具合が起きたりしても、作者は一切の責任を負いません。自己責任でお使いください。",
-    back: "公式ファームウェアに戻すには、M-VAVE 公式のアップデーター M-UPGRADE（Downloads → PC Software → M-UPGRADE）と公式ファームウェア（PC Firmware → FM-1 V15）が必要です。",
-    nomidi: "このブラウザでは使えません。Chrome か Edge で開いてください。", loadfail: "読み込めませんでした: ",
-    start: "開始します", verify: "確認中", loader: "書き込みモードに切り替え中", write: "書き込み中",
-    reboot: "再起動中", done: "完了しました", stopped: "途中で止まりました。USB を挿し直してもう一度押してください。",
-    error: "エラー: ",
-    denied: "MIDI（SysEx）の使用が許可されませんでした。アドレスバーのサイト設定で MIDI を許可して、もう一度押してください。",
-    notfound: "FM-1 が見つかりません。USB ケーブル（データ通信用か）を確かめ、MIDI を使う他のアプリを閉じてから、もう一度押してください。",
-    model: "接続されている機器は FM-1 ではありません。",
-    lost: "USB の接続が切れました。挿し直してもう一度押してください。",
-    noloader: "書き込みモードの FM-1 が見つかりません。USB を挿し直してもう一度押してください（終わるまで書き込みモードのままです）。",
-    noreturn: "FM-1 が戻ってきません。電源を入れ直してください。",
-    mismatch: "書き込みは終わりましたが、FM-1 が別のバージョンを報告しています: ",
-    foreign: "FM-1 は別のファームウェアの書き込みモードです。そのアップデーター（M-UPGRADE）で書き込みを終えてから、もう一度インストールしてください: ",
-    badpkg: "インストールするファイルが壊れています。ページを再読み込みしてください。",
-    leave: "書き込み中です。ページを閉じないでください。",
-    license: "GPL-3.0、無保証。ソース:",
-    stockTitle: "公式ファームウェア（V15）に戻す",
-    stockHelp: "M-VAVE のサイトから公式の FM-1 V15 をダウンロードし、中の FM-1.fwsc（変更していないもの）を選んでください。ファイルはこのブラウザの中で確認され、どこにも送られません。",
-    stockBackup: "公式ファームウェアは SHIFL の曲・プロジェクト・サンプルを開けません。先にエディタでバックアップを保存してください（Projects → Backup）。SHIFL を入れ直せば、エディタから復元できます。",
-    stockEditor: "エディタを開いてバックアップする", stockSaved: "バックアップをパソコンに保存しました",
-    stockFile: "公式の FM-1.fwsc", stockGo: "公式 V15 をインストール",
-    stockValid: "公式 V15 を確認しました", stockBad: "公式 V15 ではありません: ",
-    stockConfirm: "FM-1 に公式 V15 をインストールします。SHIFL の曲は公式ファームウェアでは開けません。バックアップは保存しましたか？",
-    stockFinish: "FM-1 は SHIFL の書き込みモードです。先に「インストール」で SHIFL の書き込みを終えてから、公式 V15 に戻してください。",
-    back: "M-VAVE のアップデーター M-UPGRADE（Downloads → PC Software）でも戻せます。FM-1 が見つからない場合は、MIDI を使う他のアプリとブラウザのタブを閉じてください。",
+  yi: {
+    title: "אַן אײגענע פֿירמװער פֿאַר דעם M-VAVE FM-1",
+    lead: "זעקס שפּורן, זעקס סינטעזײַזער־מאָטורן: DX7 FM, אַנאַלאָג, Phase Distortion, פֿאָרמאַנט־שטימע, לאָ־פֿי טשיפּ, געצופּעטע סטרונעס. אַ שלאָגמאַשין מיט קרײַז־מאָדעלירטע 808 און 909, אײַערע אײגענע סאַמפּלס, אַן אַקאָרד־סעקװענצער מיט 14־מאָדוס אַקאָרד־נאָכפֿאָלגונג, אַ גלאָבאַלע 32־שריטיקע אַקאָרד־פּראָגרעסיע, ליד־מאָדוס װאָס מ׳שפּילט מיט די הענט, זיך־אַנטװיקלענדיקע גענערירטע פּאַטערנס און פֿילס, USB־אַודיאָ, MIDI־קלאַװיאַטור און טאַקט. קײן פֿאַבריק־פּאַטערנס, קײן פּרעסעטס צו בלעטערן: אַלץ װאָס איר הערט, שפּילט איר.",
+    tile1: "סינטעזײַזער־מאָטורן + DX7־פּאַטשעס",
+    tile2: "32־שריטיקע אַקאָרד־פּראָגרעסיעס",
+    tile3: "פּאַטערנס װאָס אַנטװיקלען זיך אַליין",
+    tile4: "קרײַז־מאָדעלירטע קיטס + אײַערע אײגענע",
+    intro: "פֿאַרבינדט דעם FM-1 דורך USB. (אַרבעט אין Chrome אָדער Edge.)",
+    warn: "ציט נישט אַרויס דעם USB־קאַבל בעת דאָס שרײַבן.",
+    install: "אינסטאַלירן", other: "English",
+    editor: "רעדאַקטאָר (נאָכן אינסטאַלירן: רעדאַגירט קלאַנגען און סעקװענצן פֿון קאָמפּיוטער)",
+    direct: "פֿאַרבינדט דעם USB־קאַבל גלײַך צום קאָמפּיוטער. קײן זאָנד אָדער Transporter איז נישט נײטיק.",
+    brick: "אױב אַן אינסטאַלאַציע מיספֿאַלט און דער FM-1 הייבט מער נישט אָן, דאַרף מען אַ Transporter כּדי אים צוריקצושטעלן:",
+    beta: "דאָס איז אַ בעטאַ־װערסיע און קען זײַן אומשטאַביל. דער מחבר נעמט אויף זיך קײן אחריות נישט, אױב אײַער FM-1 װערט פֿאַרשעדיקט אָדער פֿירט זיך אומריכטיק צוליב דער דאָזיקער אײגענער פֿירמװער. ניצט אויף אײַער אײגענער סכּנה.",
+    license: "GPL-3.0, אָן קײן גאַראַנטיע. קוואַל:",
+    stockTitle: "צוריק צו דער אָפֿיציעלער פֿירמװער (V15)",
+    stockHelp: "לאָדט אַראָפּ דעם אָפֿיציעלן FM-1 V15 פֿון M-VAVE און קלײַבט אויס דעם FM-1.fwsc דרינען, אומגעענדערט. די טעקע װערט געפּרוּװט דאָ אין דעם בראַװזער; זי װערט קײן אָרט נישט געשיקט.",
+    stockBackup: "די אָפֿיציעלע פֿירמװער קען נישט עפֿענען SHIFL־מוזיק, פּראָיעקטן אָדער סאַמפּלס. שפּאָרט פֿריִער אָפּ אַ באַקאַפּ מיטן רעדאַקטאָר (פּראָיעקטן → באַקאַפּ); אינסטאַלירט SHIFL װידער און שטעלט זיי צוריק פֿון רעדאַקטאָר, װען איר װילט זיי האָבן צוריק.",
+    stockEditor: "עפֿנט דעם רעדאַקטאָר כּדי צו מאַכן אַ באַקאַפּ",
+    stockSaved: "איך האָב אָפּגעשפּאָרט אַ באַקאַפּ אױף דעם קאָמפּיוטער",
+    stockFile: "דער אָפֿיציעלער FM-1.fwsc", stockGo: "אינסטאַלירן דעם אָפֿיציעלן V15",
+    back: "M-VAVE־ס אײגענער דערנײַערער, M-UPGRADE (Downloads → PC Software), אַרבעט אױך. אױב ער געפֿינט נישט דעם FM-1, שליסט צו יעדע אַנדערע אַפּליקאַציע און בראַװזער־טאַב װאָס ניצט MIDI.",
   },
   en: {
+    title: "Custom firmware for the M-VAVE FM-1",
+    lead: "Six tracks, six synth engines — DX7 FM, analogue, Phase Distortion, formant voice, lo-fi chip, plucked strings — a drum machine with circuit-modelled 808 & 909, your own samples, a chord sequencer with 14-mode chord follow, a 32-step global chord progression, song mode you play with your hands, evolving generative patterns and fills, USB audio, MIDI keyboard and clock. No factory patterns, no presets to scroll through: everything you hear, you play.",
+    tile1: "synth engines + DX7 patches",
+    tile2: "32-step chord progressions",
+    tile3: "patterns that evolve themselves",
+    tile4: "circuit-modelled kits + your own",
     intro: "Connect the FM-1 by USB. (Works in Chrome or Edge.)",
     warn: "Do not unplug the USB cable while writing.",
-    install: "Install", other: "日本語",
+    install: "Install", other: "ייִדיש",
     editor: "Editor (after installing: edit sounds and sequences from the computer)",
     direct: "Connect the USB cable directly to the computer. No probe or Transporter is needed.",
     brick: "If an install fails and the FM-1 no longer starts, recovering it needs a Transporter:",
@@ -165,16 +165,17 @@ const TEXT = {
     back: "M-VAVE's own updater, M-UPGRADE (Downloads → PC Software), works too. If it does not find the FM-1, close every other app and browser tab that uses MIDI.",
   },
 };
-let lang = (navigator.language || "en").toLowerCase().startsWith("ja") ? "ja" : "en";
-const t = (k) => TEXT[lang][k];
+let lang = (navigator.language || "en").toLowerCase().startsWith("yi") ? "yi" : "en";
+const t = (k) => TEXT[lang][k] ?? TEXT.en[k];
 let lastKey = null, lastArg = "";
 function applyLang() {
   document.documentElement.lang = lang;
+  document.documentElement.dir = lang === "yi" ? "rtl" : "ltr";
   document.querySelectorAll("[data-t]").forEach((e) => { e.textContent = t(e.dataset.t); });
   $("lang").textContent = t("other");
   if (lastKey) $("status").textContent = t(lastKey) + lastArg;
 }
-$("lang").addEventListener("click", () => { lang = lang === "ja" ? "en" : "ja"; applyLang(); });
+$("lang").addEventListener("click", () => { lang = lang === "yi" ? "en" : "yi"; applyLang(); });
 applyLang();
 const sayK = (k, arg = "") => { lastKey = k; lastArg = arg; $("status").textContent = t(k) + arg; };
 const say = (txt) => { lastKey = null; $("status").textContent = txt; };
@@ -219,7 +220,7 @@ const step = (k, a) => {
   if (k === "done") { $("bar").value = 100; sayK("done"); }
 };
 const failed = (e) => {
-  if (e && e.code && TEXT[lang][e.code]) sayK(e.code, e.detail || "");
+  if (e && e.code && t(e.code)) sayK(e.code, e.detail || "");
   else sayK("error", e && e.message);
   log(String(e && e.stack || e));
 };

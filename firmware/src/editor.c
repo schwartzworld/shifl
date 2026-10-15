@@ -957,6 +957,25 @@ static void ed_handle(const uint8_t *f, uint32_t n)   /* f: the bytes between F0
         ed_b(step_fill(t, a[1]));
         break;
     }
+    case ED_FM6_GET: {                   /* slot -> slot, rc, voice[128]; rc=1 no bank */
+        uint32_t k;
+        if (na < 1u || a[0] >= DX_NUSER)
+            return;
+        ed_b(a[0]);
+        if (!dx_user_ok) { ed_b(1); break; }
+        ed_b(0);
+        for (k = 0; k < 128u; k++)
+            ed_b(dx_user[a[0]][k]);
+        break;
+    }
+    case ED_FM6_PUT: {                   /* slot, voice[128] -> slot, rc; rc=1 bad args */
+        if (na < 129u || a[0] >= DX_NUSER)
+            return;
+        dx_user_put(a[0], (const uint8_t *)(a + 1));
+        ed_b(a[0]);
+        ed_b(0);
+        break;
+    }
     default:
         return;
     }

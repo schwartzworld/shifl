@@ -4,7 +4,8 @@
 Free and open source (GPL-3.0), based on <a href="https://github.com/hugelton/Felucca">Felucca</a> by Leo Kuroshita / Hügelton Instruments.</p>
 
 <p align="center">
-<a href="https://shifl.netlify.app/"><b>Web editor</b></a> ·
+<a href="https://shifl.netlify.app/webapp/installer/"><b>Web installer</b></a> ·
+<a href="https://shifl.netlify.app/webapp/editor/"><b>Web editor</b></a> ·
 <a href="SHIFL.md">Manual</a> ·
 <a href="DEMARRAGE-RAPIDE-FR.md">Guide en français</a> ·
 <a href="../../releases">Releases</a> ·
@@ -342,9 +343,9 @@ The full CC reference card is in [docs/midi-cc-plan.md](docs/midi-cc-plan.md).
 
 ### From the browser (recommended)
 
-1. Open **[the SHIFL web editor](https://shifl.netlify.app/)** in **Chrome or Edge** on a computer.
+1. Open **[the SHIFL web installer](https://shifl.netlify.app/webapp/installer/)** in **Chrome or Edge** on a computer.
 2. Connect the FM-1 by USB — a **data** cable, directly (no hub).
-3. Press **INSTALL**, allow MIDI access, and wait for *Done*. The FM-1 restarts on the SHIFL logo.
+3. Press **Install**, allow MIDI access, and wait for *Done*. The FM-1 restarts on the SHIFL logo.
 
 Nothing to download or compile. Your projects, user presets, samples and settings are kept. After an install, **unplug and plug the FM-1 back in** once so the computer finds its USB audio input.
 
@@ -357,7 +358,7 @@ Nothing to download or compile. Your projects, user presets, samples and setting
 ### Going back
 
 - **To an earlier SHIFL:** install the `.fwsc` of its [release](../../releases). It keeps your work and simply ignores the 2.4 settings.
-- **To the official firmware:** on the installer page, open **Return to the official firmware (V15)**. Save a backup with the editor first, download FM-1 V15 from m-vave.com and select its `FM-1.fwsc` — only that exact file is accepted. M-VAVE's updater, M-UPGRADE, works too. To come back, install SHIFL again and restore your backup.
+- **To the official firmware:** on the [installer page](https://shifl.netlify.app/webapp/installer/), open **Return to the official firmware (V15)**. Save a backup with the editor first, download FM-1 V15 from m-vave.com and select its `FM-1.fwsc` — only that exact file is accepted. M-VAVE's updater, M-UPGRADE, works too. To come back, install SHIFL again and restore your backup.
 
 ### Rescue
 
