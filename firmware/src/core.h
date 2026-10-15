@@ -73,6 +73,8 @@ enum {                          /* per-track parameters */
     P_SPICE,                                   /* SLOOP 2.5: spice & dice randomisation blend (0=dry, 127=full) */
     P_FATK, P_FDEC, P_FSUS, P_FREL,           /* filter envelope: independent ADSR for the filter cutoff mod */
     P_LD_K1, P_LD_K2, P_LD_K3, P_LD_K4,       /* LFO depth for home knobs 1-4 (engine-specific) */
+    P_EVOLVE,                                  /* auto-mutate every N loops: 0=off 1=4 2=8 3=16 */
+    P_CFOL,                                   /* SHIFL 3.0: chord follow mode (CF_*) for the chord sequencer */
     P_E0, P_E1, P_E2, P_E3, P_E4, P_E5, P_E6, P_E7,
     P_E8, P_E9, P_E10, P_E11, P_E12, P_E13, P_E14, P_E15,
     P_COUNT
@@ -180,10 +182,13 @@ static uint8_t voice_was;
 
 /* ------------------------------------------------------------ track --- */
 enum { ST_NOTE, ST_TIE, ST_REST, ST_P75, ST_P50, ST_P25,
-       ST_C1OF2, ST_C1OF3, ST_C1OF4,
-       ST_C2OF4, ST_C3OF4, ST_C4OF4,
-       ST_C1OF8, ST_C8OF8 };
-#define ST_COND_FIRST ST_C1OF2
+       ST_CODD2,   /* "1/2" plays on odd passes (1,3,5...)  */
+       ST_CEVEN2,  /* "2/2" plays on even passes (2,4,6...) */
+       ST_C1OF4,   /* "1/4" plays on 1st of every 4 passes */
+       ST_C4OF4,   /* "4/4" plays on 4th of every 4 passes */
+       ST_CSTUB1, ST_CSTUB2, ST_CSTUB3,  /* unused */
+       ST_C8OF8 }; /* "8/8" plays on 8th of every 8 passes */
+#define ST_COND_FIRST ST_CODD2
 #define SF_ACCENT 1u
 #define SF_SLIDE  2u
 /* flag index values 4-9: probabilistic accent / slide */
@@ -218,17 +223,20 @@ typedef struct {                 /* a step of a synth part (10 bytes): up to 4 n
 enum {
     HIT_OFF, HIT_ON, HIT_X2, HIT_X3, HIT_X4,
     HIT_P75, HIT_P50, HIT_P25,
-    HIT_C1OF2, HIT_C1OF3, HIT_C1OF4,
-    HIT_C2OF4, HIT_C3OF4, HIT_C4OF4,
-    HIT_C1OF8, HIT_C8OF8
+    HIT_CODD2,   /* "1/2" plays on odd passes (1,3,5...)  */
+    HIT_CEVEN2,  /* "2/2" plays on even passes (2,4,6...) */
+    HIT_C1OF4,   /* "1/4" plays on 1st of every 4 passes */
+    HIT_C4OF4,   /* "4/4" plays on 4th of every 4 passes */
+    HIT_CSTUB1, HIT_CSTUB2, HIT_CSTUB3,  /* unused */
+    HIT_C8OF8    /* "8/8" plays on 8th of every 8 passes */
 };
-#define HIT_COND_FIRST HIT_C1OF2
+#define HIT_COND_FIRST HIT_CODD2
 /* dstep_t encoding — 5 bits per lane (on bit + 2-bit lvl + 2-bit rat):
  *   on=1: lane fires; rat=0-3 → HIT_ON/X2/X3/X4; lvl=0-3 → LV_NORM/GHOST/SOFT/HARD
  *   on=0, lvl=0, rat=0: HIT_OFF
  *   on=0, lvl=0, rat=1-3: HIT_P75/P50/P25
- *   on=0, lvl=1, rat=0-3: HIT_C1OF2/C1OF3/C1OF4/C2OF4
- *   on=0, lvl=2, rat=0-3: HIT_C3OF4/C4OF4/C1OF8/C8OF8
+ *   on=0, lvl=1, rat=0-3: HIT_CODD2/CEVEN2/C1OF4/C4OF4
+ *   on=0, lvl=2, rat=0-2: HIT_CSTUB1/CSTUB2/CSTUB3 (unused); rat=3: HIT_C8OF8
  * Binary-compatible with the V4 on-disk format (no migration for drum steps). */
 typedef struct {                 /* a step of the drum track (10 bytes) */
     uint8_t on[2];               /* 1 bit per lane: fires with certainty */
@@ -236,6 +244,37 @@ typedef struct {                 /* a step of the drum track (10 bytes) */
     uint8_t rat[4];              /* 2 bits per lane: ratchet (on=1) or OFF/prob/cond-idx (on=0) */
 } dstep_t;
 _Static_assert(sizeof(step_t) == 10 && sizeof(dstep_t) == 10, "step sizes");
+/* SHIFL 3.0: chord follow modes (P_CFOL): how sequenced and live notes snap to the active chord */
+enum {
+    CF_OFF = 0,       /* no follow */
+    CF_ROOT,          /* snap to nearest root (any octave) */
+    CF_ROOT5,         /* snap to nearest root or 5th */
+    CF_CHORD,         /* snap to nearest of any chord tone */
+    CF_3RD5TH,        /* snap to nearest 3rd or 5th (not root) */
+    CF_3RD5THX,       /* snap to nearest 3rd, 5th, or extension (7th/9th) */
+    CF_TRANSPOSE,     /* chromatic-transpose by chord-root-minus-key, then scale-snap */
+    CF_COUNT          /* 7 modes */
+};
+
+/* SHIFL 3.0: chord sequencer — a global chord progression track (no audio; future quantizer source).
+ * Each step stores an absolute root MIDI note + chord quality + inversion + probability condition. */
+#define NCHORD_STEP 32
+enum {
+    CQ_NONE = 0,                              /* REST: no chord set on this step */
+    CQ_MAJ, CQ_MIN, CQ_DIM, CQ_AUG,
+    CQ_MAJ7, CQ_MIN7, CQ_DOM7, CQ_DIM7, CQ_M7B5, CQ_MMAJ7,
+    CQ_MAJ9, CQ_MIN9, CQ_DOM9,
+    CQ_COUNT                                  /* 14 types (fits in 4 bits) */
+};
+typedef struct {                              /* one step of the chord sequencer (2 bytes) */
+    uint8_t note;                             /* root MIDI note (0 = REST/empty, 1-127 = note) */
+    uint8_t pack;                             /* [7:4]=type CQ_* [3:2]=inv 0-3 [1:0]=cond 0-3 */
+} chord_step_t;
+static inline uint32_t cstep_type(const chord_step_t *s) { return (s->pack >> 4) & 0xFu; }
+static inline uint32_t cstep_inv(const chord_step_t *s)  { return (s->pack >> 2) & 0x3u; }
+static inline uint32_t cstep_cond(const chord_step_t *s) { return s->pack & 0x3u; }
+static inline void cstep_pack(chord_step_t *s, uint32_t ty, uint32_t iv, uint32_t cd)
+    { s->pack = (uint8_t)(((ty & 0xFu) << 4) | ((iv & 3u) << 2) | (cd & 3u)); }
 /* sloopDX: the drum track's lane macros and parameter locks (drums.c), kept with the project. A macro is an
  * offset on the kit's sound (0 = as the kit): TUNE semitones, DECAY / SWEEP / BRIGHT / NOISE -40..40, LEVEL in
  * 1/2 dB -40..20, PAN -64..63, CHOKE 0 the kit's, 1 none, 2..4 groups A..C, REV the send -64..63 (64+REV),
@@ -246,9 +285,16 @@ enum { DM_TUNE, DM_DECAY, DM_SWEEP, DM_BRIGHT, DM_NOISE, DM_LEVEL, DM_PAN, DM_CH
        DM_UNUSED_A, DM_UNUSED_B,                  /* 10-11: dice-page display slots, never used as macros */
        DM_DRIVE, DM_CRUSH, DM_RING, DM_FOLD,      /* 12-15: per-lane effects */
        DM_N };                                    /* 16 */
+/* SHIFL 2.6: sequenceable fill triggers on the drum grid (a fill-row step that fires a pattern fill) */
+#define FILL_SEQ_MAX 8
+typedef struct {                 /* one fill-row entry (2 bytes) */
+    uint8_t step;                /* step index 0..NSTEP-1; 0xFF = unused slot */
+    uint8_t cfg;                 /* bits[6:4]: fill 0-5 = specific, 6 = random; bits[3:0]: cond 0 = always, 1-8 = cond_fires_idx(cond-1) */
+} fill_seq_t;
 typedef struct {
     int8_t m[DRUM_LANES][DM_N];
     uint16_t lock[NSTEP];        /* a step's TUNE / DECAY lock of one lane (drums.c dlock_*), 0 = none */
+    fill_seq_t fseq[FILL_SEQ_MAX]; /* fill-row trigger entries (drums.c fseq_*), 0xFF step = unused */
 } drum_ext_t;
 /* SHIFL 2.4: per-step nudge (micro timing) and parameter locks (seq.c seq_tick / lock_step) */
 #define MICRO_MIN (-32)          /* a step's nudge in 1/64 of its length: half a step early .. */

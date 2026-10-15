@@ -301,8 +301,11 @@ static const char *const LV_NAME[4] = {"norm", "ghost", "soft", "hard"};
 /* hit mode: 0=HIT_OFF .. 15=HIT_C8OF8 */
 static const char *const HIT_MODES[16] = {
     "--", "on", "x2", "x3", "x4", "P75", "P50", "P25",
-    "1:2", "1:3", "1:4", "2:4", "3:4", "4:4", "1:8", "8:8"
+    "1/2", "2/2", "1/4", "4/4", "----", "----", "----", "8/8"
 };
+/* fill-row names: which fill (0-5 specific, 6=random) and trigger condition */
+static const char *const FILL_NAMES[7]      = {"FL 1", "FL 2", "FL 3", "FL 4", "FL 5", "FL 6", "RND"};
+static const char *const FILL_COND_NAMES[9] = {"alwys", "1/2", "2/2", "1/4", "4/4", "----", "----", "----", "8/8"};
 static uint32_t drum_hit_mode(const dstep_t *s, uint32_t l)
 {
     return dstep_hit(s, l);
@@ -393,8 +396,8 @@ static void drum_screen_draw(void)
     if (ui.force || sig != body_sig) {
         body_sig = sig;
         cv_begin(240, 100, C_BLACK);
-        if (!drum_page) {                              /* GRID: the 16 lanes x 16 steps of this bank */
-            for (i = 0; i < DRUM_LANES; i++) {
+        if (!drum_page) {                              /* GRID: 15 lanes + fill row x 16 steps of this bank */
+            for (i = 0; i < DRUM_LANES - 1u; i++) {   /* lanes 0..14; lane 15 accessible via KIT/LANE */
                 int32_t y = (int32_t)i * 6 + 2;
                 cv_rect(2, y, 6, 5, pad_lit[i] ? C_WHITE : i == drum_lane ? TE_DRUM : TE_G2);
                 for (j = 0; j < 16u; j++) {
@@ -416,6 +419,30 @@ static void drum_screen_draw(void)
                     }
                 }
             }
+            { /* fill row: row 15 in the display — sequenceable fill triggers */
+                int32_t fy = (DRUM_LANES - 1) * 6 + 2;
+                int32_t on_fill = (drum_lane == DRUM_LANES);
+                cv_rect(2, fy, 6, 5, on_fill ? TE_DRUM : TE_G2);
+                for (j = 0; j < 16u; j++) {
+                    uint32_t p = bank * 16u + j;
+                    const fill_seq_t *fs;
+                    uint16_t c;
+                    if (p >= len) continue;
+                    fs = fseq_at_step(&dext, p);
+                    if (fs) {
+                        uint32_t which = (fs->cfg >> 4) & 0x07u;
+                        c = which < DRUM_NFILLS ? TE_DRUM : C_WHITE;
+                    } else {
+                        c = on_fill ? TE_G2 : TE_G1;
+                    }
+                    if (song.playing && p == TDRUM->seq_idx && c == TE_G1) c = TE_G2;
+                    cv_rect(12 + (int32_t)j * 14, fy, 12, 5, c);
+                    if (p == drum_cursor && on_fill) {
+                        cv_rect(11 + (int32_t)j * 14, fy - 1, 14, 1, C_WHITE);
+                        cv_rect(11 + (int32_t)j * 14, fy + 5, 14, 1, C_WHITE);
+                    }
+                }
+            }
         } else {                                       /* KIT: 16 pads, lit on each hit; LANE: the one edited framed */
             for (i = 0; i < DRUM_LANES; i++) {
                 int32_t x = 2 + (int32_t)(i % 4u) * 60, y = (int32_t)(i / 4u) * 25;
@@ -432,7 +459,26 @@ static void drum_screen_draw(void)
         const char *val[4] = {v[0], v[1], v[2], v[3]};
         static const char *const LG[4] = {"sound", "step", "hit", "level"}, *const LK[4] = {"kit", "level", "reverb", "pan"};
         int32_t ratio[4];
-        if (!drum_page) {
+        if (!drum_page && drum_lane == DRUM_LANES) { /* fill row selected */
+            static const char *const LF[4] = {"row", "step", "fill", "cond"};
+            const fill_seq_t *fs = fseq_at_step(&dext, drum_cursor);
+            str_cpy(v[0], "fill", 8);
+            fmt_int(v[1], drum_cursor + 1);
+            if (fs) {
+                uint32_t which = (fs->cfg >> 4) & 0x07u;
+                uint32_t cond  = fs->cfg & 0x0Fu;
+                str_cpy(v[2], FILL_NAMES[which < 7u ? which : 6u], 8);
+                str_cpy(v[3], FILL_COND_NAMES[cond < 9u ? cond : 0u], 8);
+                ratio[2] = (int32_t)which * 1000 / 6;
+                ratio[3] = (int32_t)cond  * 1000 / 8;
+            } else {
+                str_cpy(v[2], "--", 4); str_cpy(v[3], "--", 4);
+                ratio[2] = 0; ratio[3] = 0;
+            }
+            ratio[0] = 1000;
+            ratio[1] = (int32_t)drum_cursor * 1000 / (int32_t)(len > 1u ? len - 1u : 1u);
+            te_dials(184, LF, val, ratio, 1u, &footer);
+        } else if (!drum_page) {
             const dstep_t *s = &TDRUM->dstep[drum_cursor];
             str_cpy(v[0], LANE_SHORT[drum_lane], 8);
             fmt_int(v[1], drum_cursor + 1);
@@ -508,6 +554,16 @@ static void grid_key(uint32_t k)
         return;
     }
     undo_mark(TDRUM, ui.step_sess ? ui.step_sess : (ui.step_sess = (undo_sess += 4u) | 3u));
+    if (drum_lane == DRUM_LANES) {                      /* fill row: toggle trigger at this step */
+        fm1_irq_off();
+        if (fseq_at_step(&dext, idx))
+            fseq_clear_step(&dext, idx);
+        else
+            fseq_set_step(&dext, idx, 0, 0);            /* default: fill 1, always */
+        fm1_irq_on();
+        sync_reload = 1;
+        return;
+    }
     st = &TDRUM->dstep[idx];
     fm1_irq_off();
     if (dstep_has(st, drum_lane)) {
@@ -580,22 +636,31 @@ static void drum_screen_input(uint32_t pressed, uint32_t home, uint32_t notes)
         ui.hot_t = 40;
         if (!drum_page) {
             dstep_t *st = &TDRUM->dstep[drum_cursor];
-            if (k == 0) {                              /* the sound: heard */
-                uint8_t l = (uint8_t)clamp(drum_lane + s, 0, DRUM_LANES - 1);
-                if (l != drum_lane) audition_lane(l);
+            if (k == 0) {                              /* the sound / fill row: heard when changing sound */
+                uint8_t l = (uint8_t)clamp((int32_t)drum_lane + s, 0, (int32_t)DRUM_LANES);
+                if (l != drum_lane && l < DRUM_LANES) audition_lane(l);
                 drum_lane = l;
             }
             if (k == 1) {                              /* the step: what it holds, heard */
                 uint8_t c = (uint8_t)clamp(drum_cursor + s, 0, TDRUM->p[P_SLEN] - 1);
-                if (c != drum_cursor) audition_step(&TDRUM->dstep[c]);
+                if (c != drum_cursor && drum_lane < DRUM_LANES) audition_step(&TDRUM->dstep[c]);
                 drum_cursor = c;
             }
             if (k >= 2) {
                 if (song.playing && arrangement_enabled) { ui_message("STOP THE SONG FIRST"); continue; }
                 undo_mark(TDRUM, ui.step_sess ? ui.step_sess : (ui.step_sess = (undo_sess += 4u) | 3u));
                 fm1_irq_off();
-                if (k == 2) {
-                    uint32_t mode = (uint32_t)clamp((int32_t)drum_hit_mode(st, drum_lane) + (s > 0 ? 1 : -1), 0, 15);
+                if (drum_lane == DRUM_LANES) {         /* fill row: k2 = fill type, k3 = condition */
+                    if (fseq_at_step(&dext, drum_cursor)) {
+                        if (k == 2) fseq_cycle_which(&dext, drum_cursor, s > 0 ? 1 : -1);
+                        else        fseq_cycle_cond (&dext, drum_cursor, s > 0 ? 1 : -1);
+                    }
+                } else if (k == 2) {
+                    int32_t mode = (int32_t)drum_hit_mode(st, drum_lane) + (s > 0 ? 1 : -1);
+                    /* skip unused stubs between HIT_C4OF4 and HIT_C8OF8 */
+                    if (mode > (int32_t)HIT_C4OF4 && mode < (int32_t)HIT_C8OF8)
+                        mode = s > 0 ? (int32_t)HIT_C8OF8 : (int32_t)HIT_C4OF4;
+                    mode = clamp(mode, 0, (int32_t)HIT_C8OF8);
                     if (mode == HIT_OFF) {
                         dstep_clr(st, drum_lane);
                     } else {
@@ -605,7 +670,7 @@ static void drum_screen_input(uint32_t pressed, uint32_t home, uint32_t notes)
                         else if (mode <= HIT_P25)
                             dstep_set_prb(st, drum_lane, mode - (HIT_P75 - 1u));   /* 1=P75,2=P50,3=P25 */
                         else
-                            dstep_set_cond(st, drum_lane, mode);            /* conditional: HIT_C1OF2..HIT_C8OF8 */
+                            dstep_set_cond(st, drum_lane, mode);            /* conditional: HIT_CODD2..HIT_C8OF8 */
                     }
                 } else if (dstep_certain(st, drum_lane)) {
                     uint32_t r = (uint32_t)clamp((int32_t)lvl_rank(dstep_lvl(st, drum_lane)) + (s > 0 ? 1 : -1), 0, 3);

@@ -15,35 +15,53 @@ Free and open source (GPL-3.0), based on <a href="https://github.com/hugelton/Fe
 
 SHIFL turns the FM-1 into a six-track groovebox you play live: **six synths and a drum machine** with 16 sounds on the white keys, sounds across six engines — DX7 FM, virtual analogue, Phase Distortion (CZ-1), formant voice, lo-fi chip, Karplus-Strong plucked strings — four drum kits including physical modelling, your own samples, a song mode you play with your hands — and **USB audio**, a **MIDI keyboard on the jack**, **MIDI CC control**, **MIDI clock**, **lights for playing in the dark** and a **full backup**. House, techno, hip-hop, trap, drum & bass, amapiano, synthwave, lo-fi, ambient, chiptune — it does not pick a style for you. No factory patterns, nothing to load: everything you hear, you play.
 
-> **Status:** 2.8. Still a beta: install at your own risk, and please [report](../../issues) what you find. Your projects, presets, samples and settings are kept when you update, and you can go back at any time (see [Going back](#going-back)).
+> **Status:** 3.0. Still a beta: install at your own risk, and please [report](../../issues) what you find. Your projects, presets, samples and settings are kept when you update, and you can go back at any time (see [Going back](#going-back)).
 
 ## Contents
 
-1. [What's new in 2.8](#whats-new-in-28)
-2. [What's new in 2.7](#whats-new-in-27)
-3. [What's new in 2.6](#whats-new-in-26)
-4. [What's new in 2.5](#whats-new-in-25)
-5. [What's new in 2.4](#whats-new-in-24)
-6. [Screenshots](#screenshots)
-7. [Features](#features)
-8. [Presets](#presets)
-9. [MIDI CC reference](#midi-cc-reference)
-10. [Install](#install)
-11. [Your first beat in 60 seconds](#your-first-beat-in-60-seconds)
-12. [The controls](#the-controls)
-13. [The menu: settings of the FM-1](#the-menu-settings-of-the-fm-1)
-14. [MIDI and USB audio](#midi-and-usb-audio)
-15. [The web editor](#the-web-editor)
-16. [Compatibility](#compatibility)
-17. [Troubleshooting](#troubleshooting)
-18. [Specifications](#specifications)
-19. [Documentation](#documentation)
-20. [Building and tests](#building-and-tests)
-21. [Contributing](#contributing)
-22. [Credits and thanks](#credits-and-thanks)
-23. [Licence](#licence)
+1. [What's new in 3.0](#whats-new-in-30)
+2. [What's new in 2.9](#whats-new-in-29)
+3. [What's new in 2.8](#whats-new-in-28)
+4. [What's new in 2.7](#whats-new-in-27)
+5. [What's new in 2.6](#whats-new-in-26)
+6. [What's new in 2.5](#whats-new-in-25)
+7. [What's new in 2.4](#whats-new-in-24)
+7. [Screenshots](#screenshots)
+8. [Features](#features)
+9. [Presets](#presets)
+10. [MIDI CC reference](#midi-cc-reference)
+11. [Install](#install)
+12. [Your first beat in 60 seconds](#your-first-beat-in-60-seconds)
+13. [The controls](#the-controls)
+14. [The menu: settings of the FM-1](#the-menu-settings-of-the-fm-1)
+15. [MIDI and USB audio](#midi-and-usb-audio)
+16. [The web editor](#the-web-editor)
+17. [Compatibility](#compatibility)
+18. [Troubleshooting](#troubleshooting)
+19. [Specifications](#specifications)
+20. [Documentation](#documentation)
+21. [Building and tests](#building-and-tests)
+22. [Contributing](#contributing)
+23. [Credits and thanks](#credits-and-thanks)
+24. [Licence](#licence)
 
 ---
+
+## What's new in 3.0
+
+| | |
+| --- | --- |
+| **Musical MUT and EVL** | The **ROLL page** has been redesigned around targeted mutation. Pads 1–4 select one of four **MUT subtypes** suited to the current track type: **LEAD / BASS / KEYS / PAD** for melodic tracks, **KICK / SN / CYM / ACC** for drums. Pads 5–16 toggle **EVL** (auto-mutate) for each subtype at **4, 8, or 16** bar intervals — tap the same rate to turn it off, tap a different rate to change it. Multiple EVL subtypes can run simultaneously (e.g. KICK evolving every 4 bars while CYM evolves every 8). Each subtype has its own musical algorithm: BASS keeps anchors at beats 1 and 3, picks from root/fifth/octave, avoids tritones, and adds approach slides; KEYS voice-leads chord voicings or shuffles arpeggio order; PAD preserves long TIE chains while shifting inner voices; LEAD controls melodic contour, leap size, and rests. Drum types: KICK locks beat 1 loud and always-on, manages syncopated ghost kicks with adjacency limits; SN locks the backbeat hard and adds ghost snares at ghost velocity; CYM accents beats hard and ands normal, places open hat at the and-of-2 and and-of-4; ACC reserves toms for the last quarter and scatters cowbell/conga/shaker as sparse probabilistic patterns. |
+| **Sequenceable drum fills** | The drum GRID page now has a **fill row** — a 16th row at the bottom of the step grid (the top 15 instrument rows remain unchanged; instrument 16 is still editable via the KIT and LANE pages). Any step in the fill row can be marked as a fill trigger: when the sequencer reaches that step it launches the same fill patterns available on the ROLL page. Scroll KNOB 1 past the last instrument lane to select the fill row. **Tap a step** to toggle a fill trigger on or off. With the cursor on a filled step: **KNOB 3** cycles the fill pattern (FL 1–FL 6, or RND for a random pick each time); **KNOB 4** sets the trigger condition — always, every 2nd loop (1/2), every 3rd (1/3), every 4th, 2nd-of-4, 3rd-of-4, 4th-of-4, every 8th (1/8), or 8th-of-8 — so you can set a fill that only fires on the last bar of a 4-bar phrase. Up to 8 fill triggers can be active in a pattern. Fill triggers are saved in the project (new project format FUN6; all existing projects load and convert automatically). |
+
+## What's new in 2.9
+
+| | |
+| --- | --- |
+| **Smarter drum GEN** | The **generate** function on the drum track now builds patterns around conventional drum-kit roles. Kick lands near-certainly on beats 1 and 3; snare on beats 2 and 4; closed hi-hat keeps an 8th-note backbone (16th-note fills gated by SPICE). Open hat, clap, and ghost hits are added sparingly at moderate-to-high SPICE. Toms appear only at high SPICE and never clash with core beats. The result is patterns that groove rather than patterns that spray random hits. |
+| **Smarter melodic GEN** | Step 0 is always the root note. Downbeat steps favour the root at ~60%. The note picker now strongly prefers stepwise motion (~94% of moves stay within 5 semitones), and when a larger interval is unavoidable, the octave nearest the previous note is chosen — no more random leaps across the range. |
+| **Smarter MUT** | Mutation on synth tracks can now **retype** a step (REST → NOTE → REST), **repitch** it, **swap** two steps' notes, or add/remove a **ratchet** — rather than only toggling on/off. On bass tracks (mono/legato voice, average pitch below C4), new notes are picked from root, fifth, and octave of the track's key — intervals that lock with the root rather than wandering. Drum mutation protects kick, snare, and hi-hat on the four core beats; random edits are redirected to ghost-hit lanes. |
+| **EVOLVE (EVL)** | Each track can now auto-mutate itself. Hold **ARP** and press white key **3** (melodic tracks) or **9** (drum track) to cycle the EVOLVE interval: **OFF → 4 → 8 → 16** pattern loops. When a non-zero interval is set, MUT fires automatically every N loops while the sequencer plays, letting bass lines, melodies, and drum patterns drift and evolve over time without any manual input. |
 
 ## What's new in 2.8
 
@@ -150,7 +168,9 @@ Keys 1, 5, 9 and 13 glow dimly while a layer is held: the first key of each row 
 - **116 sounds, browsed by kind** — all level-matched. **32 slots** for your own presets.
 - **Two envelopes per track:** the amp ADSR and an independent **filter envelope** (FENV) — set a slow filter sweep with an instant attack, or a fast filter close while the amp sustains. With a pitch punch for 808-style kicks.
 - LFO, glide and voice modes (POLY, MONO, LEGATO, UNISON), per-track drive and slicer, sends to a **stereo chorus**, a **tempo delay** and a **stereo reverb**.
-- **Key and chords (SCL):** the key of the song for all synths, 16 scales, one-key chords (triad, 7th, 9th, sus4, power), keys snapped to the scale or the scale on the white keys.
+- **Key and chords (SCL):** the key of the song for all synths, 70 scales (including microtonal, world, historical), one-key chords (triad, 7th, 9th, sus4, power), keys snapped to the scale or the scale on the white keys.
+- **Chord sequencer (hold SEQ → CHORD layer):** 32-step global chord progression. Each step has root, quality (14 types: major, minor, dim, aug, four 7ths, maj7, three 9ths), and inversion. Saves with the project. Both white *and* black keys work for entering roots.
+- **Chord follow (FLW — SCL 2, knob 4):** per-track option that reharmonises the track's notes to match the current chord. Seven targets — BASS, MEL, ROOT, POW, TRI, 7TH, 9TH — each available in root position or first inversion (14 modes total).
 
 ### Recording and the sequencer
 
@@ -172,6 +192,7 @@ Each arrangement fragment is independent and can carry its own overrides:
 - **In-key transposition** — CHR mode: chromatic semitone shift; KEY mode: snaps the transpose to the nearest note in the current scale (diatonic transposition).
 - **Per-track patch overrides** — change the engine and preset for any track at any fragment, without touching the others.
 - **Per-track slicer overrides** — enable, disable, or switch slicer mode (GATE / STUT) per track per fragment, independently of the scene's setting.
+- **Per-fragment chord slot (CHD)** — choose which of the 6 saved chord progressions plays for each fragment. `--` = keep the current chord unchanged.
 - **FX overrides** — reverb and delay settings change as the song progresses.
 
 ### Effects and master

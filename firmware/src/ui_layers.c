@@ -15,7 +15,7 @@
  * GLO keys come to the UI through seq.c lk_q. HOLD: REC held clears the track, SAVE held saves the
  * project (a ring fills; let go before and nothing happens). */
 static const uint8_t LAYER_BTN[LY_COUNT] = {NB, B_FX, B_EDIT, B_ARP, B_SEQ, B_SCL, B_GLO, B_SAVE};
-static const char *const LAYER_NAME[LY_COUNT] = {"", "punch", "erase", "roll", "steps", "key", "mix", "song"};
+static const char *const LAYER_NAME[LY_COUNT] = {"", "punch", "erase", "roll", "chord", "key", "mix", "song"};
 static void section_store(uint32_t s);                  /* project.c */
 static void section_load(uint32_t s);
 static uint8_t sec_armed;                               /* store over a used section: the key again within 3 s */
@@ -37,6 +37,7 @@ static void layers_init(void)
     ft_btn_mask = 1u << panel.btn[B_REC];
     ft_drop_mask = 1u << panel.btn[B_PLAY];
     ui.lock_par = P_ED_FLT;                             /* the lock parameter until a sound knob is turned */
+    ui.chord_entry_key = 0xFFu;                         /* 0xFF = no chord entry in progress */
 }
 
 static uint32_t key_of_white(uint32_t w) { return key_of_lane(w & 15u); }   /* white key w -> key index */
@@ -313,24 +314,54 @@ static void layer_key(uint32_t layer, uint32_t k, uint32_t down)
     if (!down) {
         if (w >= 0) {
             ui.step_held &= (uint16_t)~(1u << w);
-            if (layer == LY_STEP)
-                step_up((uint32_t)w);
+            if (layer == LY_STEP) {
+                if ((uint32_t)w == ui.chord_entry_key)
+                    ui.chord_entry_key = 0xFFu;         /* chord entry done */
+            }
             if (layer == LY_MIX && w == 8)
                 fill_held = 0;
+        } else if (layer == LY_STEP && (k | 0x80u) == (uint32_t)ui.chord_entry_key) {
+            ui.chord_entry_key = 0xFFu;                 /* black key chord entry done */
         }
         return;
     }
     switch (layer) {
-    case LY_STEP:
-        if (w < 0) {                                    /* the first four black keys: pages 1..4 */
-            static const int8_t PG[12] = {-1, 0, -1, 1, -1, 2, -1, -1, 3, -1, -1, -1};
-            if (k < 12u && PG[k] >= 0 && (uint32_t)PG[k] * 16u < trk_len(TSEL))
-                ui.step_page = (uint8_t)PG[k];
+    case LY_STEP: {                                     /* chord sequencer key entry */
+        if (w < 0) {                                    /* black key */
+            if (ui.chord_entry_key == 0xFFu) {          /* no entry in progress: enter as chord root */
+                int32_t pc = (int32_t)((53u + (uint32_t)k) % 12u);
+                int32_t root = clamp(60 + pc + 12 * (int32_t)song.octave, 1, 127);
+                chord_step_t *cs = &cstep[ui.chord_cursor];
+                ui.chord_entry_key = (uint8_t)(k | 0x80u);  /* high bit marks black key */
+                ui.chord_entry_root = (uint8_t)root;
+                cs->note = (uint8_t)root;
+                if (cstep_type(cs) == CQ_NONE)
+                    cstep_pack(cs, CQ_MAJ, 0, 0);
+            } else {                                    /* chord step held: page switch */
+                if (k < 12u) {
+                    static const int8_t CPG[12] = {-1, 0, -1, 1, -1, -1, -1, -1, -1, -1, -1, -1};
+                    if (CPG[k] >= 0 && (uint32_t)CPG[k] * 16u < (uint32_t)clen) {
+                        ui.chord_page = (uint8_t)CPG[k];
+                        ui.chord_cursor = (uint8_t)((uint32_t)ui.chord_page * 16u +
+                                                   (ui.chord_cursor % 16u < (uint32_t)clen - (uint32_t)ui.chord_page * 16u ?
+                                                    ui.chord_cursor % 16u : 0u));
+                    }
+                }
+            }
             return;
         }
-        ui.step_held |= (uint16_t)(1u << w);
-        step_down((uint32_t)w);
+        if (ui.chord_entry_key == 0xFFu) {              /* start chord entry */
+            int32_t pc = (int32_t)((53u + (uint32_t)key_of_white((uint32_t)w)) % 12u);
+            int32_t root = clamp(60 + pc + 12 * (int32_t)song.octave, 1, 127);
+            chord_step_t *cs = &cstep[ui.chord_cursor];
+            ui.chord_entry_key = (uint8_t)w;
+            ui.chord_entry_root = (uint8_t)root;
+            cs->note = (uint8_t)root;
+            if (cstep_type(cs) == CQ_NONE)
+                cstep_pack(cs, CQ_MAJ, 0, 0);          /* default to major on first entry */
+        }
         return;
+    }
     case LY_SCALE: {                                    /* the key of the song: every synth part */
         uint32_t i, root = (53u + k) % 12u;
         for (i = 0; i < NPART; i++)
@@ -338,14 +369,29 @@ static void layer_key(uint32_t layer, uint32_t k, uint32_t down)
         ui_say("KEY ", N_NOTE[root]);
         return;
     }
-    case LY_ROLL: {                                     /* live mode: ARP held selects scenes; otherwise: GEN / MUT / FILL */
+    case LY_ROLL: {                                     /* live mode: ARP held selects scenes; otherwise: MUT / EVL */
         if (!live_mode) {
-            if (w == 0)      { is_drum(TSEL) ? drum_generate(TSEL) : seq_generate(TSEL); ui_say("GEN", ""); }
-            else if (w == 1) { seq_mutate(TSEL); ui_say("MUT", ""); }
-            else if (w >= 2 && w <= 7 && is_drum(TSEL)) {
-                static const char *const FILL_NUMS[6] = {"1","2","3","4","5","6"};
-                drum_fill_trigger((uint32_t)(w - 2));
-                ui_say("FILL", FILL_NUMS[w - 2]);
+            if (w >= 0 && w < 4) {
+                /* Row 1: MUT type 0..3 */
+                static const char *const MUT_MEL[4] = {"LEAD","BASS","KEYS","PAD"};
+                static const char *const MUT_DRM[4] = {"KICK","SN","CYM","ACC"};
+                seq_mutate_type(TSEL, (uint8_t)w);
+                ui_say("MUT", is_drum(TSEL) ? MUT_DRM[w] : MUT_MEL[w]);
+            } else if (w >= 4 && w < 16) {
+                /* Rows 2-4: EVL type+rate toggle; rate 1=4bar 2=8bar 3=16bar */
+                static const char *const EVL_MEL[4] = {"LEAD","BASS","KEYS","PAD"};
+                static const char *const EVL_DRM[4] = {"KICK","SN","CYM","ACC"};
+                static const char *const RATE_STR[4] = {"OFF","4","8","16"};
+                uint32_t slot   = (uint32_t)w - 4u;
+                uint32_t st     = slot % 4u;
+                uint32_t rate   = slot / 4u + 1u;   /* 1=4bar 2=8bar 3=16bar */
+                int16_t  packed = TSEL->p[P_EVOLVE];
+                uint32_t cur    = ((uint32_t)(uint16_t)packed >> (st * 2u)) & 3u;
+                uint32_t newrate = (cur == rate) ? 0u : rate;
+                packed = (int16_t)(((uint16_t)packed & ~(uint16_t)(3u << (st * 2u)))
+                                   | (uint16_t)(newrate << (st * 2u)));
+                TSEL->p[P_EVOLVE] = packed;
+                ui_say(is_drum(TSEL) ? EVL_DRM[st] : EVL_MEL[st], RATE_STR[newrate]);
             }
             return;
         }
@@ -529,29 +575,42 @@ static void layer_knobs(uint32_t layer)
             else if (k == 2u)
                 pattern_transpose(t, s);
             break;
-        case LY_STEP:
-            if (ui.step_held) {                         /* SOUND / NOTE  LEVEL  RATCHET  NUDGE */
-                if (k == 0u && is_drum(t))
-                    pen_lane_move(s);
-                else
-                    steps_held_edit(k, s);
-            } else if (k == 0u) {
-                if (is_drum(t)) {
-                    pen_lane_move(s);
-                } else {
-                    pen_note[0] = (uint8_t)clamp(pen_note[0] + s, 0, 127);
-                    pen_n = 1;
+        case LY_STEP: {                             /* chord sequencer knobs */
+            chord_step_t *cs = &cstep[ui.chord_cursor < (uint32_t)clen ? ui.chord_cursor : 0];
+            if (ui.chord_entry_key != 0xFFu) {  /* key held: type / inversion */
+                if (k == 0u) {
+                    uint32_t ty = (uint32_t)clamp((int32_t)cstep_type(cs) + s, 1, (int32_t)CQ_COUNT - 1);
+                    cstep_pack(cs, ty, cstep_inv(cs), cstep_cond(cs));
+                } else if (k == 2u) {
+                    uint32_t iv = (uint32_t)clamp((int32_t)cstep_inv(cs) + s, 0, 3);
+                    cstep_pack(cs, cstep_type(cs), iv, cstep_cond(cs));
                 }
-            } else if (k == 1u) {
-                t->p[P_SDIV] = (int16_t)clamp(t->p[P_SDIV] + s, 0, 8);
-            } else if (k == 2u) {
-                t->p[P_SSWING] = (int16_t)clamp(t->p[P_SSWING] + accel(EN_K3, s, 100), 0, 100);
-            } else {
-                t->p[P_SLEN] = (int16_t)clamp(t->p[P_SLEN] + accel(EN_K4, s, 63), 1, NSTEP);
-                if ((uint32_t)ui.step_page * 16u >= trk_len(t))
-                    ui.step_page = (uint8_t)((trk_len(t) - 1u) / 16u);
+            } else {                            /* normal: step / len / div / cond */
+                if (k == 0u) {
+                    int32_t cur = (int32_t)ui.chord_cursor + s;
+                    cur = clamp(cur, 0, (int32_t)clen - 1);
+                    ui.chord_cursor = (uint8_t)cur;
+                    ui.chord_page = (uint8_t)((uint32_t)ui.chord_cursor / 16u);
+                } else if (k == 1u) {
+                    clen = (uint8_t)clamp((int32_t)clen + s, 1, NCHORD_STEP);
+                    if (ui.chord_cursor >= (uint32_t)clen)
+                        ui.chord_cursor = (uint8_t)(clen - 1u);
+                    ui.chord_page = (uint8_t)(ui.chord_cursor / 16u);
+                } else if (k == 2u) {
+                    cseq_div = (uint8_t)clamp((int32_t)cseq_div + s, 0, NDIV_STEP - 1);
+                } else {
+                    /* K4: scroll cond or set REST */
+                    if (cs->note) {
+                        uint32_t cd = (uint32_t)cstep_cond(cs);
+                        int32_t ncd = (int32_t)cd + s;
+                        if (ncd > 3) { cs->note = 0; cs->pack = 0; }   /* past P25 = REST */
+                        else if (ncd >= 0)
+                            cstep_pack(cs, cstep_type(cs), cstep_inv(cs), (uint32_t)ncd);
+                    }
+                }
             }
             break;
+        }
         case LY_SCALE:
             if (k == 0u) {
                 if (!is_drum(t))
@@ -573,9 +632,38 @@ static void layer_knobs(uint32_t layer)
             *lv = (int16_t)clamp(*lv + accel(EN_K1 + k, s, 127), 0, 127);
             break;
         }
+        case LY_ROLL:
+            if (!live_mode)
+                mut_str_adj((uint32_t)(t - trk), (uint32_t)k, accel(EN_K1 + k, s, 127));
+            break;
         default:
             break;
         }
+    }
+}
+
+/* short display label for a chord step ("Cm7", "F", "--") into buf (8 bytes) */
+static void cstep_label(char *buf, const chord_step_t *cs)
+{
+    uint32_t type, n;
+    if (!cs->note) { buf[0] = '-'; buf[1] = '-'; buf[2] = 0; return; }
+    note_name(buf, cs->note);
+    n = str_len(buf);
+    type = cstep_type(cs);
+    switch (type) {
+    case CQ_MIN:   str_cpy(buf + n, "m",    2); break;
+    case CQ_DIM:   str_cpy(buf + n, "d",    2); break;
+    case CQ_AUG:   str_cpy(buf + n, "+",    2); break;
+    case CQ_MAJ7:  str_cpy(buf + n, "M7",   3); break;
+    case CQ_MIN7:  str_cpy(buf + n, "m7",   3); break;
+    case CQ_DOM7:  str_cpy(buf + n, "7",    2); break;
+    case CQ_DIM7:  str_cpy(buf + n, "d7",   3); break;
+    case CQ_M7B5:  str_cpy(buf + n, "m7b5", 5); break;
+    case CQ_MMAJ7: str_cpy(buf + n, "mM7",  4); break;
+    case CQ_MAJ9:  str_cpy(buf + n, "M9",   3); break;
+    case CQ_MIN9:  str_cpy(buf + n, "m9",   3); break;
+    case CQ_DOM9:  str_cpy(buf + n, "9",    2); break;
+    default: break;  /* CQ_MAJ or CQ_NONE: just the note name */
     }
 }
 
@@ -737,21 +825,47 @@ static void layer_screen_draw(void)
             str_cpy(sub, undo.valid ? (undo.undone ? "oct+ redo" : "oct- undo") : sub, sizeof sub);
         break;
     }
-    case LY_ROLL: {                                     /* live mode: 16 scene tiles; otherwise: GEN / MUT / FILL */
+    case LY_ROLL: {                                     /* live mode: 16 scene tiles; otherwise: MUT / EVL */
         if (!live_mode) {
-            str_cpy(tl[0].lab, "GEN", 8); tl[0].bg = col; tl[0].fg = C_BLACK;
-            str_cpy(tl[1].lab, "MUT", 8); tl[1].bg = TE_MID[sel & 3u]; tl[1].fg = C_BLACK;
-            if (is_drum(TSEL)) {
-                static const char *const FILL_LABS[6] = {"FIL 1","FIL 2","FIL 3","FIL 4","FIL 5","FIL 6"};
-                for (i = 0; i < DRUM_NFILLS; i++) {
-                    str_cpy(tl[2 + i].lab, FILL_LABS[i], 8);
-                    tl[2 + i].bg = (drum_fill_cur == (int8_t)i && song.playing) ? col : TE_G2;
-                    tl[2 + i].fg = C_BLACK;
-                }
-                str_cpy(sub, "1:gen  2:mut  3-8:fill", sizeof sub);
-            } else {
-                str_cpy(sub, "key 1: generate   key 2: mutate", sizeof sub);
+            /* row 0: MUT; rows 1-3: EVL at 4, 8, 16 bars — 4 subtypes per row */
+            static const char *const MUT_MEL[4]     = {"MUT LD","MUT BS","MUT KY","MUT PD"};
+            static const char *const MUT_DRM[4]     = {"MUT KK","MUT SN","MUT CY","MUT AC"};
+            static const char *const EVL_MEL[3][4]  = {
+                {"EV LD 4","EV BS 4","EV KY 4","EV PD 4"},
+                {"EV LD 8","EV BS 8","EV KY 8","EV PD 8"},
+                {"EV LD16","EV BS16","EV KY16","EV PD16"},
+            };
+            static const char *const EVL_DRM[3][4]  = {
+                {"EV KK 4","EV SN 4","EV CY 4","EV AC 4"},
+                {"EV KK 8","EV SN 8","EV CY 8","EV AC 8"},
+                {"EV KK16","EV SN16","EV CY16","EV AC16"},
+            };
+            const char *const *mut_labs  = is_drum(TSEL) ? MUT_DRM : MUT_MEL;
+            const char *const (*evl_labs)[4] = is_drum(TSEL) ? EVL_DRM : EVL_MEL;
+            uint32_t packed = (uint32_t)(uint16_t)TSEL->p[P_EVOLVE];
+            for (i = 0; i < 4u; i++) {
+                str_cpy(tl[i].lab, mut_labs[i], 8);
+                tl[i].bg = TE_MID[sel & 3u]; tl[i].fg = C_BLACK;
             }
+            for (i = 0; i < 12u; i++) {
+                uint32_t st   = i % 4u;
+                uint32_t row  = i / 4u;         /* 0=4bar 1=8bar 2=16bar */
+                uint32_t rate = row + 1u;
+                uint32_t cur  = (packed >> (st * 2u)) & 3u;
+                str_cpy(tl[4 + i].lab, evl_labs[row][st], 8);
+                tl[4 + i].bg = (cur == rate) ? TE_MID[sel & 3u] : TE_G2;
+                tl[4 + i].fg = C_BLACK;
+            }
+            /* Dials show per-subtype mutation strength (KNOB 1-4) */
+            static const char *const KLAB_MEL[4] = {"LD", "BS", "KY", "PD"};
+            static const char *const KLAB_DRM[4] = {"KK", "SN", "CY", "AC"};
+            uint32_t ti = (uint32_t)(TSEL - trk);
+            for (i = 0; i < 4u; i++) {
+                lab[i]    = is_drum(TSEL) ? KLAB_DRM[i] : KLAB_MEL[i];
+                fmt_int(v[i], (int32_t)mut_str[ti][i] * 100 / 127);
+                ratio[i]  = (int32_t)mut_str[ti][i] * 1000 / 127;
+            }
+            str_cpy(sub, "K=str 1-4:mut 5-16:evl", sizeof sub);
             break;
         }
         col = RGB(0, 200, 240);
@@ -773,68 +887,53 @@ static void layer_screen_draw(void)
         }
         break;
     }
-    case LY_STEP: {                                     /* the 16 steps of the page */
-        uint32_t len = trk_len(t), page = ui.step_page;
+    case LY_STEP: {                                     /* chord sequencer: 16 steps of the page */
+        uint32_t page = ui.chord_page, cursor_abs = ui.chord_cursor;
+        int entry = (ui.chord_entry_key != 0xFFu);
+        col = TE_COL[1];
         for (i = 0; i < 16u; i++) {
-            uint32_t idx = page * 16u + i, on, lv = LV_NORM, rt = 0;
-            if (idx >= len) {
+            uint32_t idx = page * 16u + i;
+            const chord_step_t *cs;
+            if (idx >= (uint32_t)clen) {
                 tl[i].bg = C_BLACK;
                 continue;
             }
-            if (is_drum(t)) {
-                const dstep_t *d = &t->dstep[idx];
-                on = dstep_has(d, pen_lane);
-                if (on) {
-                    lv = dstep_lvl(d, pen_lane);
-                    rt = dstep_rat(d, pen_lane);
-                }
-            } else {
-                const step_t *st = &t->step[idx];
-                on = step_on(st);
-                if (on) {
-                    lv = st->lvl & 3u;
-                    rt = st->rat & 3u;
-                    note_name(tl[i].lab, st->note[0]);
-                } else if (st->time == ST_TIE) {
-                    str_cpy(tl[i].lab, "--", 8);
-                }
-            }
-            if (!tl[i].lab[0])
-                fmt_int(tl[i].lab, (int32_t)idx + 1);
-            tl[i].bg = on ? (lv == LV_GHOST ? TE_DIM[sel & 3u] : lv == LV_SOFT ? TE_MID[sel & 3u] : lv == LV_HARD ? C_WHITE : col)
-                          : TE_G1;
-            tl[i].fg = on ? C_BLACK : TE_G3;
-            tl[i].marks = (uint8_t)(on ? rt : 0u);
-            if (song.playing && idx == t->seq_idx)
+            cs = &cstep[idx];
+            cstep_label(tl[i].lab, cs);
+            tl[i].bg = cs->note ? col : TE_G1;
+            tl[i].fg = cs->note ? C_BLACK : TE_G3;
+            if (song.playing && idx == cseq_idx)
                 tl[i].top = C_WHITE;
-            if ((ui.step_held >> i) & 1u)
-                tl[i].top = TE_RED;
+            if (idx == cursor_abs)
+                tl[i].top = entry ? TE_RED : TE_MID[1];
         }
-        if (len > 16u) {
+        if ((uint32_t)clen > 16u) {
             char p[4] = {'1', '/', '1', 0};
             p[0] = (char)('1' + page);
-            p[2] = (char)('0' + (len + 15u) / 16u);
+            p[2] = (char)('0' + ((uint32_t)clen + 15u) / 16u);
             str_cpy(sub, "page ", sizeof sub);
             str_cpy(sub + 5, p, 4);
         }
-        lab[0] = is_drum(t) ? "sound" : "note";
-        if (is_drum(t))
-            str_cpy(v[0], LANE_SHORT[pen_lane], 8);
-        else
-            note_name(v[0], pen_note[0]);
-        ratio[0] = is_drum(t) ? pen_lane * 1000 / 15 : pen_note[0] * 1000 / 127;
-        if (ui.step_held) {
-            lab[1] = "level", lab[2] = "ratchet";
-            str_cpy(v[1], "-  +", 8);
-            str_cpy(v[2], "x1 x4", 8);
-        } else {
-            lab[1] = "div", lab[2] = "swing", lab[3] = "steps";
-            str_cpy(v[1], N_SDIV[t->p[P_SDIV] % NDIV_STEP], 8);
-            swing_str(v[2], t->p[P_SSWING]);
-            fmt_int(v[3], t->p[P_SLEN]);
-            ratio[1] = t->p[P_SDIV] * 1000 / 8;
-            ratio[2] = t->p[P_SSWING] * 10;
-            ratio[3] = (t->p[P_SLEN] - 1) * 1000 / 63;
+        if (entry) {                            /* key held: chord quality / inversion */
+            const chord_step_t *cs = &cstep[cursor_abs];
+            lab[0] = "type", lab[2] = "inv";
+            te_lower(v[0], N_CQ[cstep_type(cs) < CQ_COUNT ? cstep_type(cs) : 0], 8);
+            fmt_int(v[2], (int32_t)cstep_inv(cs));
+            ratio[0] = (int32_t)cstep_type(cs) * 1000 / ((int32_t)CQ_COUNT - 1);
+            ratio[2] = (int32_t)cstep_inv(cs) * 333;
+        } else {                                /* normal: step / len / div / cond */
+            const chord_step_t *cs = &cstep[cursor_abs < (uint32_t)clen ? cursor_abs : 0];
+            static const char *const N_COND[5] = {"norm", "p75", "p50", "p25", "rest"};
+            uint32_t cond_disp = cs->note ? cstep_cond(cs) : 4u;
+            lab[0] = "step"; lab[1] = "len"; lab[2] = "div"; lab[3] = "cond";
+            fmt_int(v[0], (int32_t)cursor_abs + 1);
+            fmt_int(v[1], clen);
+            te_lower(v[2], N_SDIV[cseq_div % NDIV_STEP], 8);
+            te_lower(v[3], N_COND[cond_disp], 8);
+            ratio[0] = cursor_abs * 1000 / (clen > 1u ? clen - 1u : 1u);
+            ratio[1] = ((int32_t)clen - 1) * 1000 / ((int32_t)NCHORD_STEP - 1);
+            ratio[2] = cseq_div * 1000 / 8;
+            ratio[3] = cond_disp * 250;
         }
         break;
     }

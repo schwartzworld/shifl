@@ -976,6 +976,7 @@ static void ui_timers(void)
 static void ui_draw(void)
 {
     ui.frame++;
+    seq_evl_process();          /* fire pending EVOLVE mutations before drawing */
     pads_tick();
     if (rec_go) {                                       /* the take started: say so */
         rec_go = 0;

@@ -90,6 +90,17 @@ static void arrangement_apply(uint32_t entry_index)
             }
         }
     }
+    if (arr_song_chord[entry_index] < ARR_SCENES) {
+        const project_t *cp = &proj_slot[arr_song_chord[entry_index]];
+        if (proj_ok(cp) && cp->clen > 0) {
+            memcpy(cstep, cp->cstep, sizeof cstep);
+            clen = cp->clen;
+            cseq_div = cp->cseq_div ? cp->cseq_div : 7u;
+            cseq_abs = SEQ_NONE;
+            cseq_idx = 0;
+        }
+    }
+    cseq_arr_tr = (int8_t)e->rsv[1];   /* chord follow inherits the fragment's transpose offset */
     sync_reload = 1;
     ui.force = 1;
 }
@@ -101,6 +112,7 @@ static void arrangement_apply_scene(uint32_t scene)
     for (k = 0; k < NTRK; k++)
         trk_clear_state(&trk[k]);
     proj_apply(&proj_slot[scene], 0);
+    cseq_arr_tr = 0;   /* section jumps carry no arrangement transpose */
     sync_reload = 1;
     ui.force = 1;
 }

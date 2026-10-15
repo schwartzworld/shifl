@@ -4,7 +4,92 @@ All committed changes by Ian Schwartz, plus current uncommitted work-in-progress
 
 ---
 
+## Work in progress
+
+### Chord follow + chord sequencer improvements (`2026-10-14`)
+
+Completed the chord follow and chord sequencer feature set. FUN8 project format.
+
+**Per-track chord follow — `P_CFOL`, SCL 2 knob K4** (`firmware/src/params.c`, `firmware/src/seq.c`):
+- 14 modes: `CF_OFF` (follow disabled) + 13 follow modes — seven targets (BASS, MEL, ROOT, POW, TRI, 7TH, 9TH) each available in root-position or 1st-inversion.
+- When a mode is active, notes played or stepped on the track are reharmonised to the current chord from the chord sequencer (root + quality + inversion set by `chord_root/type/inv`).
+- `param_kept()` includes P_CFOL so presets don't clear it.
+- Project format bumped to FUN8 (`0x46554E38`); migrates from FUN7.
+
+**INIT/NEW/CLRSQ clearing chord data** (`firmware/src/ui_input.c`):
+- INIT SOUND (`G_INITSND`) clears `P_CFOL` for the selected track (IRQ-protected).
+- CLEAR SEQ (`G_CLRSEQ`) wipes the global chord state: `cstep[]`, `clen`, `cseq_div`, `chord_root`, `chord_type`, `chord_inv` (IRQ-protected).
+- `project_new()` likewise wipes all global chord state.
+
+**Chord sequencer advancement fix** (`firmware/src/seq.c`, `cseq_tick()`):
+- The original guard `if (into != 0 || abs == cseq_abs) return;` required exact block-boundary alignment with a bar boundary — almost never true since audio blocks are ~128 samples but bar boundaries land on arbitrary samples. Removed `into != 0 ||`: the chord now advances whenever `abs` (the absolute step count from `grid_at()`) changes, matching the logic used by `seq_tick()`.
+
+**Beat-behind fix** (`firmware/src/seq.c`, `events_block()`):
+- `cseq_tick()` was called *after* `seq_tick()`, so notes were transformed with the previous chord and the new chord only arrived a block later. Moved `cseq_tick()` before `for (i = 0; i < NTRK; i++) seq_tick(...)`.
+
+**Per-slot chord save/load** (`firmware/src/project.c`, `proj_apply()`):
+- `proj_apply()` was restoring chord data only inside `if (all)` (explicit full project load). Moved chord restore outside that block so it also fires on `all=0` calls: song mode section transitions (`arrangement_apply()`) and live mode scene jumps (`arrangement_apply_scene()`).
+
+**Song mode CHD entry** (`firmware/src/arranger.c/h`, `firmware/src/ui_song.c`, `firmware/src/project.c`):
+- `arr_song_chord[ARR_STEPS]` — per-fragment chord slot (0–5 = slot A–F, `ARR_CHORD_NONE 0xFF` = no change).
+- Displayed as a **CHD** row in the SONG screen (sub 19, after the four slicer rows). Shows `--` (no change) or `A`–`F` with `chord slot` label.
+- `arrangement_apply()` and `arrangement_apply_scene()` load the selected slot's chord data (`cstep`, `clen`, `cseq_div`) when transitioning, if the slot is valid and non-empty.
+- Persisted as `arr_chord[ARR_STEPS]` appended to `persist_t` after `arr_slcr`; `PERSIST_SIZE_V77` updated; boot load migration initialises all entries to `ARR_CHORD_NONE`.
+
+**Black key chord entry** (`firmware/src/ui_layers.c`):
+- Black keys in the CHORD layer (hold SEQ) can now enter chord roots. Physical column `k` (0–11 for the black keys visible on the two-octave keyboard) is the chromatic distance from F, giving pitch class `(53 + k) % 12`.
+- `chord_entry_key` uses `k | 0x80u` as the black-key sentinel so key-release correctly closes the entry.
+- Previously black keys fell through to page-switching or were silently ignored; now the first black key press enters the chord root (and defaults to MAJ if the step was empty), matching the white-key behaviour.
+
+**Chord sequencer (original, FUN7)** — see prior session for full data model notes.
+
+**Bumped to FM-1_971.**
+
+---
+
+### Per-type MUT/EVL on ROLL page + per-type drum mutation algorithms (`2026-10-14`)
+
+Redesigned the ROLL page to support targeted mutation, and implemented musical mutation algorithms for all eight track types.
+
+**ROLL page redesign** (`firmware/src/ui_layers.c`):
+- Removed GEN and drum-fill buttons from ROLL (fills are sequenceable on GRID; GEN removed entirely).
+- 16 pads now split into two zones: pads 1–4 (w=0–3) select the **MUT subtype**; pads 5–16 (w=4–15) toggle **EVL rate** (4/8/16 bars) per subtype. EVL buttons toggle: tapping the same rate turns it off; tapping a different rate switches to it.
+- `P_EVOLVE` packing extended: bits `[2k+1:2k]` encode subtype k's rate (0=off, 1=4, 2=8, 3=16), fitting all four subtypes in the existing `int16_t` — zero new RAM.
+- `evl_req` widened from `uint8_t` to `uint16_t`; each track now tracks 4 independent subtype bits so multiple EVL subtypes can be active simultaneously (e.g. EVL KICK 4bar + EVL CYM 8bar at the same time).
+
+**Melodic mutation algorithms** (`firmware/src/seq.c`):
+- `mutate_lead()` — monophonic melody: ±10 semitone range, 5 operations (repitch, rest, note, swap, phase-shift), post-process leap correction, probabilistic SF_SLD75 slides.
+- `mutate_bass()` — bass line rules: anchors at p16=0/8, approach steps at p16=3/7/11/15, BASS_W pitch pool (root×4, fifth×3, octave+root×2, third×1), tritone/large-seventh avoidance between neighbours, SF_SLIDE on approach.
+- `mutate_keys()` — detects comp vs arp by chord voicing; comp mode voice-leads from existing notes (CDEG = {0,2,4,6} scale degrees), occasional ST_P75 probabilistic steps; arp mode shuffles note order.
+- `mutate_pad()` — TIE-preserving (skips ST_TIE steps entirely), voice movement/suspension/colour-tone operations, open-voicing rebuild, no ratchets or slide flags set.
+
+**Drum mutation algorithms** (`firmware/src/seq.c`):
+- `mutate_drum_kick()` — beat 1 (p16=0) always `LV_HARD` certain; beat 3 (p16=8) semi-anchor; backbeats (p16=4,12) always cleared; syncopated positions (p16=3,6,9,10,11,14) get `HIT_P75`/`HIT_P50` optional pickup kicks with adjacency checking (never 3+ consecutive).
+- `mutate_drum_cym()` — detects existing hat grid density; accents beats `LV_HARD`, ands `LV_NORM`, 16ths made conditional (HIT_P75/P50); open hat placed at and-of-2/4 positions (p16=6,7,14,15), never adjacent, never co-existing with closed hat on same step.
+- `mutate_drum_sn()` — locks backbeat snare (lane 2, p16=4,12) as `LV_HARD` certain first; adds `LV_GHOST` certain-soft ghost snares at off-16ths preferring kick-free steps; sparse click (lane 3) ghost colour.
+- `mutate_drum_acc()` — toms (lanes 9,10) reserved for last quarter (p16≥12); shaker/conga/cowbell (lanes 13,14,15) as sparse repeating patterns; max one accent lane per step; most hits `HIT_P75` probabilistic.
+- All eight types wired into `seq_mutate_type()`.
+
+**Bumped to FM-1_931.**
+
+---
+
 ## Committed Changes
+
+### Sequenceable drum fills — fill row on the GRID page (`2026-10-13`)
+
+Added a **fill row** to the drum GRID page, making fills programmable directly in the step sequencer.
+
+- **`firmware/src/core.h`** — Added `fill_seq_t` struct (2 bytes: step index + cfg byte encoding fill choice and trigger condition) and `FILL_SEQ_MAX = 8` constant. Added `fseq[FILL_SEQ_MAX]` to `drum_ext_t` (16 bytes total, in the single global `dext`).
+- **`firmware/src/drums.c`** — Added fill-row helper functions: `fseq_at_step`, `fseq_clear_step`, `fseq_set_step`, `fseq_cycle_which`, `fseq_cycle_cond`.
+- **`firmware/src/seq.c`** — In `seq_tick()`, before the existing `drum_fill_req` pickup, scans `dext.fseq` for an entry matching the current step index and fires a fill if the trigger condition (using the same `cond_fires_idx` / `t->pass` system as per-lane conditions) is met. Which=6 picks a random fill each time.
+- **`firmware/src/ui_studio.c`** — GRID page now draws 15 instrument rows (0–14) + a fill row at row 15. The fill row uses a distinct colour (TE_DRUM for specific fills, C_WHITE for random). KNOB 1 now ranges to DRUM_LANES (16) to allow selecting the fill row. Tapping a step on the fill row toggles a fill trigger; KNOB 3/4 cycle fill type and condition. Dials update to show "fill / step / fill type / condition" when fill row is selected.
+- **`firmware/src/ui_input.c`** — Key lighting for the grid now shows fill-row trigger positions when the fill row is selected (instead of calling `dstep_has` with an out-of-bounds lane index).
+- **`firmware/src/project.c`** — New project format FUN6 (`PROJ_MAGIC = 0x46554E36`). Added `fill_seq_t fseq[FILL_SEQ_MAX]` to `project_t`. Added `project_v5_t` (the old FUN5 struct). Added `proj_from_v5()` converter (copies tracks, zero-fills fseq to 0xFF). Fixed `proj_from_v5old` to check `PROJ_MAGIC_V5`. Updated `proj_capture` and `proj_apply` to save/load fseq. Added `autosave_resume` initialisation of `dext.fseq` to 0xFF for first-boot safety.
+
+**Bumped to SHIFL 3.0 / FM-1_930.**
+
+---
 
 ### Punch FX page bug fixes (`2026-10-13`)
 

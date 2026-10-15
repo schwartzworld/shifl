@@ -7,6 +7,7 @@ static const char *const N_DIV[]  = {"1/4", "1/8", "1/16", "1/32", "8T", "16T"};
 static const char *const N_SDIV[] = {"1/4", "1/8", "1/16", "1/32", "8T", "16T", "1/2", "1BAR", "2BAR"};   /* core.h div_units */
 static const char *const N_DLY[]  = {"1/4", "1/8", "1/16", "1/32", "8T", "16T", "1/8D", "1/16D", "1/4D"};  /* core.h dly_units */
 static const char *const N_ONOFF[] = {"OFF", "ON"};
+static const char *const N_EVOLVE[] = {"OFF", "4", "8", "16"};
 static const char *const N_QUANT[] = {"OFF", "SNAP", "WHITE"};   /* seq.c kb_map; 1 = SNAP as the old ON */
 static const char *const N_VOICE[] = {"POLY", "MONO", "LEG", "UNI"};   /* V_POLY .. V_UNISON */
 static const char *const N_GLMODE[] = {"RATE", "TIME"};
@@ -23,6 +24,9 @@ static const char *const N_GO[] = {"--", "GO"};
 static const char *const N_SLCR[] = {"OFF", "GATE", "STUT"};             /* SL_OFF .. SL_STUT (slicer.c) */
 static const char *const N_SLDIV[] = {"1/8", "1/16", "1/32", "8T", "16T", "32T"};   /* SL_DEN */
 static const char *const N_CHORD[] = {"OFF", "TRIAD", "7TH", "9TH", "SUS4", "POWER"};   /* seq.c CHORD_DEG */
+static const char *const N_CFOL[] = {                                                    /* CF_* (seq.c cfol_apply) */
+    "off", "root", "roo+5", "chord", "3rd+5", "3+5+7", "trans"
+};
 static const char *const N_ROLL[] = {"1/8", "1/16", "1/32", "32T", "1/64"};   /* seq.c ROLL_DEN */
 static const char *const N_ENGNAME[] = {"ANALOG", "DIGITAL", "PHASE", "LOFI", "SAMPLE", "VOICE", "TRIO", "WHEEL", "GRAIN",
 #if FELUCCA_SLICE
@@ -96,6 +100,8 @@ static const param_desc_t TP[P_COUNT] = {
     [P_FDEC] = PD("DEC", F_TIME, 0, 127, 70),
     [P_FSUS] = PD("SUS", F_PCT, 0, 127, 90),
     [P_FREL] = PD("REL", F_TIME, 0, 127, 60),
+    [P_EVOLVE] = PE("EVL", N_EVOLVE, 0),
+    [P_CFOL]   = PE("FLW", N_CFOL, 0),    /* chord follow mode (CF_OFF..CF_ROO5) */
 };
 /* a preset's extra parameters (preset_t.x) into p, each clamped to its range */
 static void preset_extras(int16_t *p, const preset_t *pr)
@@ -304,9 +310,10 @@ static const page_t PAGES[] = {
     {"SLICER", FAM_FX, SC_TRACK, GR_SLCR, {P_SLCR, P_SLPAT, P_SLRATE, P_SLDEPTH}},   /* drum track too */
     {"DLY", FAM_FX, SC_GLOBAL, GR_NONE, {G_DTIME, G_DFDBK, G_DCOLOR, G_DMIX}},
     {"REV/CHO", FAM_FX, SC_GLOBAL, GR_NONE, {G_RSIZE, G_RDAMP, G_CRATE, G_CDEPTH}},
-    {"PUNCH FX", FAM_FX, SC_GLOBAL, GR_PUNCH, {0xFF, 0xFF, 0xFF, 0xFF}},
+    {"PUNCH FX", FAM_FX, SC_GLOBAL, GR_PUNCH, {0, 0xFF, 0xFF, 0xFF}},
+    {"PUNCH FX 2", FAM_FX, SC_GLOBAL, GR_PUNCH, {1, 0xFF, 0xFF, 0xFF}},
     {"SCL", FAM_SCL, SC_TRACK, GR_SCALE, {P_ROOT, P_SCALE, P_QUANT, P_CHORD}},
-    {"SCL 2", FAM_SCL, SC_TRACK, GR_SCALE, {P_TRANS, P_STRUM, P_VLEAD, 0xFF}},   /* (2.4: the chords played) */
+    {"SCL 2", FAM_SCL, SC_TRACK, GR_SCALE, {P_TRANS, P_STRUM, P_VLEAD, P_CFOL}}, /* (2.4: chords played; 3.0: chord follow) */
     {"EDIT 1", FAM_EDIT, SC_ENGINE, GR_NONE, {P_E0, P_E1, P_E2, P_E3}},
     {"EDIT 2", FAM_EDIT, SC_ENGINE, GR_NONE, {P_E4, P_E5, P_E6, P_E7}},
     {"DX7", FAM_EDIT, SC_VOICE, GR_NONE, {0xFF, 0xFF, 0xFF, 0xFF}},

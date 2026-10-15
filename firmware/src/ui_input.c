@@ -164,7 +164,8 @@ static uint32_t keys_lit(void)
             uint32_t idx = b0 + i, on;
             if (idx >= len)
                 continue;
-            on = dstep_has(&TDRUM->dstep[idx], drum_lane);
+            on = drum_lane < DRUM_LANES ? dstep_has(&TDRUM->dstep[idx], drum_lane)
+                                        : (fseq_at_step(&dext, idx) != 0);
             if (song.playing && idx == TDRUM->seq_idx)
                 on = !on || blink;
             if (on)
@@ -319,7 +320,11 @@ static void step_edit(uint32_t slot, int32_t steps)
         last_note = st->note[0];
         break;
     case 2:
-        st->time = (uint8_t)clamp((int32_t)st->time + (steps > 0 ? 1 : -1), ST_NOTE, ST_C8OF8);
+        { int32_t t = (int32_t)st->time + (steps > 0 ? 1 : -1);
+          /* skip unused stubs between ST_C4OF4 and ST_C8OF8 */
+          if (t > (int32_t)ST_C4OF4 && t < (int32_t)ST_C8OF8)
+              t = steps > 0 ? (int32_t)ST_C8OF8 : (int32_t)ST_C4OF4;
+          st->time = (uint8_t)clamp(t, ST_NOTE, ST_C8OF8); }
         break;
     default: {                                            /* FLAG: - / ACC / SLD / A+S / A75..S25 */
         uint32_t f = st->flags < SF_N ? st->flags : 0u;
@@ -356,6 +361,11 @@ static void project_new(void)
     song.octave = 0;
     sync_reload = 1;
     ui.force = 1;
+    fm1_irq_off();
+    memset(cstep, 0, sizeof cstep);
+    clen = 8; cseq_div = 7;
+    chord_root = 0; chord_type = 0; chord_inv = 0;
+    fm1_irq_on();
 }
 
 static void edit_param(uint32_t slot, int32_t steps)
@@ -438,12 +448,19 @@ static void edit_param(uint32_t slot, int32_t steps)
         undo_mark(TSEL, (undo_sess += 4u) | 3u);
         fm1_irq_off();
         track_defaults_steps(TSEL);
+        TSEL->p[P_CFOL] = CF_OFF;
+        memset(cstep, 0, sizeof cstep);
+        clen = 8; cseq_div = 7;
+        chord_root = 0; chord_type = 0; chord_inv = 0;
         fm1_irq_on();
         ui_message("PATTERN CLEARED");
         break;
     case G_INITSND:
         *vp = 0;
         set_engine(TSEL->eng_req);                              /* engine defaults + its first preset */
+        fm1_irq_off();
+        TSEL->p[P_CFOL] = CF_OFF;
+        fm1_irq_on();
         ui_message("SOUND INIT");
         ui.force = 1;
         break;
@@ -662,6 +679,8 @@ static int layers_input(uint32_t note_edges, uint32_t *pressed, uint32_t home)
             punch_page_on_t = now;
         punch_page_on = new_pp;
         punch_showing = (uint8_t)(punch_page_on && (now - punch_page_on_t >= SHOW_MS));
+        if (punch_page_on)
+            punch.page = cur_page()->id[0];   /* 0 = PUNCH FX, 1 = PUNCH FX 2 */
     }
     punch.hold = (uint8_t)(held == LY_FX || punch_page_on);
     if (held != LY_PLAY && held != ui.layer && ui.layer != LY_PLAY)
@@ -681,6 +700,7 @@ static int layers_input(uint32_t note_edges, uint32_t *pressed, uint32_t home)
             ly_quiet_t = fm1_ms | 1u;                     /* a layer shown lets go: KNOB 1..4 quiet a while (#39) */
             ui.layer = LY_PLAY;
             ui.step_held = 0;
+            ui.chord_entry_key = 0xFFu;
             ui.force = 1;                                 /* the page comes back */
         }
         ui.step_sess = 0;
@@ -714,8 +734,12 @@ static int layers_input(uint32_t note_edges, uint32_t *pressed, uint32_t home)
         used[held] = 1;
     if (ui.layer == LY_PLAY && (used[held] || now - t0[held] >= SHOW_MS)) {
         ui.layer = (uint8_t)held;                         /* show it (not for a quick tap) */
-        if (held == LY_STEP && (uint32_t)ui.step_page * 16u >= trk_len(TSEL))
-            ui.step_page = 0;
+        if (held == LY_STEP) {
+            if ((uint32_t)ui.chord_page * 16u >= (uint32_t)clen)
+                ui.chord_page = 0;
+            if (ui.chord_cursor >= (uint32_t)clen)
+                ui.chord_cursor = (uint8_t)(clen > 0u ? clen - 1u : 0u);
+        }
     }
     if (held == LY_ERASE) {                               /* EDIT + OCT- / OCT+: undo / redo */
         uint32_t ob = 1u << panel.btn[B_OCTDN], pb = 1u << panel.btn[B_OCTUP];

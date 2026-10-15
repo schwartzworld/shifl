@@ -18,6 +18,7 @@ static int8_t arr_song_transpose;         /* semitone offset for the current fra
 static uint8_t arr_song_trans_inkey;      /* 1 = snap transposed note to the track's scale after chromatic shift */
 static uint8_t arr_song_vol[ARR_STEPS][ARR_TRACKS];   /* per-fragment per-track volume override; ARR_VOL_NONE=use scene's */
 static uint8_t arr_song_slicer[ARR_STEPS][ARR_TRACKS]; /* per-fragment per-track slicer mode override; ARR_SLCR_NONE=use scene's */
+static uint8_t arr_song_chord[ARR_STEPS]; /* per-fragment chord slot; ARR_CHORD_NONE = no change */
 
 static int arrangement_start(void)
 {

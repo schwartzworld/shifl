@@ -41,7 +41,7 @@ static void song_sane(void)
     if (!ok) arr_defaults(&arrangement);
     if (song_cursor >= arrangement.count)
         song_cursor = (uint8_t)(arrangement.count - 1u);
-    if (song_sub > ARR_TRACKS + 14u) song_sub = 0;
+    if (song_sub > ARR_TRACKS + 15u) song_sub = 0;
 }
 
 /* Scene targeted by REC/LOAD: the selected track's scene, or the first non-muted
@@ -101,6 +101,7 @@ static void song_screen_draw(void)
             sig = sig * 17u + arr_song_vol[i][k];
             sig = sig * 23u + arr_song_slicer[i][k];
         }
+        sig = sig * 29u + arr_song_chord[i];
     }
     for (i = 0; i < ARR_SCENES; i++) sig = sig * 3u + (uint32_t)project_used(i);
     if (!ui.force && !ui.msg_t && sig == previous) return;
@@ -271,7 +272,7 @@ static void song_screen_draw(void)
         }
         cv_rect(0, 1, 240, 1, RGB(54, 54, 60));
         cv_blit(0, 198);
-    } else if (song_sub >= (uint8_t)(ARR_TRACKS + 4u + NPART + NTRK)) {
+    } else if (song_sub >= (uint8_t)(ARR_TRACKS + 4u + NPART + NTRK) && song_sub < (uint8_t)(ARR_TRACKS + 4u + NPART + NTRK + NTRK)) {
         /* Slicer override rows (sub=15..18, all 4 tracks) */
         static const char *const SL_NAME[3] = {"OFF", "GATE", "STUT"};
         uint32_t sk = (uint32_t)song_sub - (ARR_TRACKS + 4u + NPART + NTRK);
@@ -287,6 +288,23 @@ static void song_screen_draw(void)
             cv_rect(36, 9, 52, 20, RGB(40, 40, 52));
             cv_text(40, 11, &FONT_S, SL_NAME[sv < 3u ? sv : 0u], RGB(180, 180, 220));
             cv_text(96, 11, &FONT_S, "slicer override", RGB(80, 80, 88));
+        }
+        cv_rect(0, 1, 240, 1, RGB(54, 54, 60));
+        cv_blit(0, 198);
+    } else if (song_sub == (uint8_t)(ARR_TRACKS + 4u + NPART + NTRK + NTRK)) {
+        /* Chord slot row (sub=19): one per-entry chord source slot */
+        uint8_t cs = arr_song_chord[song_cursor];
+        cv_begin(240, 42, C_BLACK);
+        cv_text(4, 11, &FONT_S, "CHD", RGB(220, 180, 255));
+        if (cs == ARR_CHORD_NONE) {
+            cv_rect(36, 9, 26, 20, RGB(26, 26, 30));
+            cv_text(40, 11, &FONT_S, "--", RGB(80, 80, 88));
+            cv_text(70, 11, &FONT_S, "no change", RGB(80, 80, 88));
+        } else {
+            char sc[3] = {(char)('A' + (cs < ARR_SCENES ? cs : 0u)), 0, 0};
+            cv_rect(36, 9, 26, 20, RGB(40, 26, 52));
+            cv_text(40, 11, &FONT_S, sc, RGB(220, 180, 255));
+            cv_text(70, 11, &FONT_S, "chord slot", RGB(80, 80, 88));
         }
         cv_rect(0, 1, 240, 1, RGB(54, 54, 60));
         cv_blit(0, 198);
@@ -400,7 +418,7 @@ static void song_screen_input(uint32_t pressed, uint32_t home)
         }
         if (song.playing || transport_req) { ui_message("STOP FIRST"); continue; }
         if (k == 1) {
-            song_sub = (uint8_t)clamp((int32_t)song_sub + steps, 0, (int32_t)ARR_TRACKS + 14);
+            song_sub = (uint8_t)clamp((int32_t)song_sub + steps, 0, (int32_t)ARR_TRACKS + 15);
         } else if (k == 2) {
             arr_entry_t *e = &arrangement.entry[song_cursor];
             if (song_sub == 0u) {
@@ -449,7 +467,7 @@ static void song_screen_input(uint32_t pressed, uint32_t home)
                     int32_t new_v = clamp(cur_v + steps, -1, 127);
                     arr_song_vol[song_cursor][vk] = (new_v < 0) ? ARR_VOL_NONE : (uint8_t)new_v;
                 }
-            } else if (song_sub >= ARR_TRACKS + 4u + NPART + NTRK) {
+            } else if (song_sub >= ARR_TRACKS + 4u + NPART + NTRK && song_sub < ARR_TRACKS + 4u + NPART + NTRK + NTRK) {
                 /* Slicer override rows (sub=15..18): all 4 tracks, OFF/GATE/STUT or -1=none */
                 uint32_t sk = (uint32_t)song_sub - (ARR_TRACKS + 4u + NPART + NTRK);
                 if (sk < NTRK) {
@@ -458,6 +476,12 @@ static void song_screen_input(uint32_t pressed, uint32_t home)
                     int32_t new_s = clamp(cur_s + steps, -1, 2);  /* -1=none, 0=off, 1=gate, 2=stut */
                     arr_song_slicer[song_cursor][sk] = (new_s < 0) ? ARR_SLCR_NONE : (uint8_t)new_s;
                 }
+            } else if (song_sub == ARR_TRACKS + 4u + NPART + NTRK + NTRK) {
+                /* Chord slot row (sub=19): -1=none, 0=A..5=F */
+                int32_t cur_c = (arr_song_chord[song_cursor] == ARR_CHORD_NONE) ? -1 :
+                                (int32_t)arr_song_chord[song_cursor];
+                int32_t new_c = clamp(cur_c + steps, -1, (int32_t)ARR_SCENES - 1);
+                arr_song_chord[song_cursor] = (new_c < 0) ? ARR_CHORD_NONE : (uint8_t)new_c;
             }
         } else if (k == 3) {
             arrangement.count = (uint8_t)clamp(arrangement.count + steps, 1, ARR_STEPS);

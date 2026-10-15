@@ -3,7 +3,7 @@
 /* Felucca user interface. Four columns map to KNOB 1..4. Rendering is lazy:
  * every element remembers what it last drew and is redrawn only on change. */
 #ifndef FELUCCA_VERSION
-#define FELUCCA_VERSION "SHIFL 2.8"  /* the beat machine firmware for the FM-1 (based on Felucca) */
+#define FELUCCA_VERSION "SHIFL 3.0"  /* the beat machine firmware for the FM-1 (based on Felucca) */
 #endif
 static void project_save(uint32_t slot);
 static void arrangement_save(void);
@@ -69,6 +69,10 @@ static struct {
     uint8_t step_page;           /* SEQ layer: the 16 steps shown (page x 16) */
     uint16_t step_held;          /* SEQ layer: the step keys held (white key index) */
     uint32_t step_sess;          /* SEQ layer: the undo session of this hold */
+    uint8_t chord_page;          /* CHORD layer: the 16 steps shown (page x 16) */
+    uint8_t chord_cursor;        /* CHORD layer: currently selected step (knob 1 moves it) */
+    uint8_t chord_entry_key;     /* CHORD layer: white key held for root entry (0xFF = none) */
+    uint8_t chord_entry_root;    /* CHORD layer: MIDI root note of the held key */
     uint8_t lock_par;            /* SEQ layer, a step held + KNOB 4: the parameter it locks (the last sound
                                   * parameter a knob changed on a page of the selected track; P_ED_FLT at boot) */
     uint8_t hold_kind;           /* a hold to confirm: 1 = clear the track (REC), 2 = save (SAVE) */
@@ -257,12 +261,13 @@ static void track_defaults_steps(track_t *t) { steps_clear(t); }
 
 /* what loading a sound (factory or user preset) leaves alone: the mix (LEVEL, PAN, MUTE:
  * the TRACKS faders), the pattern parameters (LEN, DIV, SWING, GATE) and the key the part plays
- * in (ROOT, SCALE, QNT, CHORD: the song's; SCL + key sets the root of every part). The SLICER is
- * part of the sound: a factory preset turns it OFF (its defaults), a user preset brings its own */
+ * in (ROOT, SCALE, QNT, CHORD: the song's; SCL + key sets the root of every part). P_CFOL (chord
+ * follow) is also kept: it is set per pattern, not per sound. The SLICER is part of the sound:
+ * a factory preset turns it OFF (its defaults), a user preset brings its own */
 static int param_kept(uint32_t i)
 {
     return i == P_LEVEL || i == P_PAN || i == P_MUTE || (i >= P_SLEN && i <= P_SGATE) ||
-           (i >= P_ROOT && i <= P_QUANT) || i == P_CHORD;
+           (i >= P_ROOT && i <= P_QUANT) || i == P_CHORD || i == P_CFOL;
 }
 
 /* preset pi of the engine the track asked for: the whole sound (not the pattern parameters) */

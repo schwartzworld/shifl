@@ -136,7 +136,7 @@ static uint32_t dstep_hit(const dstep_t *s, uint32_t l)
     uint32_t rat = (s->rat[l >> 2] >> sh) & 3u;
     if (on) return HIT_ON + rat;
     if (lv == 0) return rat ? HIT_P75 + rat - 1u : HIT_OFF;
-    return HIT_C1OF2 + (lv - 1u) * 4u + rat;
+    return HIT_CODD2 + (lv - 1u) * 4u + rat;
 }
 static void dstep_set_hit(dstep_t *s, uint32_t l, uint32_t h)
 {
@@ -150,7 +150,7 @@ static void dstep_set_hit(dstep_t *s, uint32_t l, uint32_t h)
     } else if (h <= HIT_P25) {
         on = 0; lv = 0; rat = h - HIT_P75 + 1u;
     } else {
-        uint32_t ci = h - HIT_C1OF2;
+        uint32_t ci = h - HIT_CODD2;
         on = 0; lv = ci / 4u + 1u; rat = ci % 4u;
     }
     s->on[l >> 3]  = (uint8_t)((s->on[l >> 3]  & ~(1u << on_sh)) | (on << on_sh));
@@ -184,7 +184,7 @@ static void dstep_set(dstep_t *s, uint32_t l, uint32_t lvl, uint32_t rat)   /* c
     dstep_set_hit(s, l, HIT_ON + rat);
     dstep_set_lvl(s, l, lvl);
 }
-static void dstep_set_cond(dstep_t *s, uint32_t l, uint32_t cond_hit)   /* conditional hit: HIT_C1OF2..HIT_C8OF8 */
+static void dstep_set_cond(dstep_t *s, uint32_t l, uint32_t cond_hit)   /* conditional hit: HIT_CODD2..HIT_C8OF8 */
 {
     dstep_set_hit(s, l, cond_hit);
 }
@@ -288,6 +288,58 @@ static void drum_909_apply(int ins, uint32_t lane, int32_t pitch_offset)
     }
 }
 static drum_ext_t dext;                         /* the working project's lane macros and locks */
+
+/* fill-row helpers (called from ui_studio.c and seq.c via unity build) */
+static const fill_seq_t *fseq_at_step(const drum_ext_t *d, uint32_t step)
+{
+    uint32_t i;
+    for (i = 0; i < FILL_SEQ_MAX; i++)
+        if (d->fseq[i].step == (uint8_t)step) return &d->fseq[i];
+    return 0;
+}
+static void fseq_clear_step(drum_ext_t *d, uint32_t step)
+{
+    uint32_t i;
+    for (i = 0; i < FILL_SEQ_MAX; i++)
+        if (d->fseq[i].step == (uint8_t)step) { d->fseq[i].step = 0xFFu; return; }
+}
+static int fseq_set_step(drum_ext_t *d, uint32_t step, uint32_t which, uint32_t cond)
+{
+    uint32_t i;
+    for (i = 0; i < FILL_SEQ_MAX; i++)
+        if (d->fseq[i].step == 0xFFu) {
+            d->fseq[i].step = (uint8_t)step;
+            d->fseq[i].cfg  = (uint8_t)(((which & 0x7u) << 4) | (cond & 0xFu));
+            return 1;
+        }
+    return 0;
+}
+static void fseq_cycle_which(drum_ext_t *d, uint32_t step, int32_t delta)
+{
+    uint32_t i;
+    for (i = 0; i < FILL_SEQ_MAX; i++)
+        if (d->fseq[i].step == (uint8_t)step) {
+            int32_t w = (int32_t)((d->fseq[i].cfg >> 4) & 0x7u) + delta;
+            w = ((w % 7 + 7) % 7);
+            d->fseq[i].cfg = (uint8_t)((d->fseq[i].cfg & 0x0Fu) | ((uint32_t)w << 4));
+            return;
+        }
+}
+static void fseq_cycle_cond(drum_ext_t *d, uint32_t step, int32_t delta)
+{
+    uint32_t i;
+    for (i = 0; i < FILL_SEQ_MAX; i++)
+        if (d->fseq[i].step == (uint8_t)step) {
+            int32_t c = (int32_t)(d->fseq[i].cfg & 0x0Fu) + delta;
+            /* skip stubs: cond 5-7 map to unused HIT_CSTUB1-3 */
+            if (c > 4 && c < 8) c = delta > 0 ? 8 : 4;
+            if (c < 0) c = 0;
+            if (c > 8) c = 8;
+            d->fseq[i].cfg = (uint8_t)((d->fseq[i].cfg & 0xF0u) | (uint32_t)c);
+            return;
+        }
+}
+
 static uint16_t drum_lock;                       /* the lock of the step being played (seq.c drum_step), 0 = none */
 static volatile uint8_t drum_hand;               /* 0x80 | lane: a drum played by hand (a key, MIDI; seq.c drum_input),
                                                   * not by the sequencer: the lane page follows it */

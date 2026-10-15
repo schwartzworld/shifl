@@ -297,6 +297,186 @@ static uint32_t chord_play_notes(track_t *t, uint32_t n, uint32_t mods, uint8_t 
     return k;
 }
 
+/* ------------------------------------------------------ chord sequencer --- */
+/* CQ_* chord quality names match CQ_* enum in core.h */
+static const int8_t CSEQ_SEMI[CQ_COUNT][4] = {
+    {-1, -1, -1, -1},              /* CQ_NONE */
+    { 0,  4,  7, -1},              /* CQ_MAJ  */
+    { 0,  3,  7, -1},              /* CQ_MIN  */
+    { 0,  3,  6, -1},              /* CQ_DIM  */
+    { 0,  4,  8, -1},              /* CQ_AUG  */
+    { 0,  4,  7, 11},              /* CQ_MAJ7 */
+    { 0,  3,  7, 10},              /* CQ_MIN7 */
+    { 0,  4,  7, 10},              /* CQ_DOM7 */
+    { 0,  3,  6,  9},              /* CQ_DIM7 */
+    { 0,  3,  6, 10},              /* CQ_M7B5 */
+    { 0,  3,  7, 11},              /* CQ_MMAJ7 */
+    { 0,  4, 11, 14},              /* CQ_MAJ9 (drop 5th) */
+    { 0,  3, 10, 14},              /* CQ_MIN9 (drop 5th) */
+    { 0,  4, 10, 14},              /* CQ_DOM9 (drop 5th) */
+};
+static const char *const N_CQ[CQ_COUNT] = {
+    "none", "maj", "min", "dim", "aug",
+    "maj7", "min7", "dom7", "dim7", "m7b5", "mMaj7",
+    "maj9", "min9", "dom9"
+};
+
+static chord_step_t cstep[NCHORD_STEP];  /* 64 bytes */
+static uint8_t clen = 8;                 /* sequence length, 1..NCHORD_STEP */
+static uint8_t cseq_div = 7;             /* step timing: N_SDIV index (7 = 1 bar / 4 beats) */
+static uint32_t cseq_abs = SEQ_NONE;     /* transport step of the last chord advance */
+static uint32_t cseq_idx;               /* current chord step index */
+static uint8_t chord_root;              /* active chord root MIDI note (0 = none) */
+static uint8_t chord_type;             /* active CQ_* type */
+static uint8_t chord_inv;              /* active inversion 0-3 */
+static int8_t  cseq_arr_tr;            /* arrangement transpose offset added to chord_root in cfol_apply */
+
+/* notes of a chord step into buf[]; returns note count (0 = empty) */
+static uint32_t cseq_notes(uint8_t root, uint32_t type, uint32_t inv, uint8_t *buf)
+{
+    uint32_t k = 0, j;
+    const int8_t *semi;
+    if (!root || type == CQ_NONE || type >= CQ_COUNT)
+        return 0;
+    semi = CSEQ_SEMI[type];
+    for (j = 0; j < 4u && semi[j] >= 0; j++) {
+        uint32_t n = (uint32_t)((int32_t)root + semi[j]);
+        if (n < 128u)
+            buf[k++] = (uint8_t)n;
+    }
+    /* apply inversion: cycle lowest note up one octave, once per inversion */
+    for (j = 0; j < inv && k >= 2u; j++) {
+        if (buf[0] + 12u < 128u) {
+            uint8_t tmp = buf[0];
+            uint32_t i;
+            for (i = 0; i < k - 1u; i++)
+                buf[i] = buf[i + 1u];
+            buf[k - 1u] = (uint8_t)(tmp + 12u);
+        }
+    }
+    return k;
+}
+
+static uint32_t grid_at(uint32_t, uint32_t, uint32_t *, uint32_t *);  /* defined in grid section */
+
+/* advance the chord sequence one step per cseq_div grid boundary (called from events_block) */
+static void cseq_tick(void)
+{
+    uint32_t into, len, abs;
+    if (!song.playing)
+        return;
+    abs = grid_at(cseq_div, 0, &into, &len);
+    (void)into; (void)len;
+    if (abs == cseq_abs)
+        return;
+    cseq_abs = abs;
+    {
+        uint32_t n = (uint32_t)clen, idx = abs % n;
+        const chord_step_t *cs;
+        cseq_idx = (uint8_t)idx;
+        cs = &cstep[idx];
+        if (cs->note) {
+            uint32_t fire = 1, cond = cstep_cond(cs);
+            if      (cond == 1u) fire = (rng() & 0xFFu) < 192u;  /* P75 */
+            else if (cond == 2u) fire = (rng() & 0xFFu) < 128u;  /* P50 */
+            else if (cond == 3u) fire = (rng() & 0xFFu) < 64u;   /* P25 */
+            if (fire) {
+                chord_root = cs->note;
+                chord_type = (uint8_t)cstep_type(cs);
+                chord_inv  = (uint8_t)cstep_inv(cs);
+            }
+        }
+        /* REST (note==0): keep existing active chord */
+    }
+}
+
+/* ------------------------------------------------------ chord follow --- */
+/* snap note n to scale; also used by the arranger fragment transpose */
+static uint32_t seq_snap_scale(uint32_t n, const track_t *t)
+{
+    uint32_t mask = scale_mask(t), d, pc;
+    int32_t root = t->p[P_ROOT];
+    if (micro_active(t) || mask == 0xFFFu) return n;
+    pc = (uint32_t)((int32_t)n - root + 120) % 12u;
+    if (mask & (1u << pc)) return n;
+    for (d = 1; d <= 6u; d++) {
+        if (mask & (1u << ((pc + d) % 12u))) return (uint32_t)clamp((int32_t)n + (int32_t)d, 0, 127);
+        if (mask & (1u << ((pc - d + 12u) % 12u))) return (uint32_t)clamp((int32_t)n - (int32_t)d, 0, 127);
+    }
+    return n;
+}
+
+/* nearest octave of any pitch class in pcs[0..cnt-1] to reference note ref */
+static uint32_t cfol_closest(uint32_t ref, const uint8_t *pcs, uint32_t cnt)
+{
+    uint32_t best = ref, i;
+    int32_t bdist = 200;
+    for (i = 0; i < cnt; i++) {
+        uint32_t pc = (uint32_t)pcs[i] % 12u;
+        int32_t up = ((int32_t)pc - (int32_t)(ref % 12u) + 12) % 12;
+        int32_t dn = (up == 0) ? 0 : up - 12;
+        int32_t delta = (up <= -dn) ? up : dn;
+        uint32_t cand = (uint32_t)clamp((int32_t)ref + delta, 0, 127);
+        int32_t dist = (int32_t)cand >= (int32_t)ref ? (int32_t)(cand - ref) : (int32_t)(ref - cand);
+        if (dist < bdist) { bdist = dist; best = cand; }
+    }
+    return best;
+}
+
+/* transform n according to P_CFOL and the current chord (chord_root/type/inv from cseq_tick).
+ * cseq_arr_tr is the arrangement transpose offset applied on top of chord_root. */
+static uint32_t cfol_apply(const track_t *t, uint32_t n)
+{
+    uint32_t mode, cn;
+    uint8_t cbuf[4];
+    uint8_t eff_root;
+
+    if (is_drum(t) || !chord_root) return n;
+    mode = (uint32_t)clamp(t->p[P_CFOL], 0, CF_COUNT - 1);
+    if (mode == CF_OFF) return n;
+
+    eff_root = (uint8_t)clamp((int32_t)chord_root + (int32_t)cseq_arr_tr, 1, 127);
+    cn = cseq_notes(eff_root, chord_type, chord_inv, cbuf);
+
+    switch (mode) {
+    case CF_ROOT: {
+        return cfol_closest(n, &eff_root, 1u);
+    }
+    case CF_ROOT5: {
+        uint8_t r[2];
+        r[0] = eff_root;
+        r[1] = (uint8_t)clamp((int32_t)eff_root + 7, 0, 127);
+        return cfol_closest(n, r, 2u);
+    }
+    case CF_CHORD:
+        if (!cn) return n;
+        return cfol_closest(n, cbuf, cn);
+
+    case CF_3RD5TH: {
+        uint8_t r[2];
+        uint32_t rc = 0;
+        if (cn > 1u) r[rc++] = cbuf[1];   /* 3rd */
+        if (cn > 2u) r[rc++] = cbuf[2];   /* 5th */
+        if (!rc) return n;
+        return cfol_closest(n, r, rc);
+    }
+    case CF_3RD5THX:
+        if (cn <= 1u) return n;
+        return cfol_closest(n, cbuf + 1, cn - 1u);  /* 3rd, 5th, 7th, 9th */
+
+    case CF_TRANSPOSE: {
+        int32_t key = (int32_t)t->p[P_ROOT];
+        int32_t delta = (int32_t)(eff_root % 12u) - key;
+        if (delta > 6)  delta -= 12;   /* prefer shorter path */
+        if (delta < -6) delta += 12;
+        n = (uint32_t)clamp((int32_t)n + delta, 0, 127);
+        return seq_snap_scale(n, t);
+    }
+    default:
+        return n;
+    }
+}
+
 /* ------------------------------------------------------------- grid --- */
 /* units an odd step starts late: the track's + the global SWING (MPC: 0 = 50 %, 100 = 75 %) */
 static uint32_t swing_units(int32_t pct, uint32_t u)
@@ -371,6 +551,8 @@ static void undo_mark(const track_t *t, uint32_t sess)
 #define UNDO_REC(t) (((t)->pass << 2) | 1u)      /* a recording pass of track t */
 static uint32_t undo_erase_sess;
 
+static volatile uint16_t evl_req;        /* (track*4+subtype) bit: mutation requested by the EVOLVE interval (ISR) */
+
 /* --------------------------------------------------------- generate --- */
 /* Private xorshift32 for deterministic, seed-based pattern generation. */
 static uint32_t gen_next(uint32_t *r)
@@ -382,7 +564,8 @@ static uint32_t gen_next(uint32_t *r)
 }
 
 /* Pick an in-scale MIDI note using local prng *r.
- * prev != 0: 75% chance to prefer notes within 5 semitones (stepwise melody). */
+ * prev != 0: 90% chance to prefer notes within 5 semitones (stepwise melody).
+ * When a big jump is taken the octave is chosen to keep it nearest to prev. */
 static uint32_t gen_pick_note(const track_t *t, uint32_t *r, uint32_t prev)
 {
     if (micro_active(t)) {
@@ -395,7 +578,7 @@ static uint32_t gen_pick_note(const track_t *t, uint32_t *r, uint32_t prev)
         if ((mask >> i) & 1u)
             deg[ndeg++] = i;
     if (!ndeg) { ndeg = 1u; deg[0] = 0u; }
-    if (prev && (gen_next(r) & 3u) != 0u) {      /* 75%: prefer close intervals */
+    if (prev && (gen_next(r) & 15u) != 0u) {     /* 93.75%: prefer close intervals */
         for (oct = 0u; oct < 2u; oct++) {
             for (i = 0u; i < ndeg; i++) {
                 uint32_t n = (uint32_t)clamp((int32_t)60 + t->p[P_ROOT] + (int32_t)deg[i] + (int32_t)oct * 12, 0, 127);
@@ -407,8 +590,15 @@ static uint32_t gen_pick_note(const track_t *t, uint32_t *r, uint32_t prev)
         if (nnear)
             return near[gen_next(r) % nnear];
     }
+    /* fallback big jump: pick degree, then octave nearest prev */
     i = deg[gen_next(r) % ndeg];
-    return (uint32_t)clamp((int32_t)60 + t->p[P_ROOT] + (int32_t)i + (int32_t)(gen_next(r) & 1u) * 12, 0, 127);
+    {
+        uint32_t n0 = (uint32_t)clamp((int32_t)60 + t->p[P_ROOT] + (int32_t)i, 0, 127);
+        uint32_t n1 = (uint32_t)clamp((int32_t)60 + t->p[P_ROOT] + (int32_t)i + 12, 0, 127);
+        uint32_t d0 = n0 > prev ? n0 - prev : prev - n0;
+        uint32_t d1 = n1 > prev ? n1 - prev : prev - n1;
+        return (prev && d1 < d0) ? n1 : n0;
+    }
 }
 
 /* Same but uses the global rng (for mutation, where reproducibility is not needed). */
@@ -428,7 +618,9 @@ static uint32_t mutate_pick_note(const track_t *t)
 }
 
 /* Full from-scratch generation of a synth part.
- * P_SPICE (0-127) controls density: 0 = ~34% notes, 127 = ~59% notes. */
+ * P_SPICE (0-127) controls density: 0 = ~34% notes, 127 = ~59% notes.
+ * Step 0 always lands on the root. Beat-downbeats (i%4==0) favour the root at 60%.
+ * Stepwise motion is preferred 90% of the time; big jumps stay within the same octave. */
 static void seq_generate(track_t *t)
 {
     uint32_t len = trk_len(t), i, r;
@@ -436,6 +628,7 @@ static void seq_generate(track_t *t)
     uint32_t note_thr = 44u + spice / 4u;   /* density threshold: 44..75 / 128 */
     uint32_t acc_thr  = 22u + spice / 8u;   /* accent probability */
     uint32_t prev     = 0u;                 /* melodic memory: 0 = none yet */
+    uint32_t root     = (uint32_t)clamp((int32_t)60 + t->p[P_ROOT], 0, 127);
     step_t   tmp[NSTEP];
     int      any = 0;
 
@@ -443,10 +636,16 @@ static void seq_generate(track_t *t)
     memset(tmp, 0, sizeof tmp);
     for (i = 0; i < len; i++) {
         step_t *s = &tmp[i];
+        if (i == 0u) {                                         /* step 0: always the root */
+            s->note[0] = (uint8_t)root;
+            s->n = 1; s->time = ST_NOTE;
+            prev = root; any = 1;
+            continue;
+        }
         if ((gen_next(&r) & 127u) >= note_thr) { s->time = ST_REST; continue; }
         s->note[0] = (uint8_t)gen_pick_note(t, &r, prev);
-        if (i % 4u == 0u && (gen_next(&r) & 127u) < 45u)   /* beat steps: 35% chance of root */
-            s->note[0] = (uint8_t)clamp((int32_t)60 + t->p[P_ROOT], 0, 127);
+        if (i % 4u == 0u && (gen_next(&r) & 127u) < 77u)     /* beat downbeat: 60% root */
+            s->note[0] = (uint8_t)root;
         prev = s->note[0];
         s->n = 1; s->time = ST_NOTE;
         if ((gen_next(&r) & 127u) < acc_thr) s->flags  = SF_ACCENT;
@@ -454,7 +653,7 @@ static void seq_generate(track_t *t)
         any = 1;
     }
     if (!any) {                              /* guarantee at least one note */
-        tmp[0].note[0] = (uint8_t)clamp((int32_t)60 + t->p[P_ROOT], 0, 127);
+        tmp[0].note[0] = (uint8_t)root;
         tmp[0].n = 1; tmp[0].time = ST_NOTE;
     }
     for (i = 0; i < len; i++) {             /* drop slides that lead into a rest */
@@ -470,48 +669,61 @@ static void seq_generate(track_t *t)
 }
 
 /* Full from-scratch generation of the drum part.
- * Kick on odd steps (especially beat 1), snare on backbeat, hat regular.
- * Other lanes very sparse. Even-step kicks are ghost notes. */
+ * Foundation: kick on 1+3, snare on 2+4, 8th-note hi-hat.
+ * P_SPICE controls how much variation is added on top of the foundation. */
 static void drum_generate(track_t *t)
 {
-    uint32_t len = trk_len(t), i, l, r;
+    uint32_t len = trk_len(t), i, r;
+    uint32_t spice = (uint32_t)clamp(t->p[P_SPICE], 0, 127);
+    uint32_t var   = spice / 2u;   /* 0..63 variation budget */
     dstep_t  tmp[NSTEP];
 
     r = rng();
     memset(tmp, 0, sizeof tmp);
     for (i = 0; i < len; i++) {
         dstep_t *d = &tmp[i];
-        /* Kick (lane 0): odd steps get normal hits, even steps ghost-only */
+        uint32_t p16 = (i * 16u) / len;   /* normalised 16th-note position 0..15 */
+
+        /* Kick (lane 0): 1 and 3 backbone; syncopation at high spice */
         {
-            uint32_t thr = (i == 0u)           ? 110u :   /* beat 1: near-certain */
-                           (i % 4u == 0u)       ?  70u :   /* other downbeats */
-                           (i % 2u == 0u)       ?  35u :   /* other odd steps */
-                                                    8u;    /* even steps: rare */
-            if ((gen_next(&r) & 127u) < thr)
-                dstep_set(d, 0u, (i % 2u == 0u) ? LV_NORM : LV_GHOST, 0u);
+            uint32_t thr = (p16 == 0u)  ? 115u :                       /* beat 1: near-certain */
+                           (p16 == 8u)  ?  95u :                        /* beat 3 */
+                           (p16 == 4u || p16 == 12u) ?                  /* beats 2 and 4: low unless spicy */
+                               (var > 32u ? var / 2u : 8u) :
+                           (p16 % 2u == 0u && var > 40u) ? var / 4u :  /* even offbeats at high spice */
+                                                            0u;
+            if (thr && (gen_next(&r) & 127u) < thr)
+                dstep_set(d, 0u, LV_NORM, 0u);
         }
-        /* Snare (lane 2): backbeat strong, occasional fills */
+        /* Snare (lane 2): 2 and 4 backbone; ghost at offbeats only with plenty of spice */
         {
-            uint32_t thr = (i % 8u == 4u) ? 115u :        /* backbeat: near-certain */
-                           (i % 4u == 2u) ?  20u :         /* half positions */
-                                              6u;          /* elsewhere: rare */
-            if ((gen_next(&r) & 127u) < thr)
-                dstep_set(d, 2u, LV_NORM, 0u);
+            uint32_t thr = (p16 == 4u || p16 == 12u) ? 115u :          /* backbeat: near-certain */
+                           (p16 != 0u && p16 != 8u && var > 48u) ?
+                               var / 6u :                               /* ghost spice fills */
+                               0u;
+            if (thr && (gen_next(&r) & 127u) < thr)
+                dstep_set(d, 2u, (p16 % 4u == 0u) ? LV_NORM : LV_GHOST, 0u);
         }
-        /* Closed hi-hat (lane 4): regular with variation */
+        /* Closed hi-hat (lane 4): 8th notes are the baseline; 16ths added with spice */
         {
-            uint32_t thr = (i % 2u == 0u) ? 55u : 35u;
-            if ((gen_next(&r) & 127u) < thr)
+            uint32_t is_8th = (p16 % 2u == 0u);
+            uint32_t thr    = is_8th ? 85u :                            /* 8th notes: usually on */
+                              (var > 24u ? var / 2u : 0u);              /* 16th notes: moderate+ spice */
+            if (thr && (gen_next(&r) & 127u) < thr)
                 dstep_set(d, 4u, LV_NORM, 0u);
         }
-        /* Open hi-hat (lane 5): occasional, only when no closed hat */
-        if (!dstep_certain(d, 4u) && (gen_next(&r) & 127u) < 12u)
+        /* Open hi-hat (lane 5): only when no closed hat, very sparse */
+        if (!dstep_certain(d, 4u) && (gen_next(&r) & 127u) < (8u + var / 4u))
             dstep_set(d, 5u, LV_NORM, 0u);
-        /* All other lanes: very sparse ghost hits */
-        for (l = 1u; l < DRUM_LANES; l++) {
-            if (l == 2u || l == 4u || l == 5u) continue;
-            if ((gen_next(&r) & 127u) < 5u)
-                dstep_set(d, l, LV_GHOST, 0u);
+        /* Clap (lane 3): light ghost on snare backbeats at moderate spice */
+        if ((p16 == 4u || p16 == 12u) && var > 32u && (gen_next(&r) & 127u) < var / 3u)
+            dstep_set(d, 3u, LV_GHOST, 0u);
+        /* Toms (lanes 9-10): only at higher spice, never on core beats */
+        if (var > 48u && p16 != 0u && p16 != 4u && p16 != 8u && p16 != 12u) {
+            if ((gen_next(&r) & 127u) < var / 8u)
+                dstep_set(d, 9u, LV_GHOST, 0u);
+            if ((gen_next(&r) & 127u) < var / 8u)
+                dstep_set(d, 10u, LV_GHOST, 0u);
         }
     }
     fm1_irq_off();
@@ -521,14 +733,44 @@ static void drum_generate(track_t *t)
     fm1_irq_on();
 }
 
-/* Partial stochastic mutation: ~50% of steps re-rolled (type or pitch).
- * Works on both synth and drum tracks. */
+/* Per-track per-subtype mutation strength set by the ROLL page knobs.
+ * 0 = no mutation, 127 = chaos. Stored here; ui_layers.c reads/writes via the helpers. */
+static uint8_t mut_str[NTRK][4];
+static uint32_t mut_str_get(uint32_t ti, uint32_t st)
+{
+    return ti < (uint32_t)NTRK ? (uint32_t)mut_str[ti][st & 3u] : 64u;
+}
+static void mut_str_adj(uint32_t ti, uint32_t st, int32_t delta)
+{
+    if (ti < (uint32_t)NTRK)
+        mut_str[ti][st & 3u] = (uint8_t)clamp((int32_t)mut_str[ti][st & 3u] + delta, 0, 127);
+}
+/* Linearly interpolate a mutation probability threshold: lo at str=0, hi at str=127.
+ * Use inside (rng() & 127u) < MUTHR(lo, hi, str) guards. */
+#define MUTHR(lo, hi, s) ((uint32_t)((int32_t)(lo) + (int32_t)((hi)-(lo)) * (int32_t)(s) / 127))
+
+/* Bass note picker: root / fifth / octave weighted, placed in the octave nearest ref. */
+static const int8_t BASS_IVLS[8] = {0, 7, 12, 0, 7, 0, 5, 12};
+static uint32_t mutate_pick_bass_note(const track_t *t, uint32_t ref)
+{
+    int32_t root = 60 + t->p[P_ROOT];
+    while (root + 6 < (int32_t)ref) root += 12;
+    while (root > (int32_t)ref + 6) root -= 12;
+    root = clamp(root, 24, 60);
+    return (uint32_t)clamp(root + (int32_t)BASS_IVLS[rng() % 8u], 24, 72);
+}
+
+/* Partial stochastic mutation: ~50% of steps re-rolled (type, pitch, position, or ratchet).
+ * Drum track: protects kick/snare on core beats; prefers hi-hat toggles.
+ * Synth track: bass-range tracks prefer root/fifth/octave; adds swap and ratchet ops. */
 static void seq_mutate(track_t *t)
 {
     uint32_t len = trk_len(t), i;
     uint32_t spice    = (uint32_t)clamp(t->p[P_SPICE], 0, 127);
     uint32_t note_thr = 64u + spice / 4u;
     uint32_t acc_thr  = 28u + spice / 8u;
+    uint32_t ref_note = 60u;
+    int      is_bass  = 0;
     union { step_t s[NSTEP]; dstep_t d[NSTEP]; } tmp;
 
     fm1_irq_off();
@@ -536,26 +778,70 @@ static void seq_mutate(track_t *t)
     memcpy(&tmp, t->step, len * (is_drum(t) ? sizeof(dstep_t) : sizeof(step_t)));
     fm1_irq_on();
 
+    if (!is_drum(t)) {
+        /* Compute average pitch of existing notes to calibrate bass detection and note picking */
+        uint32_t note_sum = 0u, note_n = 0u;
+        for (i = 0; i < len; i++) {
+            const step_t *s = &tmp.s[i];
+            if (step_fires(s->time) && s->n) { note_sum += s->note[0]; note_n++; }
+        }
+        if (note_n) ref_note = note_sum / note_n;
+        is_bass = (t->p[P_VOICE] != V_POLY) && (ref_note < 60u);
+    }
+
     for (i = 0; i < len; i++) {
         if (rng() & 1u) continue;                       /* 50% of steps untouched */
         if (is_drum(t)) {
-            uint32_t l = rng() % DRUM_LANES;            /* toggle 2 lanes so changes are audible */
-            dstep_set_hit(&tmp.d[i], l, dstep_hit(&tmp.d[i], l) == HIT_OFF ? HIT_ON : HIT_OFF);
-            l = rng() % DRUM_LANES;
-            dstep_set_hit(&tmp.d[i], l, dstep_hit(&tmp.d[i], l) == HIT_OFF ? HIT_ON : HIT_OFF);
+            uint32_t p16 = (i * 16u) / len;
+            int core = (p16 == 0u || p16 == 4u || p16 == 8u || p16 == 12u);
+            if (rng() & 1u) {
+                /* Toggle hi-hat: the most natural drum variation */
+                dstep_set_hit(&tmp.d[i], 4u, dstep_hit(&tmp.d[i], 4u) == HIT_OFF ? HIT_ON : HIT_OFF);
+            } else {
+                /* Toggle one non-essential lane; on core beats protect kick and snare */
+                uint32_t l = rng() % DRUM_LANES;
+                if (core && (l == 0u || l == 2u || l == 4u))
+                    l = 3u + (rng() % 13u);             /* redirect to lanes 3..15 */
+                dstep_set_hit(&tmp.d[i], l, dstep_hit(&tmp.d[i], l) == HIT_OFF ? HIT_ON : HIT_OFF);
+            }
         } else {
             step_t *s = &tmp.s[i];
-            if (rng() & 1u) {                           /* 50%: re-roll step type */
+            switch (rng() % 4u) {
+            case 0:                                      /* re-roll step type */
                 if ((rng() & 127u) >= note_thr) {
-                    s->time = ST_REST; s->n = 0;
+                    s->time = ST_REST; s->n = 0; s->rat = 0;
                 } else {
-                    s->note[0] = (uint8_t)mutate_pick_note(t); s->n = 1;
-                    s->time = ST_NOTE; s->flags = 0;
+                    s->note[0] = is_bass ? (uint8_t)mutate_pick_bass_note(t, ref_note)
+                                         : (uint8_t)mutate_pick_note(t);
+                    s->n = 1; s->time = ST_NOTE; s->flags = 0; s->rat = 0;
                     if ((rng() & 127u) < acc_thr) s->flags  = SF_ACCENT;
                     if ((rng() & 127u) < 22u)     s->flags |= SF_SLIDE;
+                    if ((rng() & 127u) < 15u)     s->rat    = 1u;  /* x2 ratchet */
                 }
-            } else if (s->n) {                          /* 50%: re-roll pitch */
-                s->note[0] = (uint8_t)mutate_pick_note(t);
+                break;
+            case 1:                                      /* re-pitch existing note */
+                if (s->n)
+                    s->note[0] = is_bass ? (uint8_t)mutate_pick_bass_note(t, ref_note)
+                                         : (uint8_t)mutate_pick_note(t);
+                break;
+            case 2: {                                    /* swap with another step */
+                uint32_t j = rng() % len;
+                step_t swap = tmp.s[j];
+                tmp.s[j] = *s;
+                *s = swap;
+                break;
+            }
+            default:                                     /* flip ratchet x1 <-> x2 */
+                if (s->n && step_fires(s->time))
+                    s->rat ^= 1u;
+                else if ((rng() & 127u) >= note_thr) {
+                    s->time = ST_REST; s->n = 0;
+                } else {
+                    s->note[0] = is_bass ? (uint8_t)mutate_pick_bass_note(t, ref_note)
+                                         : (uint8_t)mutate_pick_note(t);
+                    s->n = 1; s->time = ST_NOTE; s->flags = 0;
+                }
+                break;
             }
         }
     }
@@ -569,6 +855,836 @@ static void seq_mutate(track_t *t)
     fm1_irq_off();
     memcpy(t->step, &tmp, len * (is_drum(t) ? sizeof(dstep_t) : sizeof(step_t)));
     fm1_irq_on();
+}
+
+/* Bass-specific mutation.
+ * Rules:
+ *   - Beat 1 (p16=0) and beat 3 (p16=8) are anchors — never touched.
+ *   - Beat 2/4 (p16=4,12) are strong — re-pitch only (no add/remove), low probability.
+ *   - The 16th just before each quarter note (p16=3,7,11,15) is the approach step —
+ *     highest chance of change; may gain a slide into the next beat.
+ *   - Everything else: moderate probability, can add/remove/repitch.
+ *   - Pitch pool: root x4, fifth x3, root+octave x2, third x1.
+ *   - Interval constraint: no tritone (6) or large seventh (10-11 semitones) between neighbours.
+ */
+static void mutate_bass(track_t *t, uint32_t str)
+{
+    static const uint8_t BASS_W[10] = {0, 0, 0, 0, 4, 4, 4, 99, 99, 2}; /* scale degrees; 99 = root+12 */
+    uint32_t len      = trk_len(t), i;
+    int32_t  prev     = -1;
+    uint32_t bass_root;
+    step_t   tmp[NSTEP];
+
+    {
+        uint32_t note_sum = 0u, note_n = 0u;
+        for (i = 0; i < len; i++) {
+            const step_t *s = &t->step[i];
+            if (step_fires(s->time) && s->n) { note_sum += s->note[0]; note_n++; }
+        }
+        uint32_t ref = note_n ? (note_sum / note_n) : 48u;
+        int32_t r = 60 + t->p[P_ROOT];
+        while (r + 6 < (int32_t)ref) r += 12;
+        while (r > (int32_t)ref + 6) r -= 12;
+        bass_root = (uint32_t)clamp(r, 24, 60);
+    }
+
+    fm1_irq_off();
+    undo_mark(t, undo_sess++);
+    memcpy(tmp, t->step, len * sizeof(step_t));
+    fm1_irq_on();
+
+    for (i = 0; i < len; i++) {
+        uint32_t p16       = (i * 16u) / len;
+        step_t  *s         = &tmp[i];
+        int      is_anchor  = (p16 == 0u || p16 == 8u);
+        int      is_strong  = (p16 == 4u || p16 == 12u);
+        int      is_approach= (p16 == 3u || p16 == 7u || p16 == 11u || p16 == 15u);
+
+        if (s->time == ST_TIE) continue;                 /* always preserve ties */
+
+        if (is_anchor) {
+            if (step_fires(s->time) && s->n) prev = s->note[0];
+            continue;
+        }
+
+        uint32_t mut_thr = is_strong   ? MUTHR(0, 22, str)
+                         : is_approach ? MUTHR(0, 65, str)
+                         :               MUTHR(0, 45, str);
+
+        if ((rng() & 127u) >= mut_thr) {
+            if (step_fires(s->time) && s->n) prev = s->note[0];
+            continue;
+        }
+
+        if (is_strong) {
+            /* Re-pitch only; preserve on/off state */
+            if (step_fires(s->time) && s->n) {
+                uint32_t deg  = BASS_W[rng() % 10u];
+                uint32_t note = (deg == 99u) ? (uint32_t)clamp((int32_t)bass_root + 12, 24, 72)
+                                             : (uint32_t)clamp((int32_t)scale_up(t, bass_root, deg), 24, 72);
+                if (prev >= 0) {
+                    uint32_t d = note > (uint32_t)prev ? note - (uint32_t)prev : (uint32_t)prev - note;
+                    if (d == 6u || d == 10u || d == 11u) note = bass_root;
+                }
+                s->note[0] = (uint8_t)note;
+                s->flags |= SF_ACCENT;
+                prev = (int32_t)note;
+            }
+        } else {
+            /* Add, remove or repitch */
+            uint32_t note_thr = is_approach ? MUTHR(40, 90, str) : MUTHR(30, 75, str);
+            if ((rng() & 127u) >= note_thr) {
+                s->time = ST_REST; s->n = 0; s->flags = 0; s->rat = 0;
+            } else {
+                uint32_t deg  = BASS_W[rng() % 10u];
+                uint32_t note = (deg == 99u) ? (uint32_t)clamp((int32_t)bass_root + 12, 24, 72)
+                                             : (uint32_t)clamp((int32_t)scale_up(t, bass_root, deg), 24, 72);
+                if (prev >= 0) {
+                    uint32_t d = note > (uint32_t)prev ? note - (uint32_t)prev : (uint32_t)prev - note;
+                    if (d == 6u || d == 10u || d == 11u) note = bass_root;
+                }
+                s->note[0] = (uint8_t)note;
+                s->n = 1; s->time = ST_NOTE; s->rat = 0;
+                s->flags = (is_approach && prev >= 0 && (rng() & 127u) < MUTHR(5, 50, str))
+                           ? SF_SLIDE : 0u;
+                prev = (int32_t)note;
+            }
+        }
+    }
+
+    for (i = 0; i < len; i++) {
+        uint32_t nx = (i + 1u) % len;
+        if (flags_is_slide(tmp[i].flags) && tmp[nx].time == ST_REST)
+            tmp[i].flags &= ~SF_SLIDE;
+    }
+
+    fm1_irq_off();
+    memcpy(t->step, tmp, len * sizeof(step_t));
+    fm1_irq_on();
+}
+
+/* Keys-specific mutation.
+ * Detects comp mode (multi-note chord hits) vs arp mode (single-note run) and
+ * applies appropriate small variations.
+ *
+ * Comp mode: repitch chord voicings, add/remove hits on weak beats, thin if too dense.
+ * Arp mode: swap neighbours, rest a note, octave-shift, or replace with a chord tone.
+ *
+ * Chord tones: root, third, fifth, (seventh at high spice) — scale_up degrees 0, 2, 4, 6.
+ * Keys range: ~57-96 (well above bass, no more than 1.5 octaves total spread).
+ * Anchors (p16=0,8) are never touched.
+ */
+static void mutate_keys(track_t *t, uint32_t str)
+{
+    static const uint8_t CDEG[4] = {0, 2, 4, 6};   /* scale degrees: root third fifth seventh */
+    uint32_t len      = trk_len(t), i;
+    uint32_t n_chord  = str < 32u ? 2u : str < 96u ? 3u : 4u;
+    step_t   tmp[NSTEP];
+
+    int32_t keys_root = 60 + t->p[P_ROOT];
+    while (keys_root > 72) keys_root -= 12;
+    while (keys_root < 60) keys_root += 12;
+
+    /* Detect comp vs arp: comp if more multi-note steps than single-note steps */
+    uint32_t multi_n = 0u, single_n = 0u;
+    for (i = 0; i < len; i++) {
+        if (!step_fires(t->step[i].time)) continue;
+        if (t->step[i].n >= 2u) multi_n++; else single_n++;
+    }
+    int comp_mode = (multi_n >= single_n);
+
+    fm1_irq_off();
+    undo_mark(t, undo_sess++);
+    memcpy(tmp, t->step, len * sizeof(step_t));
+    fm1_irq_on();
+
+    for (i = 0; i < len; i++) {
+        uint32_t p16        = (i * 16u) / len;
+        step_t  *s          = &tmp[i];
+        int      is_anchor  = (p16 == 0u || p16 == 8u);
+        int      is_beat    = (p16 == 4u || p16 == 12u);  /* 2 and 4 */
+        int      is_weak16  = !is_anchor && !is_beat && (p16 % 2u != 0u);
+        int      is_off8    = !is_anchor && !is_beat && (p16 % 4u == 2u);
+
+        if (s->time == ST_TIE || is_anchor) continue;
+
+        uint32_t mut_thr = is_beat              ? MUTHR(0, 18, str)
+                         : (is_weak16||is_off8) ? MUTHR(0, 55, str)
+                         :                        MUTHR(0, 38, str);
+
+        if ((rng() & 127u) >= mut_thr) continue;
+
+        if (comp_mode) {
+            if (step_fires(s->time) && s->n >= 2u) {
+                uint32_t op = rng() % 4u;
+                if (op == 0u) {
+                    /* Repitch: rebuild voicing at same root, possibly different inversion */
+                    int32_t r = keys_root + (int32_t)((rng() % 2u) * 12);
+                    r = clamp(r, 57, 84);
+                    s->n = 0; s->lvl = 0; s->rat = 0; s->flags = 0;
+                    uint32_t k;
+                    for (k = 0; k < n_chord; k++) {
+                        int32_t note = clamp((int32_t)scale_up(t, (uint32_t)r, CDEG[k]), 57, 96);
+                        s->note[s->n++] = (uint8_t)note;
+                    }
+                } else if (op == 1u) {
+                    /* Make conditional — 75% probability hit */
+                    s->time = ST_P75;
+                } else if (op == 2u) {
+                    /* Remove — thin out */
+                    s->time = ST_REST; s->n = 0; s->flags = 0; s->rat = 0;
+                } else {
+                    /* Add accent */
+                    s->flags = SF_ACCENT;
+                }
+            } else if (s->time == ST_REST && (is_weak16 || is_off8)) {
+                /* Add chord hit at weak position */
+                if ((rng() & 127u) < MUTHR(0, 45, str)) {
+                    s->n = 0; s->lvl = 0; s->rat = 0; s->flags = 0;
+                    uint32_t k;
+                    for (k = 0; k < n_chord; k++) {
+                        int32_t note = clamp((int32_t)scale_up(t, (uint32_t)keys_root, CDEG[k]), 57, 96);
+                        s->note[s->n++] = (uint8_t)note;
+                    }
+                    s->time = ST_NOTE;
+                }
+            }
+        } else {
+            /* Arp mode: single-note variations */
+            if (step_fires(s->time) && s->n >= 1u) {
+                uint32_t op = rng() % 4u;
+                if (op == 0u) {
+                    s->time = ST_REST; s->n = 0; s->flags = 0; s->rat = 0;
+                } else if (op == 1u) {
+                    /* Step up one scale degree */
+                    s->note[0] = (uint8_t)clamp((int32_t)scale_up(t, s->note[0], 1u), 57, 96);
+                } else if (op == 2u) {
+                    /* Octave shift, stay in range */
+                    int32_t shift = (rng() & 1u) ? 12 : -12;
+                    int32_t note  = clamp((int32_t)s->note[0] + shift, 57, 96);
+                    s->note[0] = (uint8_t)note;
+                } else {
+                    /* Replace with nearest chord tone */
+                    uint32_t deg  = CDEG[rng() % n_chord];
+                    int32_t  note = (int32_t)scale_up(t, (uint32_t)keys_root, deg);
+                    while (note + 6 < (int32_t)s->note[0]) note += 12;
+                    while (note > (int32_t)s->note[0] + 6) note -= 12;
+                    s->note[0] = (uint8_t)clamp(note, 57, 96);
+                }
+            } else if (s->time == ST_REST && is_weak16) {
+                /* Add passing chord tone */
+                if ((rng() & 127u) < MUTHR(0, 38, str)) {
+                    uint32_t deg  = CDEG[rng() % n_chord];
+                    int32_t  note = clamp((int32_t)scale_up(t, (uint32_t)keys_root, deg), 57, 96);
+                    s->note[0] = (uint8_t)note; s->n = 1;
+                    s->time = ST_NOTE; s->flags = 0; s->rat = 0;
+                }
+            }
+        }
+    }
+
+    for (i = 0; i < len; i++) {
+        uint32_t nx = (i + 1u) % len;
+        if (flags_is_slide(tmp[i].flags) && tmp[nx].time == ST_REST)
+            tmp[i].flags &= ~SF_SLIDE;
+    }
+
+    fm1_irq_off();
+    memcpy(t->step, tmp, len * sizeof(step_t));
+    fm1_irq_on();
+}
+
+/* Pad-specific mutation.
+ * Only modifies chord-start steps (ST_NOTE with n>=2); TIE steps are always preserved,
+ * keeping note length intact. No accents, slides or ratchets are ever written.
+ *
+ * Operations (weighted 4:1:1:1:1 in favour of voice movement):
+ *   Move one voice by one scale step (up or down)
+ *   Add upper color tone (7th or 9th above the existing chord)
+ *   Remove top color tone
+ *   Suspension: raise or lower the third by one semitone (sus4 / sus2)
+ *   Full open-voicing rebuild: root, fifth, upper-third, upper-seventh
+ *
+ * Range: 48-84 (root/fifth in lower register, thirds/sevenths above).
+ */
+static void mutate_pad(track_t *t, uint32_t str)
+{
+    uint32_t len   = trk_len(t), i;
+    step_t   tmp[NSTEP];
+
+    int32_t pad_root = 60 + t->p[P_ROOT];
+    while (pad_root > 60) pad_root -= 12;
+    while (pad_root < 48) pad_root += 12;
+
+    fm1_irq_off();
+    undo_mark(t, undo_sess++);
+    memcpy(tmp, t->step, len * sizeof(step_t));
+    fm1_irq_on();
+
+    for (i = 0; i < len; i++) {
+        step_t  *s = &tmp[i];
+        uint32_t k, j;
+        if (!step_fires(s->time) || s->n < 2u) continue;
+
+        if ((rng() & 127u) >= MUTHR(0, 50, str)) continue;
+
+        uint32_t op = rng() % 8u;
+
+        if (op < 4u) {
+            /* Move one voice up or down by one scale degree */
+            uint32_t voice = rng() % s->n;
+            int32_t  note;
+            if (rng() & 1u) {
+                note = (int32_t)scale_up(t, s->note[voice], 1u);
+            } else {
+                uint32_t mask = scale_mask(t);
+                int32_t  m = (int32_t)s->note[voice] - 1;
+                uint32_t guard = 12;
+                while (guard-- && m >= 24 &&
+                       !((mask >> (uint32_t)((m - t->p[P_ROOT] + 120) % 12)) & 1u))
+                    m--;
+                note = (m >= 24) ? m : (int32_t)s->note[voice];
+            }
+            note = clamp(note, 48, 84);
+            int dup = 0;
+            for (k = 0; k < s->n; k++) if (k != voice && s->note[k] == (uint8_t)note) { dup = 1; break; }
+            if (!dup) s->note[voice] = (uint8_t)note;
+
+        } else if (op == 4u && s->n < 4u) {
+            /* Add color tone: 7th (degree 6) or 9th (degree 8), above the top note */
+            uint32_t deg  = (str > 64u && (rng() & 1u)) ? 8u : 6u;
+            int32_t  note = (int32_t)scale_up(t, (uint32_t)pad_root, deg);
+            int32_t  top  = (int32_t)s->note[s->n - 1u];
+            while (note <= top) note += 12;
+            note = clamp(note, 48, 96);
+            int dup = 0;
+            for (k = 0; k < s->n; k++) if (s->note[k] == (uint8_t)note) { dup = 1; break; }
+            if (!dup) { s->note[s->n] = (uint8_t)note; s->n++; }
+
+        } else if (op == 5u && s->n > 2u) {
+            /* Drop top color tone */
+            s->n--;
+
+        } else if (op == 6u) {
+            /* Suspension: find the third (by pitch class) and nudge ±1 semitone */
+            uint32_t third_pc = scale_up(t, (uint32_t)pad_root, 2u) % 12u;
+            for (k = 0; k < s->n; k++) {
+                if ((uint32_t)s->note[k] % 12u == third_pc) {
+                    int32_t note = clamp((int32_t)s->note[k] + ((rng() & 1u) ? 1 : -1), 48, 84);
+                    int dup = 0;
+                    for (j = 0; j < s->n; j++) if (j != k && s->note[j] == (uint8_t)note) { dup = 1; break; }
+                    if (!dup) s->note[k] = (uint8_t)note;
+                    break;
+                }
+            }
+
+        } else {
+            /* Full open-voicing rebuild: root low, fifth low, third+seventh above */
+            uint32_t fifth   = (uint32_t)clamp((int32_t)scale_up(t, (uint32_t)pad_root, 4u), 48, 84);
+            uint32_t third_h = (uint32_t)clamp((int32_t)scale_up(t, (uint32_t)(pad_root + 12), 2u), 57, 96);
+            uint32_t sev_h   = (uint32_t)clamp((int32_t)scale_up(t, (uint32_t)(pad_root + 12), 6u), 57, 96);
+            s->note[0] = (uint8_t)pad_root;
+            s->note[1] = (uint8_t)fifth;
+            s->n = 2u;
+            if (str >= 16u && third_h != fifth)  s->note[s->n++] = (uint8_t)third_h;
+            if (str >= 64u && sev_h != third_h)  s->note[s->n++] = (uint8_t)sev_h;
+        }
+
+        s->flags = 0; s->rat = 0;    /* pads never have accents, slides or ratchets */
+    }
+
+    fm1_irq_off();
+    memcpy(t->step, tmp, len * sizeof(step_t));
+    fm1_irq_on();
+}
+
+/* Lead-specific mutation.
+ * Small, melodically coherent edits: monophonic, range-bounded, no ratchets.
+ *
+ * Operations (5:2:1:1:1 weighting): nudge note one scale degree; drop to rest;
+ * swap with next step; add passing note; make ornament optional (ST_P75).
+ *
+ * Post-process:
+ *   - Fix runs of 3+ same-direction leaps (pull the third leap back one scale step).
+ *   - Add occasional slides (SF_SLD75) where the next note is within a third.
+ *   - Anchor steps (p16=0,8) are never touched.
+ */
+static void mutate_lead(track_t *t, uint32_t str)
+{
+    uint32_t len   = trk_len(t), i;
+    step_t   tmp[NSTEP];
+
+    /* Range: ±10 semitones around the existing melodic center */
+    uint32_t note_sum = 0u, note_n = 0u;
+    for (i = 0; i < len; i++) {
+        const step_t *s = &t->step[i];
+        if (step_fires(s->time) && s->n) { note_sum += s->note[0]; note_n++; }
+    }
+    int32_t center = note_n ? (int32_t)(note_sum / note_n) : 72;
+    int32_t lo     = clamp(center - 10, 36, 96);
+    int32_t hi     = clamp(center + 10, 36, 96);
+
+    fm1_irq_off();
+    undo_mark(t, undo_sess++);
+    memcpy(tmp, t->step, len * sizeof(step_t));
+    fm1_irq_on();
+
+    for (i = 0; i < len; i++) {
+        uint32_t p16       = (i * 16u) / len;
+        step_t  *s         = &tmp[i];
+        int      is_anchor = (p16 == 0u || p16 == 8u);
+        int      is_strong = (p16 == 4u || p16 == 12u);
+        int      is_weak   = !is_anchor && !is_strong && (p16 % 2u != 0u);
+
+        if (s->time == ST_TIE) continue;
+        s->rat = 0;                   /* leads never ratchet */
+        if (s->n > 1u) s->n = 1u;    /* enforce monophonic */
+        if (is_anchor) continue;
+
+        uint32_t mut_thr = is_strong ? MUTHR(0, 18, str)
+                         : is_weak   ? MUTHR(0, 60, str)
+                         :             MUTHR(0, 40, str);
+        if ((rng() & 127u) >= mut_thr) continue;
+
+        uint32_t op = rng() % 10u;
+
+        if (op < 5u && step_fires(s->time) && s->n == 1u) {
+            /* Nudge one scale degree */
+            int32_t note;
+            if (rng() & 1u) {
+                note = (int32_t)scale_up(t, s->note[0], 1u);
+            } else {
+                uint32_t mask = scale_mask(t);
+                int32_t  m    = (int32_t)s->note[0] - 1;
+                uint32_t guard = 12;
+                while (guard-- && m >= lo &&
+                       !((mask >> (uint32_t)((m - t->p[P_ROOT] + 120) % 12)) & 1u))
+                    m--;
+                note = (m >= lo) ? m : (int32_t)s->note[0];
+            }
+            s->note[0] = (uint8_t)clamp(note, lo, hi);
+
+        } else if (op < 7u && step_fires(s->time) && !is_strong) {
+            /* Drop to rest */
+            s->time = ST_REST; s->n = 0; s->flags = 0;
+
+        } else if (op < 8u && i + 1u < len && tmp[i + 1u].time != ST_TIE) {
+            /* Swap with next step */
+            step_t nx    = tmp[i + 1u];
+            tmp[i + 1u] = *s;
+            *s           = nx;
+
+        } else if (op < 9u && s->time == ST_REST) {
+            /* Add a passing note in-scale */
+            uint32_t mask = scale_mask(t), deg[12], ndeg = 0, k;
+            for (k = 0; k < 12u; k++)
+                if ((mask >> k) & 1u) deg[ndeg++] = k;
+            if (!ndeg) { ndeg = 1; deg[0] = 0; }
+            int32_t note = (int32_t)(60u + (uint32_t)t->p[P_ROOT] + deg[rng() % ndeg]);
+            while (note < lo) note += 12;
+            while (note > hi) note -= 12;
+            s->note[0] = (uint8_t)clamp(note, lo, hi);
+            s->n = 1; s->time = ST_NOTE; s->flags = 0;
+
+        } else if (step_fires(s->time) && s->n == 1u) {
+            /* Make ornament optional */
+            s->time = ST_P75;
+        }
+    }
+
+    /* Post-process 1: fix 3+ same-direction leaps */
+    {
+        uint32_t nidx[NSTEP], np = 0u;
+        for (i = 0; i < len; i++)
+            if (step_fires(tmp[i].time) && tmp[i].n) nidx[np++] = i;
+        if (np >= 3u) {
+            uint32_t k;
+            for (k = 0; k + 2u < np; k++) {
+                int32_t p0 = (int32_t)tmp[nidx[k]].note[0];
+                int32_t p1 = (int32_t)tmp[nidx[k+1u]].note[0];
+                int32_t p2 = (int32_t)tmp[nidx[k+2u]].note[0];
+                int32_t d01 = p1 - p0, d12 = p2 - p1;
+                if ((d01 > 3 && d12 > 3) || (d01 < -3 && d12 < -3)) {
+                    int32_t note;
+                    if (d12 > 0) {
+                        /* third leap up: step p2 back down toward p1 */
+                        uint32_t mask = scale_mask(t);
+                        int32_t  m    = p2 - 1;
+                        uint32_t guard = 12;
+                        while (guard-- && m >= lo &&
+                               !((mask >> (uint32_t)((m - t->p[P_ROOT] + 120) % 12)) & 1u))
+                            m--;
+                        note = (m >= lo) ? m : p2;
+                    } else {
+                        /* third leap down: step p2 back up */
+                        note = (int32_t)scale_up(t, (uint32_t)p2, 1u);
+                    }
+                    tmp[nidx[k+2u]].note[0] = (uint8_t)clamp(note, lo, hi);
+                }
+            }
+        }
+    }
+
+    /* Post-process 2: occasional slides on close intervals, clean up stranded slides */
+    for (i = 0; i < len; i++) {
+        if (!step_fires(tmp[i].time) || !tmp[i].n) continue;
+        uint32_t nx = (i + 1u) % len;
+        if (step_fires(tmp[nx].time) && tmp[nx].n) {
+            int32_t d = (int32_t)tmp[nx].note[0] - (int32_t)tmp[i].note[0];
+            if (d < 0) d = -d;
+            if (d > 0 && d <= 4 && (rng() & 127u) < MUTHR(3, 35, str))
+                tmp[i].flags = SF_SLD75;
+        }
+        if (flags_is_slide(tmp[i].flags) && tmp[nx].time == ST_REST)
+            tmp[i].flags &= ~SF_SLIDE;
+    }
+
+    fm1_irq_off();
+    memcpy(t->step, tmp, len * sizeof(step_t));
+    fm1_irq_on();
+}
+
+/* ---- Drum mutation: KICK ---------------------------------------------------
+ * Anchor: beat 1 (p16=0) always loud certain. Semi-anchor: beat 3 (p16=8) often present.
+ * Backbeats (p16=4,12): always cleared (snare territory).
+ * Syncopated positions (p16=3,6,9,10,11,14): optional ghost/pickup kicks; adjacency-limited.
+ * All other positions: remove stray kicks at moderate probability. */
+static void mutate_drum_kick(track_t *t, uint32_t str)
+{
+    uint32_t len   = trk_len(t), i;
+    dstep_t  tmp[NSTEP];
+
+    fm1_irq_off();
+    undo_mark(t, undo_sess++);
+    memcpy(tmp, t->dstep, len * sizeof(dstep_t));
+    fm1_irq_on();
+
+    for (i = 0u; i < len; i++) {
+        uint32_t p16  = (i * 16u) / len;
+        dstep_t *d    = &tmp[i];
+        int has_k     = dstep_has(d, 0u) || dstep_has(d, 1u);
+        uint32_t lane = dstep_has(d, 0u) ? 0u : 1u;
+
+        if (p16 == 0u) {
+            dstep_set(d, 0u, LV_HARD, 0u);
+            continue;
+        }
+        if (p16 == 4u || p16 == 12u) {
+            dstep_clr(d, 0u); dstep_clr(d, 1u);
+            continue;
+        }
+        if (p16 == 8u) {
+            if (has_k) {
+                if ((rng() & 127u) < MUTHR(0, 22, str))
+                    dstep_set_prb(d, lane, 1u);
+            } else if ((rng() & 127u) < MUTHR(0, 40, str)) {
+                dstep_set(d, 0u, LV_NORM, 0u);
+            }
+            continue;
+        }
+        if (p16 == 3u  || p16 == 6u  || p16 == 9u  ||
+            p16 == 10u || p16 == 11u || p16 == 14u) {
+            if (has_k) {
+                if ((rng() & 127u) < MUTHR(0, 32, str)) {
+                    switch (rng() % 3u) {
+                        case 0u: dstep_clr(d, lane);          break;
+                        case 1u: dstep_set_prb(d, lane, 1u);  break;
+                        default: dstep_set_prb(d, lane, 2u);  break;
+                    }
+                }
+            } else if ((rng() & 127u) < MUTHR(0, 42, str)) {
+                int l1 = (i > 0u)     && (dstep_has(&tmp[i-1u], 0u) || dstep_has(&tmp[i-1u], 1u));
+                int l2 = (i > 1u)     && (dstep_has(&tmp[i-2u], 0u) || dstep_has(&tmp[i-2u], 1u));
+                int r1 = (i+1u < len) && (dstep_has(&tmp[i+1u], 0u) || dstep_has(&tmp[i+1u], 1u));
+                int r2 = (i+2u < len) && (dstep_has(&tmp[i+2u], 0u) || dstep_has(&tmp[i+2u], 1u));
+                if (!(l1 && l2) && !(r1 && r2) && !(l1 && r1))
+                    dstep_set_prb(d, 0u, 1u);
+            }
+            continue;
+        }
+        if (has_k && (rng() & 127u) < MUTHR(0, 30, str)) {
+            dstep_clr(d, 0u); dstep_clr(d, 1u);
+        }
+    }
+
+    fm1_irq_off();
+    memcpy(t->dstep, tmp, len * sizeof(dstep_t));
+    fm1_irq_on();
+}
+
+/* ---- Drum mutation: CYM ----------------------------------------------------
+ * Low str: accent-velocity tweaks, conditional 16ths, open-hat placement.
+ * High str: full hat pattern repaint (8th / 16th / off-beat / Charleston / sparse);
+ *           ride substitution on beats; wider open-hat placement. */
+static void mutate_drum_cym(track_t *t, uint32_t str)
+{
+    uint32_t len   = trk_len(t), i;
+    dstep_t  tmp[NSTEP];
+    uint32_t hat_n = 0u;
+
+    for (i = 0u; i < len; i++)
+        if (dstep_has(&t->dstep[i], 4u)) hat_n++;
+    int was16 = (hat_n * 2u >= len);
+
+    fm1_irq_off();
+    undo_mark(t, undo_sess++);
+    memcpy(tmp, t->dstep, len * sizeof(dstep_t));
+    fm1_irq_on();
+
+    /* High-strength: full repaint with a new hat pattern style */
+    if (str > 64u && (rng() & 127u) < (str - 64u) * 2u) {
+        for (i = 0u; i < len; i++) { dstep_clr(&tmp[i], 4u); dstep_clr(&tmp[i], 5u); }
+        uint32_t style = rng() % 5u;
+        for (i = 0u; i < len; i++) {
+            uint32_t p16 = (i * 16u) / len;
+            int is_beat  = (p16 == 0u || p16 == 4u || p16 == 8u || p16 == 12u);
+            int is_and   = (p16 == 2u || p16 == 6u || p16 == 10u || p16 == 14u);
+            int on;
+            switch (style) {
+                case 0:  on = (p16 % 2u == 0u); break;   /* 8ths */
+                case 1:  on = 1;                 break;   /* 16ths */
+                case 2:  on = (p16 % 2u != 0u); break;   /* off-beats */
+                case 3:  on = (p16 == 0u || p16 == 6u || p16 == 8u || p16 == 14u); break; /* Charleston */
+                default: on = (p16 % 4u == 0u); break;   /* quarter-note hats */
+            }
+            if (!on) continue;
+            uint32_t lvl = is_beat ? LV_HARD : (is_and ? LV_NORM : LV_SOFT);
+            if (!is_beat && !is_and && (rng() & 3u))
+                dstep_set_prb(&tmp[i], 4u, 1u + (rng() & 1u));
+            else
+                dstep_set(&tmp[i], 4u, lvl, 0u);
+        }
+    } else {
+        /* Individual hit pass */
+        for (i = 0u; i < len; i++) {
+            uint32_t p16 = (i * 16u) / len;
+            dstep_t *d   = &tmp[i];
+            int is_beat  = (p16 == 0u || p16 == 4u || p16 == 8u || p16 == 12u);
+            int is_and   = (p16 == 2u || p16 == 6u || p16 == 10u || p16 == 14u);
+
+            uint32_t thr = is_beat ? MUTHR(2, 20, str)
+                         : is_and  ? MUTHR(5, 55, str)
+                         :           MUTHR(10, 88, str);
+            if ((rng() & 127u) >= thr) continue;
+
+            if (dstep_has(d, 4u)) {
+                if (!is_beat && !is_and) {
+                    if (str > 50u && (rng() & 1u))
+                        dstep_clr(d, 4u);
+                    else
+                        dstep_set_prb(d, 4u, 1u + (rng() & 1u));
+                } else {
+                    dstep_set(d, 4u, is_beat ? LV_HARD : LV_NORM, dstep_rat(d, 4u));
+                }
+            } else if (is_beat || is_and) {
+                dstep_set(d, 4u, is_beat ? LV_HARD : LV_NORM, 0u);
+            } else if (was16 || str > 40u) {
+                if ((rng() & 127u) < MUTHR(2, 30, str))
+                    dstep_set(d, 4u, LV_SOFT, 0u);
+            }
+        }
+    }
+
+    /* Open hat: best at and-of-2/4 (p16=6,7,14,15); wider at higher str */
+    for (i = 0u; i < len; i++) {
+        uint32_t p16 = (i * 16u) / len;
+        dstep_t *d   = &tmp[i];
+        int is_good  = (p16 == 6u || p16 == 7u || p16 == 14u || p16 == 15u);
+        int is_ok    = (str > 50u) && (p16 == 2u || p16 == 10u);
+
+        if (is_good || is_ok) {
+            if (dstep_has(d, 5u)) {
+                if ((rng() & 127u) < MUTHR(5, 25, str)) dstep_clr(d, 5u);
+            } else if (!dstep_has(d, 4u)) {
+                int prev = (i > 0u)     && dstep_has(&tmp[i-1u], 5u);
+                int next = (i+1u < len) && dstep_has(&tmp[i+1u], 5u);
+                if (!prev && !next && (rng() & 127u) < MUTHR(3, 48, str))
+                    dstep_set(d, 5u, LV_NORM, 0u);
+            }
+        } else if (dstep_has(d, 5u)) {
+            dstep_clr(d, 5u);
+        }
+        if (dstep_has(d, 4u) && dstep_has(d, 5u)) dstep_clr(d, 5u);
+    }
+
+    /* High-str: swap some beat hats to ride (lane 12) for variety */
+    if (str > 70u) {
+        for (i = 0u; i < len; i++) {
+            uint32_t p16 = (i * 16u) / len;
+            int is_beat  = (p16 == 0u || p16 == 4u || p16 == 8u || p16 == 12u);
+            if (is_beat && dstep_has(&tmp[i], 4u) &&
+                (rng() & 127u) < (str - 70u) / 2u) {
+                dstep_clr(&tmp[i], 4u);
+                dstep_set(&tmp[i], 12u, LV_NORM, 0u);
+            }
+        }
+    }
+
+    fm1_irq_off();
+    memcpy(t->dstep, tmp, len * sizeof(dstep_t));
+    fm1_irq_on();
+}
+
+/* ---- Drum mutation: SN -----------------------------------------------------
+ * Backbeat snare (lane 2, p16=4,12): locked as loud certain hits.
+ * Ghost snare: very soft certain hits at off-16ths; prefer kick-free steps; no
+ * adjacent ghosts. Click/clap (lane 3): sparse ghost colour on weak 16ths. */
+static void mutate_drum_sn(track_t *t, uint32_t str)
+{
+    uint32_t len   = trk_len(t), i;
+    dstep_t  tmp[NSTEP];
+
+    fm1_irq_off();
+    undo_mark(t, undo_sess++);
+    memcpy(tmp, t->dstep, len * sizeof(dstep_t));
+    fm1_irq_on();
+
+    for (i = 0u; i < len; i++) {
+        uint32_t p16 = (i * 16u) / len;
+        if (p16 == 4u || p16 == 12u)
+            dstep_set(&tmp[i], 2u, LV_HARD, 0u);
+    }
+
+    for (i = 0u; i < len; i++) {
+        uint32_t p16     = (i * 16u) / len;
+        dstep_t *d       = &tmp[i];
+        int is_back      = (p16 == 4u || p16 == 12u);
+        int is_kick      = dstep_has(d, 0u) || dstep_has(d, 1u);
+        int is_ghost_pos = (p16 == 3u  || p16 == 5u  || p16 == 6u  || p16 == 7u  ||
+                            p16 == 9u  || p16 == 10u || p16 == 11u ||
+                            p16 == 13u || p16 == 14u || p16 == 15u);
+
+        if (is_back) continue;
+
+        uint32_t mut_thr = is_ghost_pos ? MUTHR(0, 55, str) : MUTHR(0, 20, str);
+        if ((rng() & 127u) >= mut_thr) continue;
+
+        if (is_ghost_pos && !dstep_certain(d, 2u)) {
+            if (dstep_has(d, 2u)) {
+                if ((rng() & 3u) == 0u) dstep_clr(d, 2u);
+            } else {
+                int prev_sn = (i > 0u)     && dstep_has(&tmp[i-1u], 2u);
+                int next_sn = (i+1u < len) && dstep_has(&tmp[i+1u], 2u);
+                if (!prev_sn && !next_sn) {
+                    uint32_t add_thr = is_kick ? MUTHR(0, 18, str) : MUTHR(0, 45, str);
+                    if ((rng() & 127u) < add_thr)
+                        dstep_set(d, 2u, LV_GHOST, 0u);
+                }
+            }
+        } else if (!is_ghost_pos && !is_back && dstep_has(d, 2u) && !dstep_certain(d, 2u)) {
+            if ((rng() & 127u) < 30u) dstep_clr(d, 2u);
+        }
+
+        if (is_ghost_pos && !is_kick && !dstep_has(d, 2u) &&
+            (rng() & 127u) < MUTHR(0, 22, str)) {
+            if (dstep_has(d, 3u))
+                dstep_clr(d, 3u);
+            else
+                dstep_set(d, 3u, LV_GHOST, 0u);
+        }
+    }
+
+    fm1_irq_off();
+    memcpy(t->dstep, tmp, len * sizeof(dstep_t));
+    fm1_irq_on();
+}
+
+/* ---- Drum mutation: ACC ----------------------------------------------------
+ * Percussion: shaker(13), conga(14), cowbell(15) for repeating patterns.
+ * Toms (9,10): fills reserved for last quarter (p16>=12).
+ * Never on snare backbeats; max one accent lane per step; most hits probabilistic. */
+static void mutate_drum_acc(track_t *t, uint32_t str)
+{
+    static const uint8_t PERC[3] = {13u, 14u, 15u};
+    uint32_t len   = trk_len(t), i, li;
+    dstep_t  tmp[NSTEP];
+
+    fm1_irq_off();
+    undo_mark(t, undo_sess++);
+    memcpy(tmp, t->dstep, len * sizeof(dstep_t));
+    fm1_irq_on();
+
+    for (i = 0u; i < len; i++) {
+        uint32_t p16    = (i * 16u) / len;
+        dstep_t *d      = &tmp[i];
+        int is_sn_back  = (p16 == 4u || p16 == 12u);
+        int is_fill_bar = (p16 >= 12u);
+
+        if (is_fill_bar) {
+            uint32_t tom = (p16 <= 13u) ? 10u : 9u;
+            if ((rng() & 127u) < MUTHR(0, 32, str)) {
+                if (dstep_has(d, tom)) dstep_clr(d, tom);
+                else                   dstep_set(d, tom, LV_NORM, 0u);
+            }
+            continue;
+        }
+
+        if (is_sn_back) continue;
+
+        for (li = 0u; li < 3u; li++) {
+            uint32_t lane     = PERC[li];
+            uint32_t base_thr = (li == 0u) ? MUTHR(0, 40, str)   /* shaker: most frequent */
+                              : (li == 1u) ? MUTHR(0, 28, str)   /* conga */
+                              :              MUTHR(0, 18, str);  /* cowbell: sparsest */
+            if ((rng() & 127u) >= base_thr) continue;
+
+            if (dstep_has(d, lane)) {
+                switch (rng() % 3u) {
+                    case 0u: dstep_clr(d, lane);         break;
+                    case 1u: dstep_set_prb(d, lane, 2u); break;
+                    default: break;
+                }
+            } else {
+                int any_acc = 0;
+                uint32_t al;
+                for (al = 0u; al < 3u; al++)
+                    if (dstep_has(d, PERC[al])) { any_acc = 1; break; }
+                if (!any_acc) {
+                    if ((rng() & 3u) == 0u)
+                        dstep_set(d, lane, LV_NORM, 0u);
+                    else
+                        dstep_set_prb(d, lane, 1u);
+                }
+            }
+        }
+    }
+
+    fm1_irq_off();
+    memcpy(t->dstep, tmp, len * sizeof(dstep_t));
+    fm1_irq_on();
+}
+
+/* Typed mutation — each type will get its own algorithm.
+ * Melodic types: 0=LEAD 1=BASS 2=KEYS 3=PAD.  Drum types: 0=KICK 1=SN 2=CYM 3=ACC. */
+static void seq_mutate_type(track_t *t, uint8_t type)
+{
+    uint32_t ti  = (uint32_t)(t - trk);
+    uint32_t str = mut_str_get(ti, (uint32_t)type);
+    if (!is_drum(t) && type == 0u) { mutate_lead(t, str); return; }
+    if (!is_drum(t) && type == 1u) { mutate_bass(t, str); return; }
+    if (!is_drum(t) && type == 2u) { mutate_keys(t, str); return; }
+    if (!is_drum(t) && type == 3u) { mutate_pad(t, str);  return; }
+    if ( is_drum(t) && type == 0u) { mutate_drum_kick(t, str); return; }
+    if ( is_drum(t) && type == 1u) { mutate_drum_sn(t, str);   return; }
+    if ( is_drum(t) && type == 2u) { mutate_drum_cym(t, str);  return; }
+    if ( is_drum(t) && type == 3u) { mutate_drum_acc(t, str);  return; }
+    seq_mutate(t);
+}
+
+/* ---------------------------------------------------------- evolve --- */
+/* Call once per UI frame (main context): runs seq_mutate_type on any (track, subtype) whose EVOLVE interval fired.
+ * P_EVOLVE packs four 2-bit subtype rates: bits[2k+1:2k] = subtype k rate (0=off 1=4bar 2=8bar 3=16bar). */
+static void seq_evl_process(void)
+{
+    uint32_t i, st, req;
+    fm1_irq_off();
+    req = (uint32_t)evl_req;
+    evl_req = 0;
+    fm1_irq_on();
+    for (i = 0; i < NTRK; i++)
+        for (st = 0; st < 4u; st++)
+            if ((req >> (i * 4u + st)) & 1u)
+                seq_mutate_type(&trk[i], (uint8_t)st);
 }
 
 /* ------------------------------------------------------- recording --- */
@@ -1255,7 +2371,7 @@ static void key_down(uint32_t k)
         if (t->p[P_CHORD]) {
             kb_n[k] = (uint8_t)chord_play_notes(t, n, chord_mods(), kb_nt[k]);   /* (the modifiers held, voiced) */
         } else {
-            kb_nt[k][0] = (uint8_t)n;
+            kb_nt[k][0] = (uint8_t)cfol_apply(t, n);   /* chord follow on live notes (CF_OFF: unchanged) */
             kb_n[k] = 1;
         }
         mc = trk_midi_ch(sel);
@@ -1535,6 +2651,8 @@ static void seq_reset_tracks(uint32_t pos)
     live_bar = 0xFFFFFFFFu;                        /* (bar 0 is a new bar: SONG REC can start on it) */
 #endif
     click_last = SEQ_NONE;
+    cseq_abs = SEQ_NONE;
+    cseq_idx = 0;
     song.tick = 0;
     song.playing = 1;
     slicer_start(pos);                             /* slicer.c: its step 0 with the sequencer's */
@@ -1708,9 +2826,11 @@ static void seq_stop(void)
 #endif
 }
 
-/* conditional hit resolution: idx is offset from ST_COND_FIRST / HIT_COND_FIRST */
-static const uint8_t COND_MOD[8] = {2, 3, 4, 4, 4, 4, 8, 8};
-static const uint8_t COND_TGT[8] = {0, 0, 0, 1, 2, 3, 0, 7};
+/* conditional hit resolution: idx is offset from ST_COND_FIRST / HIT_COND_FIRST.
+ * pass is 1-indexed (incremented at the start of each loop).
+ * Stubs (idx 4-6) use mod=1/tgt=1 which never fires (pass%1 is always 0). */
+static const uint8_t COND_MOD[8] = {2, 2, 4, 4, 1, 1, 1, 8};
+static const uint8_t COND_TGT[8] = {1, 0, 1, 0, 1, 1, 1, 0};
 static int cond_fires_idx(uint32_t idx, uint32_t pass)
 {
     return (pass % COND_MOD[idx]) == COND_TGT[idx];
@@ -1725,29 +2845,16 @@ static uint32_t step_vel(const step_t *s, uint32_t i, uint32_t accented)
 
 /* Apply per-fragment transpose from song mode to a sequencer note (synth parts only). */
 #if FELUCCA_ARRANGER
-static uint32_t seq_snap_scale(uint32_t n, const track_t *t)
-{
-    uint32_t mask = scale_mask(t), d, pc;
-    int32_t root = t->p[P_ROOT];
-    if (micro_active(t)) return n;  /* microtonal: note = degree address, arranger transpose leaves it */
-    if (mask == 0xFFFu) return n;   /* CHR: all notes in scale, nothing to snap */
-    pc = (uint32_t)((int32_t)n - root + 120) % 12u;
-    if (mask & (1u << pc)) return n;
-    for (d = 1; d <= 6u; d++) {
-        if (mask & (1u << ((pc + d) % 12u))) return (uint32_t)clamp((int32_t)n + (int32_t)d, 0, 127);
-        if (mask & (1u << ((pc - d + 12u) % 12u))) return (uint32_t)clamp((int32_t)n - (int32_t)d, 0, 127);
-    }
-    return n;
-}
 static uint32_t seq_note_trans(const track_t *t, uint32_t n)
 {
+    n = cfol_apply(t, n);
     if (is_drum(t) || !arr_song_transpose) return n;
     n = (uint32_t)clamp((int32_t)n + arr_song_transpose, 0, 127);
     if (arr_song_trans_inkey) n = seq_snap_scale(n, t);
     return n;
 }
 #else
-static uint32_t seq_note_trans(const track_t *t, uint32_t n) { (void)t; return n; }
+static uint32_t seq_note_trans(const track_t *t, uint32_t n) { return cfol_apply(t, n); }
 #endif
 
 /* play one synth step: TIE extends, REST releases, NOTE (re)triggers; a SLIDE on the previous
@@ -2093,8 +3200,18 @@ static void seq_tick(track_t *t, uint32_t adv)
         t->rat_done[0] = t->rat_done[1] = t->rat_done[2] = t->rat_done[3] = 0;
         t->rat_lanes = 0;
         t->drum_fired = 0;
-        if (!idx)
+        if (!idx) {
             t->pass++;                               /* a new pass of the loop (recording: one undo) */
+            if (t->p[P_EVOLVE]) {                   /* EVOLVE: request typed mutations after N loops */
+                static const uint8_t EVL_DIV[4] = {0, 4, 8, 16};
+                uint32_t ti = trk_index(t), packed = (uint32_t)(uint16_t)t->p[P_EVOLVE], st;
+                for (st = 0; st < 4u; st++) {
+                    uint32_t div = EVL_DIV[(packed >> (st * 2u)) & 3u];
+                    if (div && t->pass && (t->pass % div) == 0)
+                        evl_req |= (uint16_t)(1u << (ti * 4u + st));
+                }
+            }
+        }
         if (erasing(t))
             erase_step(t, idx);                      /* EDIT + key held: gone as it passes */
         t->seq_skip = (uint8_t)!step_plays(t, idx);
@@ -2113,6 +3230,20 @@ static void seq_tick(track_t *t, uint32_t adv)
             uint32_t fill_len = 0, local = 0, fi = 0;
             lock_step(t, idx);                       /* its parameter locks, before the block renders */
             t->rskip_lanes = 0;
+            { /* fill-row trigger: a sequenced step that fires a fill pattern */
+                uint32_t fi;
+                for (fi = 0; fi < FILL_SEQ_MAX; fi++) {
+                    const fill_seq_t *fs = &dext.fseq[fi];
+                    uint32_t cond, which;
+                    if (fs->step == 0xFFu || fs->step != (uint8_t)idx) continue;
+                    cond = fs->cfg & 0x0Fu;
+                    if (!cond || cond_fires_idx(cond - 1u, t->pass)) {
+                        which = (fs->cfg >> 4) & 0x07u;
+                        drum_fill_req = (int8_t)(which < DRUM_NFILLS ? which : (int8_t)(rng() % DRUM_NFILLS));
+                    }
+                    break;
+                }
+            }
             if (drum_fill_req >= 0) {
                 drum_fill_cur = drum_fill_req;
                 drum_fill_req = (int8_t)-1;
@@ -2431,6 +3562,7 @@ static void events_block(uint32_t n)
         }
     }
     fill_now = (uint8_t)(fill_held || fill_bar_on);
+    cseq_tick();
     for (i = 0; i < NTRK; i++)
         seq_tick(&trk[i], adv);
     click_tick();

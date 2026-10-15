@@ -6,8 +6,8 @@
  * the transport is stopped and nothing sounds) and comes back at power-on: SHIFL starts where you
  * left it.
  *
- * Formats: 5 ("FUN5", written, SHIFL 2.5): today's P_COUNT / G_COUNT, 12-byte drum steps (4-bit HIT_*
- * per lane: certain, ratchet, probabilistic, conditional). Read and converted: 4 ("FUN4", SHIFL 2.x:
+ * Formats: 6 ("FUN6", written, SHIFL 2.6): drum fill-row triggers (fill_seq_t fseq[] in project_t).
+ * Read and converted: 5 ("FUN5", SHIFL 2.5): same tracks, no fseq field. 4 ("FUN4", SHIFL 2.x:
  * 10-byte drum steps with on/lvl/rat encoding), 3 ("FUN3", SHIFL 1.x: 8-byte steps, the
  * drum track's notes become its lanes, the swings x 0.8 for the MPC scale), 2 ("FUN2") and 1 ("FUN1"),
  * which held PROJ_NP_V2 parameters per track, mapped by count as user presets are (the first
@@ -17,7 +17,10 @@
  *
  * Built on the host too (tests/project_test.c, -DPROJ_HOST): the part above the #ifndef
  * PROJ_HOST needs core.h, params.c (TP), drums.c (the lanes), the engines and trk_def_engine (ui.c). */
-#define PROJ_MAGIC 0x46554E35u                 /* "FUN5": conditional hits, 12-byte drum steps */
+#define PROJ_MAGIC 0x46554E38u                 /* "FUN8": chord follow per track (SHIFL 3.0) */
+#define PROJ_MAGIC_V7 0x46554E37u              /* "FUN7": chord sequencer (SHIFL 3.0); read only */
+#define PROJ_MAGIC_V6 0x46554E36u              /* "FUN6": fill-row sequenceable triggers (SHIFL 2.6); read only */
+#define PROJ_MAGIC_V5 0x46554E35u              /* "FUN5": conditional hits; read only */
 #define PROJ_MAGIC_V4 0x46554E34u              /* "FUN4": SHIFL 2.x; read only */
 #define PROJ_MAGIC_V3 0x46554E33u              /* "FUN3": SHIFL 1.x; read only */
 #define PROJ_MAGIC_V2 0x46554E32u              /* "FUN2": four tracks, PROJ_NP_V2 parameters; read only */
@@ -73,11 +76,47 @@ typedef struct {                               /* one track; the drum track igno
         dstep_t dstep[NSTEP];
     };
 } proj_trk_t;
-typedef struct {
+typedef struct {                               /* format 5 (FUN5, pre-fill-row); read only */
+    uint32_t magic, size;
+    int16_t g[G_COUNT];
+    uint8_t sel, rsv[3];
+    proj_trk_t t[NTRK];
+    uint32_t sum;
+} project_v5_t;
+typedef struct {                               /* format 6 (FUN6, SHIFL 2.6): fill-row triggers; read only */
+    uint32_t magic, size;
+    int16_t g[G_COUNT];
+    uint8_t sel, rsv[3];
+    proj_trk_t t[NTRK];
+    fill_seq_t fseq[FILL_SEQ_MAX];
+    uint32_t sum;
+} project_v6_t;
+#define PROJ_NP_V7 79u                         /* P_COUNT of FUN7 (before P_CFOL was added) */
+typedef struct {                               /* one track of FUN7, read only */
+    int16_t p[PROJ_NP_V7];
+    uint8_t engine, preset;
+    union { step_t step[NSTEP]; dstep_t dstep[NSTEP]; };
+} proj_trk_v7_t;
+typedef struct {                               /* format 7 (FUN7, SHIFL 3.0): chord sequencer; read only */
+    uint32_t magic, size;
+    int16_t g[G_COUNT];
+    uint8_t sel, rsv[3];
+    proj_trk_v7_t t[NTRK];
+    fill_seq_t fseq[FILL_SEQ_MAX];
+    chord_step_t cstep[NCHORD_STEP];
+    uint8_t clen, cseq_div, rsv_chord[2];
+    uint32_t sum;
+} project_v7_t;
+typedef struct {                               /* format 8 (FUN8, SHIFL 3.0): chord follow per track */
     uint32_t magic, size;
     int16_t g[G_COUNT];
     uint8_t sel, rsv[3];                       /* the selected track */
     proj_trk_t t[NTRK];
+    fill_seq_t fseq[FILL_SEQ_MAX];             /* drum fill-row triggers (drums.c fseq_*) */
+    chord_step_t cstep[NCHORD_STEP];           /* chord progression steps */
+    uint8_t clen;                              /* chord sequence length, 1..NCHORD_STEP */
+    uint8_t cseq_div;                          /* chord step DIV (N_SDIV index) */
+    uint8_t rsv_chord[2];
     uint32_t sum;
 } project_t;
 typedef struct { uint8_t note[4], n, time, flags, vel; } step8_t;   /* the steps of formats 1..3 */
@@ -273,7 +312,7 @@ typedef struct {
 static int proj_from_v5old(project_t *q, const project_v5old_t *v, int n)
 {
     uint32_t i;
-    if (n != (int)sizeof *v || v->magic != PROJ_MAGIC ||
+    if (n != (int)sizeof *v || v->magic != PROJ_MAGIC_V5 ||
         v->size != sizeof *v || v->sum != proj_hash(v, sizeof *v - 4u))
         return 0;
     memset(q, 0, sizeof *q);
@@ -283,6 +322,41 @@ static int proj_from_v5old(project_t *q, const project_v5old_t *v, int n)
     q->sel = v->sel;
     for (i = 0; i < NTRK; i++)
         proj_trk_from_v4(&q->t[i], &v->t[i], i == TRK_DRUM);
+    memset(q->fseq, 0xFF, sizeof q->fseq);
+    q->sum = proj_sum(q);
+    return 1;
+}
+
+static int proj_from_v5(project_t *q, const project_v5_t *v, int n)
+{
+    if (n != (int)sizeof *v || v->magic != PROJ_MAGIC_V5 ||
+        v->size != sizeof *v || v->sum != proj_hash(v, sizeof *v - 4u))
+        return 0;
+    memset(q, 0, sizeof *q);
+    q->magic = PROJ_MAGIC;
+    q->size = sizeof *q;
+    memcpy(q->g, v->g, sizeof q->g);
+    q->sel = v->sel;
+    memcpy(q->t, v->t, sizeof q->t);
+    memset(q->fseq, 0xFF, sizeof q->fseq);
+    q->clen = 8; q->cseq_div = 7;
+    q->sum = proj_sum(q);
+    return 1;
+}
+
+static int proj_from_v6(project_t *q, const project_v6_t *v, int n)
+{
+    if (n != (int)sizeof *v || v->magic != PROJ_MAGIC_V6 ||
+        v->size != sizeof *v || v->sum != proj_hash(v, sizeof *v - 4u))
+        return 0;
+    memset(q, 0, sizeof *q);
+    q->magic = PROJ_MAGIC;
+    q->size = sizeof *q;
+    memcpy(q->g, v->g, sizeof q->g);
+    q->sel = v->sel;
+    memcpy(q->t, v->t, sizeof q->t);
+    memcpy(q->fseq, v->fseq, sizeof q->fseq);
+    q->clen = 8; q->cseq_div = 7;          /* chord sequence: empty, 1-bar steps */
     q->sum = proj_sum(q);
     return 1;
 }
@@ -385,6 +459,41 @@ static int proj_from_v1(project_t *q, const project_v1_t *v1, int n)
     return 1;
 }
 
+/* FUN7 (SHIFL 3.0 chord sequencer, P_COUNT=79) -> FUN8 (adds P_CFOL at position P_E0-1) */
+static int proj_from_v7(project_t *q, const project_v7_t *v, int n)
+{
+    uint32_t i, k;
+    if (n != (int)sizeof *v || v->magic != PROJ_MAGIC_V7 ||
+        v->size != sizeof *v || v->sum != proj_hash(v, sizeof *v - 4u))
+        return 0;
+    memset(q, 0, sizeof *q);
+    q->magic = PROJ_MAGIC;
+    q->size = sizeof *q;
+    memcpy(q->g, v->g, sizeof q->g);
+    q->sel = v->sel;
+    for (i = 0; i < NTRK; i++) {
+        const proj_trk_v7_t *s = &v->t[i];
+        proj_trk_t *d = &q->t[i];
+        for (k = 0; k < P_CFOL; k++)              /* params 0..P_CFOL-1: same positions */
+            d->p[k] = s->p[k];
+        d->p[P_CFOL] = 0;                         /* new param: default CF_OFF */
+        for (k = 0; k < 16u; k++)                 /* P_E0..P_E15: were at 63..78, now at 64..79 */
+            d->p[P_E0 + k] = s->p[PROJ_NP_V7 - 16u + k];
+        d->engine = i == TRK_DRUM ? 0u : s->engine;
+        d->preset = i == TRK_DRUM ? 0u : s->preset;
+        if (i == TRK_DRUM)
+            memcpy(d->dstep, s->dstep, sizeof(dstep_t) * NSTEP);
+        else
+            memcpy(d->step, s->step, sizeof(step_t) * NSTEP);
+    }
+    memcpy(q->fseq, v->fseq, sizeof q->fseq);
+    memcpy(q->cstep, v->cstep, sizeof q->cstep);
+    q->clen = v->clen;
+    q->cseq_div = v->cseq_div;
+    q->sum = proj_sum(q);
+    return 1;
+}
+
 /* n bytes of a stored project (any format) -> slot q as format 5; 0 = not a project */
 static int proj_import(project_t *q, const void *b, int n)
 {
@@ -392,7 +501,10 @@ static int proj_import(project_t *q, const void *b, int n)
         memcpy(q, b, sizeof *q);
         return 1;
     }
-    return proj_from_v5old(q, (const project_v5old_t *)b, n) ||
+    return proj_from_v7(q, (const project_v7_t *)b, n) ||
+           proj_from_v6(q, (const project_v6_t *)b, n) ||
+           proj_from_v5(q, (const project_v5_t *)b, n) ||
+           proj_from_v5old(q, (const project_v5old_t *)b, n) ||
            proj_from_v4(q, (const project_v4_t *)b, n) ||
            proj_from_v4nofenv(q, (const project_v4nofenv_t *)b, n) ||
            proj_from_v4old(q, (const project_v4old_t *)b, n) ||
@@ -416,6 +528,10 @@ static void proj_capture(project_t *p)        /* what is playing now, as a proje
         p->t[i].preset = trk[i].preset;
         memcpy(p->t[i].step, trk[i].step, sizeof trk[i].step);
     }
+    memcpy(p->fseq, dext.fseq, sizeof p->fseq);
+    memcpy(p->cstep, cstep, sizeof p->cstep);
+    p->clen = clen;
+    p->cseq_div = cseq_div;
     p->sum = proj_sum(p);
 }
 
@@ -453,6 +569,20 @@ static void proj_apply(const project_t *p, int all)
                     st->note[j] &= 127u;
             }
     }
+    if (all) {
+        uint32_t fi;
+        memcpy(dext.fseq, p->fseq, sizeof dext.fseq);
+        for (fi = 0; fi < FILL_SEQ_MAX; fi++)   /* clamp: step must be unused or in range */
+            if (dext.fseq[fi].step != 0xFFu && dext.fseq[fi].step >= NSTEP)
+                dext.fseq[fi].step = 0xFFu;
+    }
+    if (p->clen > 0) {                           /* chord progression: applied for all section changes */
+        memcpy(cstep, p->cstep, sizeof cstep);
+        clen = p->clen;
+        cseq_div = p->cseq_div ? p->cseq_div : 7u;
+        cseq_abs = SEQ_NONE;
+        cseq_idx = 0;
+    }
 }
 
 #ifndef PROJ_HOST
@@ -464,6 +594,8 @@ static uint8_t sec_dirty, song_dirty;           /* live sections / the song: in 
 /* slot from flash into RAM (format 5, or an old one converted) */
 static union {
     project_t v5;
+    project_v7_t v7;
+    project_v5_t v5_legacy;
     project_v5old_t v5old;
     project_v4_t v4;
     project_v3_t v3;
@@ -580,6 +712,7 @@ static void autosave_resume(void)              /* power-on: the project as it wa
 #if FELUCCA_FLASH
     project_t *q = &autosave_buf;
     int n;
+    memset(dext.fseq, 0xFF, sizeof dext.fseq); /* default: no fill-row triggers */
     if (!flash_ok)
         return;
     n = st_load(OBJ_AUTOSAVE, &proj_tmp, sizeof proj_tmp);
@@ -606,6 +739,7 @@ typedef struct {
 #if FELUCCA_ARRANGER
     uint8_t arr_vol[ARR_STEPS][ARR_TRACKS];        /* per-fragment per-track volume override; ARR_VOL_NONE=use scene's */
     uint8_t arr_slcr[ARR_STEPS][ARR_TRACKS];       /* per-fragment per-track slicer mode override; ARR_SLCR_NONE=use scene's */
+    uint8_t arr_chord[ARR_STEPS];                  /* per-fragment chord slot override; ARR_CHORD_NONE=keep current */
 #endif
 } persist_t;
 /* V22 = before lights; defined via offsetof(arr_config_t, patch) so it stays correct if entry[] grows */
@@ -616,8 +750,10 @@ typedef struct {
 #define PERSIST_SIZE_V55 (PERSIST_SIZE_V22 + ARR_STEPS * sizeof(arr_patch_t) + 4u)
 /* V66 = V55 + arr_vol[] (before per-fragment slicer override) */
 #define PERSIST_SIZE_V66 (PERSIST_SIZE_V55 + ARR_STEPS * ARR_TRACKS)
-_Static_assert(sizeof(persist_t) == PERSIST_SIZE_V66 + ARR_STEPS * ARR_TRACKS,
-               "arr_slcr appended after arr_vol");
+/* V77 = V66 + arr_slcr[] (before per-fragment chord slot) */
+#define PERSIST_SIZE_V77 (PERSIST_SIZE_V66 + ARR_STEPS * ARR_TRACKS)
+_Static_assert(sizeof(persist_t) == PERSIST_SIZE_V77 + ARR_STEPS,
+               "arr_chord appended after arr_slcr");
 #if FELUCCA_ARRANGER
 #define PERSIST_MAGIC 0x50455234u                  /* "PER4": per-track song sections + patch overrides */
 #else
@@ -724,11 +860,13 @@ static void persist_boot(void)                    /* before settings_init / pane
 #if FELUCCA_ARRANGER
     arr_defaults(&arrangement);
     {   uint32_t mi, mk;
-        for (mi = 0; mi < ARR_STEPS; mi++)
+        for (mi = 0; mi < ARR_STEPS; mi++) {
             for (mk = 0; mk < ARR_TRACKS; mk++) {
                 arr_song_vol[mi][mk] = ARR_VOL_NONE;
                 arr_song_slicer[mi][mk] = ARR_SLCR_NONE;
             }
+            arr_song_chord[mi] = ARR_CHORD_NONE;
+        }
     }
 #endif
 #if FELUCCA_FLASH
@@ -754,7 +892,7 @@ static void persist_boot(void)                    /* before settings_init / pane
             p.lights = old_lights;
         }
 #endif
-        if (((n == (int)sizeof p || n == (int)PERSIST_SIZE_V55 || n == (int)PERSIST_SIZE_V44 || n == (int)PERSIST_SIZE_V22) && p.magic == PERSIST_MAGIC)
+        if (((n == (int)sizeof p || n == (int)PERSIST_SIZE_V77 || n == (int)PERSIST_SIZE_V55 || n == (int)PERSIST_SIZE_V44 || n == (int)PERSIST_SIZE_V22) && p.magic == PERSIST_MAGIC)
 #if FELUCCA_ARRANGER
             || (n == (int)(16u + sizeof(panel_t)) && p.magic == 0x50455232u)
 #endif
@@ -787,16 +925,23 @@ static void persist_boot(void)                    /* before settings_init / pane
                         for (mk = 0; mk < ARR_TRACKS; mk++)
                             p.arr_vol[mi][mk] = ARR_VOL_NONE;
                 }
-                if (n < (int)sizeof p) {
+                if (n < (int)PERSIST_SIZE_V77) {
                     /* pre-slicer format: init arr_slcr to no-override */
                     uint32_t mi, mk;
                     for (mi = 0; mi < ARR_STEPS; mi++)
                         for (mk = 0; mk < ARR_TRACKS; mk++)
                             p.arr_slcr[mi][mk] = ARR_SLCR_NONE;
                 }
+                if (n < (int)sizeof p) {
+                    /* pre-chord format: init arr_chord to no-override */
+                    uint32_t mi;
+                    for (mi = 0; mi < ARR_STEPS; mi++)
+                        p.arr_chord[mi] = ARR_CHORD_NONE;
+                }
                 arrangement = p.arrangement;
                 memcpy(arr_song_vol, p.arr_vol, sizeof arr_song_vol);
                 memcpy(arr_song_slicer, p.arr_slcr, sizeof arr_song_slicer);
+                memcpy(arr_song_chord, p.arr_chord, sizeof arr_song_chord);
             } else {
                 p.arrangement = arrangement;
                 memcpy(p.arr_vol, arr_song_vol, sizeof p.arr_vol);
@@ -847,6 +992,7 @@ static void persist_fill(persist_t *p)              /* the settings as they are 
     p->arrangement = arrangement;
     memcpy(p->arr_vol, arr_song_vol, sizeof p->arr_vol);
     memcpy(p->arr_slcr, arr_song_slicer, sizeof p->arr_slcr);
+    memcpy(p->arr_chord, arr_song_chord, sizeof p->arr_chord);
 #endif
 }
 
@@ -976,7 +1122,8 @@ static void arrangement_save(void)
     if (flash_ok) {
         int ok = !memcmp(&persist_saved.arrangement, &arrangement, sizeof arrangement)
               && !memcmp(persist_saved.arr_vol, arr_song_vol, sizeof arr_song_vol)
-              && !memcmp(persist_saved.arr_slcr, arr_song_slicer, sizeof arr_song_slicer);
+              && !memcmp(persist_saved.arr_slcr, arr_song_slicer, sizeof arr_song_slicer)
+              && !memcmp(persist_saved.arr_chord, arr_song_chord, sizeof arr_song_chord);
         ui_message(ok ? "SONG SAVED" : "SAVE ERROR");
         return;
     }
