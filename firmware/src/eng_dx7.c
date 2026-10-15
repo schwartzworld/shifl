@@ -28,6 +28,7 @@ static char dx_user_name[DX_NUSER][11] = {"U01", "U02", "U03", "U04", "U05", "U0
 static const char *dx_names[DX_NVOICES] = {DX_SYNTH_NAME_LIST, dx_user_name[0], dx_user_name[1], dx_user_name[2], dx_user_name[3], dx_user_name[4], dx_user_name[5], dx_user_name[6], dx_user_name[7], dx_user_name[8], dx_user_name[9], dx_user_name[10], dx_user_name[11], dx_user_name[12], dx_user_name[13], dx_user_name[14], dx_user_name[15], dx_user_name[16], dx_user_name[17], dx_user_name[18], dx_user_name[19], dx_user_name[20], dx_user_name[21], dx_user_name[22], dx_user_name[23], dx_user_name[24], dx_user_name[25], dx_user_name[26], dx_user_name[27], dx_user_name[28], dx_user_name[29], dx_user_name[30], dx_user_name[31]};
 
 static uint8_t dx_bank_busy;                  /* an upload is on (BANK_BEGIN .. BANK_END) */
+static uint32_t dx_bank_dirty_ms;             /* non-zero: editor wrote a voice; store to flash when this expires */
 
 /* the voice names U01..U32: from the bank's 10-character names, or the slot labels without a bank */
 static void dx_bank_names(void)
@@ -153,7 +154,7 @@ static void dx_voice_get(uint32_t vi, uint8_t *b)
         dx_pack(DX_SYNTH[DX_NSYNTH - 1], b);
     }
 }
-static void dx_user_put(uint32_t k, const uint8_t *b)   /* packed voice -> slot k (RAM; STORE = dx_bank_store) */
+static void dx_user_put(uint32_t k, const uint8_t *b)   /* packed voice -> slot k (RAM; auto-stored after 2 s) */
 {
     uint32_t i;
     if (k >= DX_NUSER)
@@ -163,6 +164,7 @@ static void dx_user_put(uint32_t k, const uint8_t *b)   /* packed voice -> slot 
     for (i = 0; i < 128u; i++)
         dx_user[k][i] = b[i] & 127u;
     dx_bank_names();
+    dx_bank_dirty_ms = fm1_ms + 2000u;        /* schedule a deferred flash write */
 }
 static uint32_t dx_user_param_get(uint32_t k, uint32_t idx)   /* unpacked parameter idx (0..154) of slot k */
 {
@@ -453,6 +455,8 @@ static void dx7_render(track_t *t, voice_t *v, int32_t *out, uint32_t n, const v
     }
 }
 
+static const char *dx_voice_name(uint32_t i) { return i < DX_NVOICES ? dx_names[i] : ""; }
+
 static const preset_t DX7_PRESETS[] = {
     /* VOICE BRIGHT ATTACK DECAY RELEASE FDBK CUT RESO ; ADSR: a gate (the voice has its own envelopes) */
     {"EPIANO 1", {0, 0, 0, 0, 0, 0, 127, 0}, {0, 0, 127, 0}, 0, 0, FX(0, 30, 7, 15)},
@@ -483,6 +487,23 @@ static const preset_t DX7_PRESETS[] = {
     {"WOOD BARS", {25, 0, 0, 0, 0, 0, 127, 0}, {0, 0, 127, 0}, 0, 0, FX(0, 0, 25, 40)},
     {"DRAWBARS",  {26, 0, 0, 0, 0, 0, 127, 0}, {0, 0, 127, 0}, 0, 0, FX(10, 40, 0, 30)},
     {"NYLON PICK",{27, 0, 0, 0, 0, 0, 127, 0}, {0, 0, 127, 0}, 0, 0, FX(0, 20, 35, 30)},
+    /* user voices U01..U32: voice index DX_NSYNTH+k, neutral defaults */
+    {"U01",{28,0,0,0,0,0,127,0},{0,0,127,0},0,0,{}}, {"U02",{29,0,0,0,0,0,127,0},{0,0,127,0},0,0,{}},
+    {"U03",{30,0,0,0,0,0,127,0},{0,0,127,0},0,0,{}}, {"U04",{31,0,0,0,0,0,127,0},{0,0,127,0},0,0,{}},
+    {"U05",{32,0,0,0,0,0,127,0},{0,0,127,0},0,0,{}}, {"U06",{33,0,0,0,0,0,127,0},{0,0,127,0},0,0,{}},
+    {"U07",{34,0,0,0,0,0,127,0},{0,0,127,0},0,0,{}}, {"U08",{35,0,0,0,0,0,127,0},{0,0,127,0},0,0,{}},
+    {"U09",{36,0,0,0,0,0,127,0},{0,0,127,0},0,0,{}}, {"U10",{37,0,0,0,0,0,127,0},{0,0,127,0},0,0,{}},
+    {"U11",{38,0,0,0,0,0,127,0},{0,0,127,0},0,0,{}}, {"U12",{39,0,0,0,0,0,127,0},{0,0,127,0},0,0,{}},
+    {"U13",{40,0,0,0,0,0,127,0},{0,0,127,0},0,0,{}}, {"U14",{41,0,0,0,0,0,127,0},{0,0,127,0},0,0,{}},
+    {"U15",{42,0,0,0,0,0,127,0},{0,0,127,0},0,0,{}}, {"U16",{43,0,0,0,0,0,127,0},{0,0,127,0},0,0,{}},
+    {"U17",{44,0,0,0,0,0,127,0},{0,0,127,0},0,0,{}}, {"U18",{45,0,0,0,0,0,127,0},{0,0,127,0},0,0,{}},
+    {"U19",{46,0,0,0,0,0,127,0},{0,0,127,0},0,0,{}}, {"U20",{47,0,0,0,0,0,127,0},{0,0,127,0},0,0,{}},
+    {"U21",{48,0,0,0,0,0,127,0},{0,0,127,0},0,0,{}}, {"U22",{49,0,0,0,0,0,127,0},{0,0,127,0},0,0,{}},
+    {"U23",{50,0,0,0,0,0,127,0},{0,0,127,0},0,0,{}}, {"U24",{51,0,0,0,0,0,127,0},{0,0,127,0},0,0,{}},
+    {"U25",{52,0,0,0,0,0,127,0},{0,0,127,0},0,0,{}}, {"U26",{53,0,0,0,0,0,127,0},{0,0,127,0},0,0,{}},
+    {"U27",{54,0,0,0,0,0,127,0},{0,0,127,0},0,0,{}}, {"U28",{55,0,0,0,0,0,127,0},{0,0,127,0},0,0,{}},
+    {"U29",{56,0,0,0,0,0,127,0},{0,0,127,0},0,0,{}}, {"U30",{57,0,0,0,0,0,127,0},{0,0,127,0},0,0,{}},
+    {"U31",{58,0,0,0,0,0,127,0},{0,0,127,0},0,0,{}}, {"U32",{59,0,0,0,0,0,127,0},{0,0,127,0},0,0,{}},
 };
 
 static const engine_t ENG_DX7 = {
@@ -500,6 +521,7 @@ static const engine_t ENG_DX7 = {
     },
     .presets = DX7_PRESETS,
     .npresets = sizeof(DX7_PRESETS) / sizeof(DX7_PRESETS[0]),
+    .preset_name = dx_voice_name,
     .fil_page = -1,
     .note_on = dx7_note_on,
     .render = dx7_render,

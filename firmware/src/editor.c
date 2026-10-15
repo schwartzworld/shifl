@@ -23,8 +23,9 @@ enum { ED_INFO = 1, ED_GET, ED_SET, ED_DUMP, ED_DESC, ED_STEP_GET, ED_STEP_SET, 
        ED_BK_LIST, ED_BK_GET, ED_BK_PUT,                                        /* v6: backup / restore */
        ED_LOCK_GET, ED_LOCK_SET, ED_MICRO_GET, ED_MICRO_SET,                    /* v7: parameter locks, nudges */
        ED_FILL_GET, ED_FILL_SET,                                               /* v8: fill conditions */
-       ED_FM6_GET, ED_FM6_PUT, ED_FM6_LIST, ED_FM6_ERASE };                   /* v9: FM6 patch bank */
-#define ED_PROTO 9u                                   /* the protocol version INFO ends with */
+       ED_FM6_GET, ED_FM6_PUT, ED_FM6_LIST, ED_FM6_ERASE,                      /* v9: FM6 patch bank */
+       ED_CHORD_GET, ED_CHORD_SET };                                         /* v10: chord sequencer */
+#define ED_PROTO 10u                                  /* the protocol version INFO ends with */
 
 static uint8_t ed_out[800];   /* CZ-1 NAMES reply needs ~662 B (65 presets × ~10 B each) */
 static uint32_t ed_n;
@@ -620,16 +621,19 @@ static void ed_handle(const uint8_t *f, uint32_t n)   /* f: the bytes between F0
         ed_b(a[1] & 7u);
         ed_b(project_used(a[1] & 7u));
         break;
-    case ED_NAMES:                                         /* preset names of an engine */
+    case ED_NAMES: {                                       /* preset names of an engine */
+        const engine_t *eng;
         if (na < 1u || a[0] >= NENGINES)
             return;
+        eng = ENGINES[a[0]];
         ed_b(a[0]);
-        ed_b(ENGINES[a[0]]->npresets);
-        for (i = 0; i < ENGINES[a[0]]->npresets; i++)
-            ed_str(ENGINES[a[0]]->presets[i].name, 12);
+        ed_b(eng->npresets);
+        for (i = 0; i < eng->npresets; i++)
+            ed_str(eng->preset_name ? eng->preset_name(i) : eng->presets[i].name, 12);
         for (i = 0; i < 2u; i++)                           /* then the two edit-page titles */
-            ed_str(ENGINES[a[0]]->page_title[i], 8);
+            ed_str(eng->page_title[i], 8);
         break;
+    }
     case ED_SMP_BEGIN:
     case ED_SMP_ERASE:
     case ED_SMP_WRITE:
@@ -974,6 +978,40 @@ static void ed_handle(const uint8_t *f, uint32_t n)   /* f: the bytes between F0
         dx_user_put(a[0], (const uint8_t *)(a + 1));
         ed_b(a[0]);
         ed_b(0);
+        break;
+    }
+    case ED_CHORD_GET: {                                 /* -> clen, cseq_div, note/type/inv/cond × 32 */
+        uint32_t k;
+        ed_b(clen);
+        ed_b(cseq_div);
+        for (k = 0; k < NCHORD_STEP; k++) {
+            ed_b(cstep[k].note);
+            ed_b(cstep_type(&cstep[k]));
+            ed_b(cstep_inv(&cstep[k]));
+            ed_b(cstep_cond(&cstep[k]));
+        }
+        break;
+    }
+    case ED_CHORD_SET: {                                 /* idx(0-31: step; 32: globals), ... -> echo */
+        if (na < 3u) return;
+        fm1_irq_off();
+        if (a[0] < NCHORD_STEP) {
+            if (na < 5u) { fm1_irq_on(); return; }
+            cstep[a[0]].note = (uint8_t)a[1];
+            cstep_pack(&cstep[a[0]], a[2], a[3], a[4]);
+        } else if (a[0] == NCHORD_STEP) {
+            if (a[1] >= 1u && a[1] <= NCHORD_STEP) clen = (uint8_t)a[1];
+            if (a[2] < NDIV_STEP) cseq_div = (uint8_t)a[2];
+        } else {
+            fm1_irq_on();
+            return;
+        }
+        fm1_irq_on();
+        ui.force = 1;
+        ed_b(a[0]);
+        ed_b(a[1]);
+        ed_b(a[2]);
+        if (a[0] < NCHORD_STEP) { ed_b(a[3]); ed_b(a[4]); }
         break;
     }
     default:

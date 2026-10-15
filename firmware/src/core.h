@@ -175,6 +175,7 @@ typedef struct {
     uint32_t (*cap)(const struct track *t);
     uint32_t (*units)(const struct track *t);
     int32_t (*keys)(const struct track *t, uint32_t k);
+    const char *(*preset_name)(uint32_t i);  /* optional: dynamic name for preset i (NULL = presets[i].name) */
 } engine_t;
 /* voice_start: what the voice it starts did just before (0 free, 1 released, 2 its key down: a steal or a move);
  * engine_t.note_on may read it */

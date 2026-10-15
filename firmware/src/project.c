@@ -812,6 +812,13 @@ static int dx_bank_store(void)                    /* the bank in RAM -> its flas
     return 2;
 #endif
 }
+static void dx_bank_flush(void)                   /* store the bank if an editor PUT marked it dirty and 2 s elapsed */
+{
+    if (!dx_bank_dirty_ms || dx_bank_busy || fm1_ms - dx_bank_dirty_ms >= 0x80000000u)
+        return;                                   /* not dirty, upload in progress, or timer not expired yet */
+    dx_bank_dirty_ms = 0;
+    dx_bank_store();
+}
 static int ukit_store(void)                       /* MY KIT (drums.c ukit) -> flash: 0 ok, 2 flash error / no flash */
 {
 #if FELUCCA_FLASH

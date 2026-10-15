@@ -249,9 +249,11 @@ static void fm1_main(void)
         }
         if (usb.dx_bank_rx) {                           /* DX7 32-voice bulk dump received via SysEx */
             usb.dx_bank_rx = 0;
+            dx_bank_dirty_ms = 0;                   /* USB dump already in flash; cancel any pending editor store */
             dx_bank_store();
             ui_say("DX7 BANK", "LOADED");
         }
+        dx_bank_flush();                              /* editor FM6_PUT deferred store (2 s after last write) */
 #if FELUCCA_CDC
         cdc_task();
 #endif
