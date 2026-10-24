@@ -364,10 +364,6 @@ static void duck_block(uint32_t adv)
     int32_t depth = song.g[G_DUCK] * 258, x;
     uint32_t len = BEAT_U / 2u;
     duck.g0 = duck.g1;
-    if (drums.kick) {
-        drums.kick = 0;
-        duck.t = 0;
-    }
     if (!depth || duck.t >= len) {
         duck.g1 = 32767;
         return;
@@ -515,29 +511,6 @@ static void mix_block(int32_t *out, uint32_t n)
     analog_nv = (uint8_t)voices_busy();             /* superwave voice count for CPU scaling (eng_analog.c) */
     for (i = 0; i < NPART; i++)
         mix_part(&trk[i], n);
-    drums.a0 = TDRUM->att;                              /* the drum track's mute / solo fade */
-    drums.a1 = 32767 - gain_next(TDRUM);
-    {
-        static int32_t dl[CTL], dr[CTL], dv[CTL], dd[CTL];
-        tsvf_t fc;
-        djf_t *f = &tflt[TRK_DRUM];
-        if (n <= CTL && djf_block(f, TDRUM->p[P_TFLT], &fc)) {   /* the drum track's FILTER: left, right, reverb */
-            for (i = 0; i < n; i++)
-                dl[i] = dr[i] = dv[i] = dd[i] = 0;
-            slicer_drums(dl, dr, dv, dd, n);
-            tflt_run(f, &fc, dl, n, 0);
-            tflt_run(f, &fc, dr, n, 1);
-            tflt_run(f, &fc, dv, n, 2);
-            for (i = 0; i < n; i++) {
-                mix_l[i] += dl[i];
-                mix_r[i] += dr[i];
-                send_r[i] += dv[i];
-                send_d[i] += dd[i];
-            }
-        } else {
-            slicer_drums(mix_l, mix_r, send_r, send_d, n);      /* drums_render, through the SLICER when on */
-        }
-    }
     fx_buses(send_c, send_d, send_r, wet_l, wet_r, n);
     for (i = 0; i < n; i++) {
         mix_l[i] += wet_l[i];

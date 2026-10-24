@@ -14,24 +14,22 @@ static void proj_apply_track(const project_t *p, uint32_t k)
     uint32_t i;
     track_t *t = &trk[k];
     const proj_trk_t *s = &p->t[k];
-    uint32_t e = k < NPART ? s->engine % NENGINES : 0u;
+    uint32_t e = s->engine % NENGINES;
     t->eng_req = (uint8_t)e;
     t->user = 0;
     for (i = 0; i < P_COUNT; i++) {
-        const param_desc_t *d = k == TRK_DRUM && i == P_E0 ? &DRUM_KIT_DESC :
-                                i >= P_E0 && i <= P_E7 ? &ENGINES[e]->edit[i - P_E0] : &TP[i];
+        const param_desc_t *d = i >= P_E0 && i <= P_E7 ? &ENGINES[e]->edit[i - P_E0] : &TP[i];
         t->p[i] = (int16_t)clamp(s->p[i], d->min, d->max);
     }
     t->preset = (uint8_t)(ENGINES[e]->npresets ? (s->preset == 0xFFu ? 0u : s->preset) % ENGINES[e]->npresets : 0u);
     memcpy(t->step, s->step, sizeof t->step);
-    if (k != TRK_DRUM)
-        for (i = 0; i < NSTEP; i++) {
-            step_t *st = &t->step[i];
-            uint32_t j;
-            if (st->n > 4u) st->n = 4;
-            if (st->time > ST_C8OF8) st->time = ST_REST;
-            for (j = 0; j < 4u; j++) st->note[j] &= 127u;
-        }
+    for (i = 0; i < NSTEP; i++) {
+        step_t *st = &t->step[i];
+        uint32_t j;
+        if (st->n > 4u) st->n = 4;
+        if (st->time > ST_C8OF8) st->time = ST_REST;
+        for (j = 0; j < 4u; j++) st->note[j] &= 127u;
+    }
 }
 
 static void trk_clear_state(track_t *t)
@@ -71,8 +69,6 @@ static void arrangement_apply(uint32_t entry_index)
         trk_clear_state(&trk[k]);
         if (e->track[k] == ARR_MUTE) {
             trk[k].p[P_LEVEL] = 0;     /* P_LEVEL=0 silences the track in the mixer */
-            if (k == TRK_DRUM)
-                trk[k].p[P_MUTE] = 1;  /* drum track uses trk_silent/att, not P_LEVEL */
         } else {
             proj_apply_track(&proj_slot[e->track[k]], k);
             if (k < NPART && pa->engine[k] != ARR_PATCH_NONE) {

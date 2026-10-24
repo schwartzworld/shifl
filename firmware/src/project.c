@@ -245,7 +245,7 @@ static int proj_from_v4old(project_t *q, const project_v4old_t *v4o, int n)
     memcpy(q->g, v4o->g, sizeof q->g);
     q->sel = v4o->sel;
     for (i = 0; i < NTRK; i++)
-        proj_trk_from_v4old(&q->t[i], &v4o->t[i], i == TRK_DRUM);
+        proj_trk_from_v4old(&q->t[i], &v4o->t[i], 0);
     q->sum = proj_sum(q);
     return 1;
 }
@@ -278,7 +278,7 @@ static int proj_from_v4nofenv(project_t *q, const project_v4nofenv_t *v, int n)
     memcpy(q->g, v->g, sizeof q->g);
     q->sel = v->sel;
     for (i = 0; i < NTRK; i++)
-        proj_trk_from_v4nofenv(&q->t[i], &v->t[i], i == TRK_DRUM);
+        proj_trk_from_v4nofenv(&q->t[i], &v->t[i], 0);
     q->sum = proj_sum(q);
     return 1;
 }
@@ -321,7 +321,7 @@ static int proj_from_v5old(project_t *q, const project_v5old_t *v, int n)
     memcpy(q->g, v->g, sizeof q->g);
     q->sel = v->sel;
     for (i = 0; i < NTRK; i++)
-        proj_trk_from_v4(&q->t[i], &v->t[i], i == TRK_DRUM);
+        proj_trk_from_v4(&q->t[i], &v->t[i], 0);
     memset(q->fseq, 0xFF, sizeof q->fseq);
     q->sum = proj_sum(q);
     return 1;
@@ -373,7 +373,7 @@ static int proj_from_v4(project_t *q, const project_v4_t *v, int n)
     memcpy(q->g, v->g, sizeof q->g);
     q->sel = v->sel;
     for (i = 0; i < NTRK; i++)
-        proj_trk_from_v4(&q->t[i], &v->t[i], i == TRK_DRUM);
+        proj_trk_from_v4(&q->t[i], &v->t[i], 0);
     q->sum = proj_sum(q);
     return 1;
 }
@@ -401,7 +401,7 @@ static void proj_from_v3_ok(project_t *q, const project_v3_t *v3)
     proj_g_from_old(q->g, v3->g);
     q->sel = v3->sel;
     for (i = 0; i < NTRK; i++)
-        proj_trk_from_v3(&q->t[i], &v3->t[i], i == TRK_DRUM);
+        proj_trk_from_v3(&q->t[i], &v3->t[i], 0);
     q->sum = proj_sum(q);
 }
 static int proj_from_v3(project_t *q, const project_v3_t *v3, int n)
@@ -426,7 +426,7 @@ static int proj_from_v2(project_t *q, const project_v2_t *v2, int n)
     memcpy(v3->g, v2->g, sizeof v3->g);
     v3->sel = v2->sel;
     for (i = 0; i < NTRK; i++)
-        proj_trk_v2_to_v3(&v3->t[i], &v2->t[i], i == TRK_DRUM);
+        proj_trk_v2_to_v3(&v3->t[i], &v2->t[i], 0);
     proj_from_v3_ok(q, v3);
     return 1;
 }
@@ -451,9 +451,8 @@ static int proj_from_v1(project_t *q, const project_v1_t *v1, int n)
         q->t[i].engine = (uint8_t)trk_def_engine(i);
         q->t[i].preset = 0xFF;                 /* 0xFF: its default preset (project_load) */
         memset(q->t[i].step, 0, sizeof q->t[i].step);
-        if (i != TRK_DRUM)
-            for (k = 0; k < NSTEP; k++)
-                q->t[i].step[k].time = ST_REST;
+        for (k = 0; k < NSTEP; k++)
+            q->t[i].step[k].time = ST_REST;
     }
     q->sum = proj_sum(q);
     return 1;
@@ -479,12 +478,9 @@ static int proj_from_v7(project_t *q, const project_v7_t *v, int n)
         d->p[P_CFOL] = 0;                         /* new param: default CF_OFF */
         for (k = 0; k < 16u; k++)                 /* P_E0..P_E15: were at 63..78, now at 64..79 */
             d->p[P_E0 + k] = s->p[PROJ_NP_V7 - 16u + k];
-        d->engine = i == TRK_DRUM ? 0u : s->engine;
-        d->preset = i == TRK_DRUM ? 0u : s->preset;
-        if (i == TRK_DRUM)
-            memcpy(d->dstep, s->dstep, sizeof(dstep_t) * NSTEP);
-        else
-            memcpy(d->step, s->step, sizeof(step_t) * NSTEP);
+        d->engine = s->engine;
+        d->preset = s->preset;
+        memcpy(d->step, s->step, sizeof(step_t) * NSTEP);
     }
     memcpy(q->fseq, v->fseq, sizeof q->fseq);
     memcpy(q->cstep, v->cstep, sizeof q->cstep);
@@ -528,7 +524,7 @@ static void proj_capture(project_t *p)        /* what is playing now, as a proje
         p->t[i].preset = trk[i].preset;
         memcpy(p->t[i].step, trk[i].step, sizeof trk[i].step);
     }
-    memcpy(p->fseq, dext.fseq, sizeof p->fseq);
+    memset(p->fseq, 0xFF, sizeof p->fseq);
     memcpy(p->cstep, cstep, sizeof p->cstep);
     p->clen = clen;
     p->cseq_div = cseq_div;
@@ -547,18 +543,16 @@ static void proj_apply(const project_t *p, int all)
     for (k = 0; k < NTRK; k++) {
         track_t *t = &trk[k];
         const proj_trk_t *s = &p->t[k];
-        uint32_t e = k < NPART ? s->engine % NENGINES : 0u;
+        uint32_t e = s->engine % NENGINES;
         t->eng_req = (uint8_t)e;
         t->user = 0;                                    /* (no user preset slot is saved) */
         for (i = 0; i < P_COUNT; i++) {                 /* every value back inside its range */
-            const param_desc_t *d = k == TRK_DRUM && i == P_E0 ? &DRUM_KIT_DESC :   /* the drum kit */
-                                    i >= P_E0 && i <= P_E7 ? &ENGINES[e]->edit[i - P_E0] : &TP[i];
+            const param_desc_t *d = i >= P_E0 && i <= P_E7 ? &ENGINES[e]->edit[i - P_E0] : &TP[i];
             t->p[i] = (int16_t)clamp(s->p[i], d->min, d->max);
         }
         t->preset = (uint8_t)(ENGINES[e]->npresets ? (s->preset == 0xFFu ? 0u : s->preset) % ENGINES[e]->npresets : 0u);
         memcpy(t->step, s->step, sizeof t->step);
-        if (k != TRK_DRUM)
-            for (i = 0; i < NSTEP; i++) {
+        for (i = 0; i < NSTEP; i++) {
                 step_t *st = &t->step[i];
                 uint32_t j;
                 if (st->n > 4u)
@@ -568,13 +562,6 @@ static void proj_apply(const project_t *p, int all)
                 for (j = 0; j < 4u; j++)
                     st->note[j] &= 127u;
             }
-    }
-    if (all) {
-        uint32_t fi;
-        memcpy(dext.fseq, p->fseq, sizeof dext.fseq);
-        for (fi = 0; fi < FILL_SEQ_MAX; fi++)   /* clamp: step must be unused or in range */
-            if (dext.fseq[fi].step != 0xFFu && dext.fseq[fi].step >= NSTEP)
-                dext.fseq[fi].step = 0xFFu;
     }
     if (p->clen > 0) {                           /* chord progression: applied for all section changes */
         memcpy(cstep, p->cstep, sizeof cstep);
@@ -683,9 +670,6 @@ static int audio_quiet(void)
         for (i = 0; i < NVOICE; i++)
             if (trk[p].v[i].active)
                 return 0;
-    for (i = 0; i < NDRUM; i++)
-        if (drums.v[i].active)
-            return 0;
     return 1;
 }
 
@@ -712,7 +696,6 @@ static void autosave_resume(void)              /* power-on: the project as it wa
 #if FELUCCA_FLASH
     project_t *q = &autosave_buf;
     int n;
-    memset(dext.fseq, 0xFF, sizeof dext.fseq); /* default: no fill-row triggers */
     if (!flash_ok)
         return;
     n = st_load(OBJ_AUTOSAVE, &proj_tmp, sizeof proj_tmp);
@@ -781,11 +764,7 @@ static int dx_bank_read(uint32_t k)              /* bank k of flash -> dx_user: 
     dx_bank_clear();
     return 0;
 }
-static void ukit_boot(void)                       /* MY KIT from flash (else DX KIT) */
-{
-    if (!(flash_ok && st_load(OBJ_DXKIT, &ukit_img, sizeof ukit_img) == (int)sizeof ukit_img && !ukit_from_img(&ukit_img)))
-        ukit_from(0);
-}
+static void ukit_boot(void) {}
 static void dx_bank_boot(void)
 {
     uint32_t m[2] = {0, 0};
@@ -795,7 +774,7 @@ static void dx_bank_boot(void)
     dx_bank_read(dx_bank_cur);
 }
 #else
-static void ukit_boot(void) { ukit_from(0); }
+static void ukit_boot(void) {}
 static void dx_bank_boot(void) { dx_bank_clear(); }
 #endif
 static int dx_bank_store(void)                    /* the bank in RAM -> its flash slot: 0 ok, 2 flash error / no flash */
@@ -819,17 +798,7 @@ static void dx_bank_flush(void)                   /* store the bank if an editor
     dx_bank_dirty_ms = 0;
     dx_bank_store();
 }
-static int ukit_store(void)                       /* MY KIT (drums.c ukit) -> flash: 0 ok, 2 flash error / no flash */
-{
-#if FELUCCA_FLASH
-    if (!flash_ok)
-        return 2;
-    ukit_to_img(&ukit_img);
-    return st_save(OBJ_DXKIT, &ukit_img, sizeof ukit_img) ? 2 : 0;
-#else
-    return 2;
-#endif
-}
+static int ukit_store(void) { return 2; }
 static int dx_bank_erase(void)                    /* no bank in the slot in use, in RAM and in flash: 0 ok, 2 flash error */
 {
     dx_bank_clear();

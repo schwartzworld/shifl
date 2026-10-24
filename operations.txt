@@ -1,0 +1,832 @@
+# Pocket Operations - Drum Machine Patterns
+# Compiled by Paul Wenzel
+# Transformed into 16-step plaintext grids (- = rest, x = hit)
+
+## BASIC PATTERNS
+
+ONE AND SEVEN & FIVE AND THIRTEEN
+BD: x-----x---------
+SN: ----x-------x---
+
+BOOTS N’ CATS
+BD: x-------x-------
+SN: ----x-------x---
+CH: x-x-x-x-x-x-x-x-
+
+TINY HOUSE
+OH: --x---x---x---x-
+BD: x---x---x---x---
+
+GOOD TO GO
+BD: x--x--x---x-----
+SN: ----x-------x---
+
+HIP HOP
+BD: x-x---xx------x-
+SN: ----x-------x---
+CH: x-x-x-x-x-x-x-x-
+
+
+## STANDARD BREAKS
+
+STANDARD BREAK 1
+BD: x---------x-----
+SN: ----x-------x---
+CH: x-x-x-x-xxx-x-x-
+
+STANDARD BREAK 2
+BD: x---------x-----
+SN: ----x-------x---
+CH: x-x-x-xxx-x---x-
+
+ROLLING BREAK
+BD: x------x--x-----
+SN: ----x-------x---
+CH: x-x-x-x-x-x-x-x-
+
+THE UNKNOWN DRUMMER
+AC: ---^-------^----
+BD: x--x--x----x----
+SN: -x--x--x----x---
+CH: -xx-xx-x-----x--
+OH: --------x-----x-
+
+
+## ROCK
+
+ROCK 1
+BD: x------xx-x-----
+SN: ----x-------x---
+CY: x---------------
+CH: x-x-x-x-x-x-x-x-
+
+ROCK 2
+BD: x------xx-x-----
+SN: ----x-------x---
+CH: x-x-x-x-x-x-x-x-
+
+ROCK 3
+BD: x------xx-x-----
+SN: ----x-------x---
+OH: --------------x-
+CH: x-x-x-x-x-x-x-x-
+
+ROCK 4
+BD: x------xx-x-----
+SN: ----x-------x-xx
+OH: --------------x-
+CH: x-x-x-x-x-x-x-x-
+
+
+## ELECTRO
+
+ELECTRO 1 - A
+SN: ----x-------x---
+BD: x-----x---------
+
+ELECTRO 1 - B
+SN: ----x-------x---
+BD: x-----x---x---x-
+
+ELECTRO 2 - A
+SN: ----x-------x---
+BD: x-----x---------
+
+ELECTRO 2 - B
+SN: ----x-------x---
+BD: x---------x--x--
+
+ELECTRO 3 - A
+SN: ----x-------x---
+BD: x-----x----x----
+
+ELECTRO 3 - B
+SN: ----x-------x---
+BD: x-----x----x-x--
+
+ELECTRO 4
+SN: ----x-------x---
+BD: x-----x---x--x--
+
+SIBERIAN NIGHTS
+CH: x-xx-x-xxx-xx-xx
+SN: ----x-------x---
+BD: x-----x---------
+
+NEW WAVE
+BD: x-----x-xx------
+SN: ----x-------x---
+CH: xxxxxxxxxxxxxxxx
+OH: --x-------------
+SH: ----x-------x---
+
+
+## HOUSE
+
+HOUSE
+BD: x---x---x---x---
+SN: ----x-------x---
+CY: x---------------
+OH: --x---x---x---x-
+
+HOUSE 2
+BD: x---x---x---x---
+SN: ----x-------x---
+CH: xxxxxxxxxxxxxxxx
+OH: --x--x----x--x--
+
+BRIT HOUSE
+BD: x---x---x---x---
+CL: ----x-------x---
+CY: --x---x---x---x-
+CH: xx-xxx-xxxx-xx-x
+OH: --x---x---x---x-
+
+FRENCH HOUSE
+BD: x---x---x---x---
+CL: ----x-------x---
+SH: xxx-x--xxxx-x-xx
+CH: xxxxxxxxxxxxxxxx
+OH: -x-x-x-x-x-x-x-x-
+
+DIRTY HOUSE
+AC: --^-----------^-
+BD: x-x-x---x-x-x--x
+SN: ----x-------x---
+CL: --x-x---x-x-x---
+CH: ----------x----x
+OH: --x-------x---x-
+
+DEEP HOUSE
+BD: x---x---x---x---
+CL: ----x-------x---
+CH: -x------x-x-----
+OH: --x---x---x---x-
+
+DEEPER HOUSE
+BD: x---x---x---x---
+CL: -x--------x-----
+MT: --x----x--x-----
+SH: ---x----x-------
+OH: --x---x---xx--x-
+
+SLOW DEEP HOUSE
+BD: x---x---x---x---
+CL: ----x-------x---
+SH: xxxxxxxxxxxxxxxx
+CH: x---x---x---x---
+OH: --xx--xx-x-x----
+
+FOOTWORK - A
+BD: x--x--x-x--x--x-
+CL: ------------x---
+CH: --x-------x-----
+RS: xxxxxxxxxxxxxxxx
+
+FOOTWORK - B
+BD: x--x--x-x--x--x-
+CL: ------------x---
+CH: --x---xx--x---x-
+RS: xxxxxxxxxxxxxxxx
+
+
+## MIAMI BASS
+
+MIAMI BASS - A
+BD: x-----x---------
+SN: ----x-------x---
+CH: x-xx-x-xxx-xx-xx
+
+MIAMI BASS - B
+BD: x-----x---x--x--
+SN: ----x-------x---
+CH: x-xx-x-xxx-xx-xx
+
+SALLY
+BD: x-----x---x---x-
+SN: ----x-------x---
+LT: x-----x---x---x-
+CH: x-x-x-x-x-x-x-x-
+
+ROCK THE PLANET
+BD: x--x--x---------
+SN: ----x-------x---
+CH: x-xx-x-xxxx-xxxx
+
+
+## HIP HOP
+
+HIP HOP 1 - A
+BD: x-----xx---x--x-
+SN: ----x-------x---
+
+HIP HOP 1 - B
+BD: x------x---x----
+SN: ----x-------x---
+
+HIP HOP 2 - A
+BD: x------xxx----x-x
+SN: ----x-------x---
+
+HIP HOP 2 - B
+BD: x------xx-x-----
+SN: ----x----x--x---
+
+HIP HOP 3 - A
+BD: x-x-----x-x-----
+SN: ----x-------x---
+
+HIP HOP 3 - B
+BD: x-x-----xx-x----
+SN: ----x-------x---
+
+HIP HOP 4 - A
+BD: x--x---x-xx----x
+SN: ----x-------x---
+
+HIP HOP 4 - B
+BD: x-x----xxxx-----
+SN: ----x-------x---
+
+HIP HOP 5
+BD: x-x----xx-x----x
+SN: ----x-------x---
+
+HIP HOP 6
+BD: x-x-------xx---x
+SN: ----x-------x---
+CH: x-x-x-x-x-x-x-x-
+
+HIP HOP 7
+BD: x------x--x--x-x
+SN: ----x-------x---
+CH: x-x-x-x-x-x-x-x-
+
+HIP HOP 8
+BD: x--x----x-xx----
+SN: ----x-------x---
+CH: xx-xx-xx-xx-xx-xx
+OH: -----x-----x----
+
+TRAP - A
+BD: x-----x-----x---
+SN: --------x-------
+CH: x-x-x-x-x-x-x-x-
+
+TRAP - B
+BD: --x-x-----------
+SN: --------x-------
+CH: --x-x-x-x-x---x-
+
+PLANET ROCK - A
+CH: x-xx-x-xxxx-xxxx
+CB: x-x-x-xx-x-xx-x-
+SN: ----x-------x---
+BD: x-----x---------
+HC: ----x-------x---
+
+PLANET ROCK - B
+CH: x-xx-x-xxxx-xxxx
+CB: x-x-x-xx-x-xx-x-
+SN: ----x-------x---
+BD: x-----x---x--x--
+HC: ----x-------x---
+
+INNA CLUB
+OH: x-x-x-x-x-x-x-x-
+SN: ----x-------x---
+BD: --x----x--x----x
+HC: ----x-------x---
+
+ICE
+SN: ----x-------x---
+BD: x-----x---x---x-
+SH: x-x-x-x-x-x-x-x-
+
+BACK TO CALI - A
+CH: x-x-x-x-x-x-x-x-
+SN: ----x-------x---
+BD: x-----x---------
+HC: ----x-x-x---x-x-
+
+BACK TO CALI - B
+CH: x-x-x-x-x-x---x-
+OH: ------------x---
+SN: ----x-------x---
+BD: x-----x---x--x--
+HC: x---x-x-x---x---
+
+SNOOP STYLES
+RS: --x---x---x---x-
+OH: x--x--x---x-----
+SN: ----x-------x---
+BD: x--x--x---x-----
+HC: ----x-------x---
+
+THE GROOVE - A
+CH: x-x-x-x-x-x-x-x-
+OH: -------x--------
+SN: ----x-------x---
+BD: x--x---x---x--x-
+SH: ----x-------x---
+
+THE GROOVE - B
+CH: x-x-x-x-x-x-xx--
+OH: -------x--xxx-x-
+SN: ----x-------x---
+HT: ---------xx-----
+MT: -----------x-x--
+LT: --------------xx
+BD: x--x---x---x----
+SH: ----x-------x---
+
+BOOM BAP
+AC: ^-^-^-^-^-^-^-^-
+CB: --------x-------
+OH: --------------x-
+CH: xxxxxxxxxxxxxxxx
+CL: --x---x---x---x-
+SN: --x---x---x---x-
+BD: x-x--x---x---x--
+
+MOST WANTED - A
+CH: x-x-x-x-x-x-x-x-
+CY: x---------------
+SN: ----x-------x---
+BD: x-----x-xx-----x
+HC: ----x-------x---
+
+MOST WANTED - B
+CH: x---x-x-x-x-x-x-
+OH: --x-------------
+SN: ----x-------x---
+BD: --x---x-xx------
+HC: ----x-------x---
+
+
+## FUNK AND SOUL
+
+AMEN BREAK - A
+BD: x-x-------xx----
+SN: ----x--x-x--x--x
+CH: x-x-x-x-x-x-x-x-
+
+AMEN BREAK - B
+BD: x-x-------xx----
+SN: -------x-x--x--x
+CH: x-x-x-x-x-x-x-x-
+RS: ----x-----------
+
+AMEN BREAK - C
+BD: x-x-------x-----
+SN: -------x-x--x--x
+CH: x-x-x-x-x-x-x-x-
+RS: --------------x-
+
+AMEN BREAK - D
+BD: x-x-------x-----
+SN: -x--x--x-x----x-
+CH: x-x-x-x-x---x-x-
+CY: ----------x-----
+
+THE FUNKY DRUMMER
+BD: x-x---x---x--x--
+SN: ----x--x-x-xx--x
+CH: xxxxxxx-xxxx-xx
+OH: -------x-----x--
+
+IMPEACH THE PRESIDENT
+BD: x------xx-----x-
+SN: ----x-------x---
+CH: x-x-x-xxx---x-x-
+OH: ----------x-----
+
+WHEN THE LEVEE BREAKS
+BD: xx-----x--xx----
+SN: ----x-------x---
+CH: x-x-x-x-x-x-x-x-
+
+IT’S A NEW DAY
+BD: x-x-------xx---x
+SN: ----x-------x---
+CH: x-x-x-x-x-x-x-x-
+
+THE BIG BEAT
+BD: x--x--x-x-------
+SN: ----x-------x---
+CH: ----x-------x---
+
+ASHLEY’S ROACHCLIP
+BD: x-x---x-xxx-----
+SN: ----x-------x---
+CH: x-x-x-x-x---x-x-
+OH: ----------x-----
+CB: x-x-x-x-x-x-x-x-
+
+PAPA WAS TOO
+BD: x------xx-x----x
+SN: ----x-------x---
+CH: ----x---x-x-x-xx
+CY: ----x-----------
+
+SUPERSTITION
+BD: x---x---x---x---
+SN: ----x-------x---
+CH: x-x-x-xxx-x-x-xx
+
+CISSY STRUT - A
+BD: x--x-x----x-xx-x
+SN: ----x--x--xx----
+CY: ------------x-x-
+
+CISSY STRUT - B
+BD: x--x----x-x-xx-x
+SN: --x--x-xx-x-----
+CY: ----------------
+
+CISSY STRUT - C
+BD: x---x---x-x-xx-x
+SN: --x-x-xx--x-----
+CY: ------------x-x-
+
+CISSY STRUT - D
+BD: x---x---x-x-xx-x
+SN: x-x--x--x-x-----
+CY: ------------x-x-
+
+HOOK AND SLING - A
+BD: x-x-------x---xx
+SN: ----x-xx--x-x---
+CY: x-xx-x----x-x--x
+
+HOOK AND SLING - B
+BD: --------------x-
+SN: x---x-x-x--xx-xx
+CY: xx-x---x-x--x-x-
+
+HOOK AND SLING - C
+BD: xx----------xx-x
+SN: --x-x-xx--xx--x-
+CY: x-x-x-x-x-x-xx--
+
+HOOK AND SLING - D
+BD: x-x--x-----x-xx-
+SN: ----x--x--x----x
+CY: x-x-x-x-x-------
+
+KISSING MY LOVE - A
+CY: xxxxxxxxxxxxxxx-
+SN: ----x--x-x--x---
+BD: xx-x--------x--x
+
+KISSING MY LOVE - B
+CY: xxxxxxxxxxxxxxxx
+SN: ----x--x-x--x--x
+BD: xx-x--------x-x-
+
+KISSING MY LOVE - C
+CY: xxxxxxxxxxxxxxxx
+SN: ----x--x-x-----x
+BD: xx-x------x-xx--
+
+KISSING MY LOVE - D
+CY: xxxxxxxxxxxxxxx-
+SN: ----x----x--x---
+BD: x--x--------x--x
+
+KISSING MY LOVE - E
+CY: xxxxxxxxxxxxxxx-
+SN: ----x--x-x--x---
+BD: x-----------x-x-
+
+LADY - A
+CY: --x---x---------
+SN: ----xx----------
+BD: x-------x--x--x-
+
+LADY - B
+CY: --x---x---------
+SN: ----xx--x-------
+BD: x-------x--x--x-
+
+KNOCKS ME OFF MY FEET - A
+CY: x-x----xx-xx--x-
+SN: ----x-------x---
+BD: x-x-x--xx-x-x--x
+
+KNOCKS ME OFF MY FEET - B
+CY: x-x----xx-xx--x-
+SN: ----x-------x---
+BD: x-x-x--xx-x-x--x
+
+THE THRILL IS GONE
+CY: x-x-x-x-x-x-x-x-
+SN: x---x---x---x---
+BD: -------xxx------
+
+POP TECH - A
+CY: x-------x-------
+SN: ----x-------x---
+BD: x---------------
+
+POP TECH - B
+CY: x-------x-------
+SN: ----x-------x---
+BD: -x------------xxx
+
+YA MAMA - A
+CY: ----x-------x---
+BD: x-------x-------
+
+YA MAMA - B
+CY: ----x-------x---
+BD: x------xx-------
+
+COLD SWEAT - A
+CY: x-x-x-x-x-x-x-x-
+SN: ----x--x------x-
+BD: x-------x-x-----
+
+COLD SWEAT - B
+CY: x-x-x-x-x-x-x-x-
+SN: -x--x--x-x--x---
+BD: --x-----x-x---x-
+
+I GOT YOU (I FEEL GOOD) - A
+CY: x-x-x-x-x-x-x-x-
+SN: ----x-------x---
+BD: x---------x-----
+
+I GOT YOU (I FEEL GOOD) - B
+CY: x-x-x-x-x-x-x-x-
+SN: ----x-------x---
+BD: --x---x---x---x-
+
+THE SAME BLOOD
+CY: x-x-x-xx-x-xx-xx
+SN: ---x-xx-----xxx-
+BD: xx------xx------
+
+GROOVE ME
+CY: x-x-x-x-x-x-x-x-
+SN: ----x-------x---
+BD: x--xx--xxx-x-x-x
+
+LOOK-KA PY PY - A
+CY: x-x-x-x-x-x-x-x-
+SN: -x--x--xx-x---x-
+BD: x--x-x----x--xx-
+
+LOOK-KA PY PY - B
+CY: x-x-x-x-x-x-x-x-
+SN: -x--xx-xx-x---x-
+BD: x--x-x-xx-x--xx-
+
+USE ME - A
+CY: x-x-xx-xxx-xx-xx
+SN: --x-x-xx-xx-x-xx
+BD: x---x-------x---
+
+USE ME - B
+CY: xxx-xx-xxx-xx-xx
+SN: -xx-x-xx-xx-x-xx
+BD: ----x--x--x-x---
+
+USE ME - C
+CY: xxxxxxxxxxxxxxxx
+SN: ----x--x-x--x--x
+BD: x-x--x-xx-xx-x-x
+
+USE ME - D
+CY: xxxxxxxxx-x-x-x-
+SN: ----x--x-------x
+BD: x-x--x--xx-x-x-x
+
+FUNKY PRESIDENT
+CY: x-x-x-x-x-x-x-x-
+SN: ----x-------x---
+BD: x--x----x-xx----
+
+GET UP - A
+CY: x-x-x-xx-x-x-x-xx
+SN: ----x-xx-x--x--xx
+BD: x---------x---x-
+
+GET UP - B
+CY: x-x-x-xx-x-x-x-x-
+SN: ----x-xx-x--x--xx
+BD: x---------x---x-
+
+EXPENSIVE SHIT
+CY: x-xx-x-xx-xx-xx
+SN: xx-x-x--xx--xx--
+BD: ---x--x-------x-
+
+CHUG CHUG CHUG-A-LUG
+CY: x-x-xxx-x-xxx-x-
+SN: -xx-x--x-xx-x---
+BD: x--x-x-x-x-x--x-
+
+THE FEZ - A
+CY: --x---x---x---x-
+SN: -x-xxx-x-xxx-x-x
+BD: x-------x-------
+
+THE FEZ - B
+CY: --x---x---x---x-
+SN: -x-xxx-x-xxx-x-x
+BD: x-------x--x--x-
+
+ROCK STEADY
+CY: x-x-x-xx-x-x-x-xx
+SN: -x--xx-x-x--xx-x
+BD: --x-x--x--x-x---
+
+SYNTHETIC SUBSTITUTION - A
+CY: x-x-x-x-x-x-x-x-
+SN: ----x---x-------
+BD: x-x----x-xxx---x
+
+SYNTHETIC SUBSTITUTION - B
+AC: ---^------------
+CY: x-x-x-x-x-x-x-x-
+SN: ----x---x-------
+BD: x-x----x-xxx---x
+
+COW’D BELL - A
+CB: x-xx-x-xx-xx-xx
+SN: xx-x-x--xx--xx--
+BD: x--x--xx--xx-x-x
+
+COW’D BELL - B
+CB: x-xx-x-xx-xx-xx
+SN: xx-x-x--xx--xx--
+BD: x-xx---xx-xx-x-x
+
+PALM GREASE - A
+CY: xxxxx-xx-x-xx-x-
+SN: ----x--x-x--x--x
+BD: x-------x------x
+
+PALM GREASE - B
+AC: ----^-------^---
+CY: x-x-------x-----
+SN: -x---x--------x-
+BD: --x-------------
+
+O-O-H CHILD - A
+AC: -^--^---^---^---
+CY: xxx-xxx-xxx-xxx-
+SN: -x-x-x-x-x-x-x-x
+BD: x-x-----x-xx----
+
+O-O-H CHILD - B
+AC: -^--^---^---^---
+CY: xxx-xxx-xxx-xxx-
+SN: -x-x-x-x-x--x-x-
+BD: x-x-----x-xx----
+
+LADY MARMALADE - A
+CY: x-x-x-x-x-x-x-x-
+SN: ----x-------x---
+BD: x-x---x-x-----x-
+
+LADY MARMALADE - B
+AC: ---^-------^----
+CY: x-x-x-x-x-x-x-x-
+SN: ----x---x-------
+BD: ------------x---
+
+HOT SWEAT - A
+CY: x-x-x-x-x-x-x-x-
+SN: ----x--xxx--x-xx
+BD: x---------x-----
+
+HOT SWEAT - B
+CY: x-xx-x-xx-xx-x--
+SN: -x-xxx-x-xxx-x--
+BD: --xx------xx--x-
+
+HAITIAN DIVORCE
+AC: --^-------^-----
+CY: xxx-xxxxxxx-xxxx
+SN: -x--x-xx-x--x-xx
+BD: --x-x-----x-x---
+
+COME DANCING - A
+CY: x-x-x-x-x-x-x-x-
+SN: -xx-xxx--xx-xxx-
+BD: x------xx------x
+
+COME DANCING - B
+AC: ---^-------^----
+CY: x-x-x-x-x-x-x-x-
+SN: -x--xx---x--xxx-
+BD: x-x--x-xx------x
+
+RESPECT YOURSELF - A
+CY: x-x-x-x-x-x-x-x-
+SN: ----x-----x-x---
+BD: x---x---x---x---
+
+RESPECT YOURSELF - B
+CY: x-x-x-x-x-x-x-x-
+SN: ----x---x-x-x---
+BD: x---x---x---x---
+
+EXPRESS YOURSELF - A
+CY: xxxxxxxxxxxxxxxx
+SN: ----x--x-x-x-x-x
+BD: x--x----x--x--x-
+
+EXPRESS YOURSELF - B
+AC: ---^-----------^
+CY: xxxxxxxxxxxxxxxx
+SN: ----x--x-x-xx---
+BD: x--x----x--x--x-
+
+LET A WOMAN BE A WOMAN
+AC: ---^-----------^
+CY: x-x-x-x-x-x-x-x-
+SN: ----x--x-xx-xx--
+BD: --x-----x-xxxx-x
+
+LET A MAN BE A MAN
+AC: ---^-----------^
+CY: x-x-x-x-x-x-x-x-
+SN: ----x--x-x-x----
+BD: --x-------x---x-
+
+BOOKS OF MOSES - A
+CY: x-x-x-x-x-x-x-x-
+SN: ----x-------x---
+BD: x---x---x--x----
+
+BOOKS OF MOSES - B
+CY: x-x-x-x-x-x-x-x-
+SN: ----x-------x---
+BD: x---x---x-------
+
+MOTHER POPCORN - A
+CY: x---x---x---x---
+SN: ----x--x-x----x-
+BD: x-x-------x-----
+
+MOTHER POPCORN - B
+CY: x---x---x---x---
+SN: -x-xxx-x-xxx-x-x
+BD: --x---x---x---x-
+
+STRT BTS - A
+AC: ---^-------^----
+CY: -xx-xx-xx-----xx
+SN: -x--x--x---xx---
+BD: x--x--x---x-----
+
+STRT BTS - B
+AC: ---^-------^----
+CY: -xx-xx-xx-----xx
+SN: -x--x--x----x---
+BD: x--x--x---x-----
+
+I GOT THE FEELIN’ - A
+AC: --^-------^-----
+CY: x-x-x-x-x-x-x-x-
+SN: ------x--x----x-
+BD: x-x-------x-----
+
+I GOT THE FEELIN’ - B
+AC: ---^------------
+CY: x-x-x-x-x-x-x-x-
+SN: -x--xx-x-xx-xx-x
+BD: --x-----x---x-x-
+
+MORE BOUNCE TO THE OUNCE
+CH: --x-x-x-x-x-x-x-
+OH: x---------------
+HC: ----x-------x---
+SN: ----x-------x---
+BD: x-------xx------
+
+
+## AFRO-CUBAN
+
+SON CLAVE
+BD: x--xx--x-x--x--x
+RS: x--x--x---x-x---
+CY: xxxxxxxxxxxxxxxx
+
+RUMBA
+BD: x--xx--x-x--x--x
+RS: x--x---x--x-x---
+CY: xxxxxxxxxxxxxxxx
+
+BOSSA NOVA
+BD: x--xx--x-x--x--x
+RS: x--x--x---x--x--
+CY: xxxxxxxxxxxxxxxx
+
+BOUTON
+BD: x-------x-x---x-
+RS: ---x--x-----x---
+CH: x-xx-x-x-x-x-x-x

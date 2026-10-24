@@ -357,10 +357,6 @@ static void trk_note_on(track_t *t, uint32_t note, uint32_t vel)
     uint32_t any = 0, i, mode = (uint32_t)t->p[P_VOICE];
     if (trk_silent(t))
         return;                                         /* MUTE, or another track soloed */
-    if (is_drum(t)) {                                   /* the drum track: GM drums (drums.c) */
-        drum_on(note, vel);
-        return;
-    }
     if ((uint32_t)(t - trk) < NPART && note < 128u)
         note_hits[t - trk][note >> 5] |= 1u << (note & 31u);
     if (t->xf_on || t->eng_req != t->engine) {          /* engine switch under way: after the fade */
@@ -419,8 +415,6 @@ static void strum_cancel(const track_t *t, uint32_t note, int all)
 static void trk_note_off(track_t *t, uint32_t note)
 {
     uint32_t i, k = 0, mode = (uint32_t)t->p[P_VOICE];
-    if (is_drum(t))
-        return;                                         /* one-shots */
     strum_cancel(t, note, 0);
     for (i = 0; i < t->xp_n; i++)                       /* not sounding yet (engine switch): forget it */
         if (t->xp_note[i] != note) {
@@ -472,7 +466,7 @@ static void trk_note_chord(track_t *t, const uint8_t *notes, uint32_t n, uint32_
 {
     int32_t s = t->p[P_STRUM];
     uint32_t rank = 0, j, q;
-    if (!s || n < 2u || is_drum(t)) {
+    if (!s || n < 2u) {
         trk_note_on(t, notes[i], vel);
         return;
     }

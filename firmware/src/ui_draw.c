@@ -481,18 +481,16 @@ static int32_t meter_px(int32_t a)                   /* |sample| (Q15) -> px: 6 
     return clamp((v - 48) * (TS_H - 2) / 80, 0, TS_H - 2);
 }
 
-static uint32_t trk_level(uint32_t c)                /* LEVEL 0..127 (the drum track: GLO > DRUMS LEVEL) */
+static uint32_t trk_level(uint32_t c)
 {
-    return (uint32_t)(c == TRK_DRUM ? song.g[G_DRLVL] : trk[c].p[P_LEVEL]) & 127u;
+    return (uint32_t)trk[c].p[P_LEVEL] & 127u;
 }
 
 static void trk_short_name(uint32_t c, char *b)      /* the track's sound, b holds 13 */
 {
     const track_t *t = &trk[c];
     const engine_t *e = ENGINES[t->eng_req % NENGINES];
-    if (c == TRK_DRUM)
-        str_cpy(b, "DRUM", 13);
-    else if (user_of(t) < UP_SLOTS)
+    if (user_of(t) < UP_SLOTS)
         up_name(user_of(t), b);
     else if (e->npresets)
         str_cpy(b, e->presets[t->preset % e->npresets].name, 13);
@@ -515,13 +513,8 @@ static void draw_tracks(void)
         uint32_t len = t->p[P_SLEN] > 0 ? (uint32_t)t->p[P_SLEN] : 1u, row = 0xFFFFu;
         int32_t pk, m;
         char b[16];
-        if (c == TRK_DRUM) {
-            pk = drums.peak;
-            drums.peak = 0;
-        } else {
-            pk = t->peak;
-            t->peak = 0;
-        }
+        pk = t->peak;
+        t->peak = 0;
         /* head: number (white = selected), REC / ARM / MUTE */
         sig = 1u + sel + st * 2u;
         if (ui.force || sig != ts.head[c]) {
@@ -673,7 +666,7 @@ static void draw_graph(void)
     const page_t *pg = cur_page();
     const track_t *t = TSEL;
     uint16_t c = TE_COL[song.sel & 3u];               /* LIVE: the curves in the track's colour */
-    uint32_t sig, top, drum_note = !ui.home && is_drum(t) && !page_for_drum(pg);
+    uint32_t sig, top, drum_note = 0;
     if (!ui.home && pg->graph == GR_TRK) {
         draw_tracks();
         ui.graph_top = 1;                            /* the next graph draws its top rows again */
@@ -758,12 +751,10 @@ static void draw_foot(void)
     uint32_t sig;
     const page_t *pg = cur_page();
     const engine_t *e = ENGINES[TSEL->eng_req % NENGINES];
-    const char *ename = is_drum(t) ? "DRUM" : e->name;
+    const char *ename = e->name;
     int32_t x;
     pn[0] = 0;
-    if (is_drum(t))
-        str_cpy(pn, DRUM_KIT_NAMES[drum_kit()], sizeof pn);
-    else if (user_of(t) < UP_SLOTS)
+    if (user_of(t) < UP_SLOTS)
         up_name(user_of(t), pn);                       /* a user preset */
     else if (e->npresets)
         str_cpy(pn, e->presets[TSEL->preset % e->npresets].name, sizeof pn);
@@ -846,11 +837,6 @@ static void draw_columns(void)
             param_format(d, *vp, val, &unit);
             draw_column(c, d->label, val, unit, VAL(c), RATIO(d, *vp), param_icon(d, *vp));
         }
-        return;
-    }
-    if (is_drum(TSEL) && !page_for_drum(cur_page())) {   /* "DRUM TRACK" (the graph says so) */
-        for (c = 0; c < 4u; c++)
-            draw_column(c, "", "", "", C_HI, -1, ICON_AUTO);
         return;
     }
     if (cur_page()->scope == SC_TRK) {

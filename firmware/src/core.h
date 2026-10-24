@@ -8,22 +8,22 @@
 #include <stdint.h>
 #define NVOICE 8                 /* voices per part, and the budget shared by all parts */
 #define NPOLY 8
-#define NPART 3                  /* synth parts: tracks 1..3 */
-#define NTRK 4                   /* + the drum track */
-#define TRK_DRUM 3
+#define NPART 4                  /* synth parts: all four tracks */
+#define NTRK 4
 enum { V_POLY, V_MONO, V_LEGATO, V_UNISON };   /* P_VOICE */
 #define NSTEP 64
 #define HALF_FRAMES 256          /* I2S half buffer: 5.8 ms at 44.1 kHz */
 #ifndef FELUCCA_SLICE
 #define FELUCCA_SLICE 0          /* the SLICE engine (eng_slice.c): kept in the tree, not built by default */
 #endif
-#define NENGINES 6               /* DX7, LOFI, VOICE, CZ-1, ANALOG, KS (engines.c) */
+#define NENGINES 7               /* DX7, LOFI, VOICE, CZ-1, ANALOG, KS, DRUM (engines.c) */
 #define ENGI_DX7 0
 #define ENGI_LOFI 1
 #define ENGI_FORMANT 2
 /* ENGI_CZ 3 is defined in cz_patch.h */
 #define ENGI_ANALOG 4
 #define ENGI_KS 5
+#define ENGI_DRUM 6
 /* sloopDX 2.0 put three factory voices before INIT VOICE: a DX7 VOICE saved before (a project, a user preset)
  * from 16 on (INIT VOICE, the bank) moves up by three. The same for the preset index of INIT VOICE. And the
  * DX7's CUT (P_E6, unused before: saved as 0) loads open */
@@ -211,6 +211,13 @@ static inline uint32_t flags_sld_thresh(uint8_t f) { return f == SF_SLD75 ? 96u 
 /* the dynamics of a note or a drum hit (2 bits each in the steps): played without velocity
  * (OCT- / OCT+ held on the drum track, the step page) or from a MIDI velocity */
 enum { LV_NORM, LV_GHOST, LV_SOFT, LV_HARD };
+static inline uint32_t vel_lvl(uint32_t vel) {
+    return vel < 56u ? LV_GHOST : vel < 88u ? LV_SOFT : vel < 116u ? LV_NORM : LV_HARD;
+}
+static inline uint32_t lvl_vel(uint32_t lvl, uint32_t vel) {
+    static const uint8_t V[4] = {0, 42, 72, 127};
+    return lvl & 3u ? V[lvl & 3u] : vel;
+}
 typedef struct {                 /* a step of a synth part (10 bytes): up to 4 notes (POLY), time, accent, slide */
     uint8_t note[4];
     uint8_t n;                   /* notes in use, 0 = empty */
@@ -245,6 +252,74 @@ typedef struct {                 /* a step of the drum track (10 bytes) */
     uint8_t rat[4];              /* 2 bits per lane: ratchet (on=1) or OFF/prob/cond-idx (on=0) */
 } dstep_t;
 _Static_assert(sizeof(step_t) == 10 && sizeof(dstep_t) == 10, "step sizes");
+/* drum lane helpers — GM note → lane, key index ↔ lane */
+static const uint8_t LANE_OF_GM[81 - 35 + 1] = {
+    /* 35 */ 1, 0, 7, 2, 3, 8, 9, 4, 9, 6,
+    /* 45 */ 9, 5, 10, 10, 11, 10, 12, 11, 12, 13,
+    /* 55 */ 11, 15, 11, 13, 12, 14, 14, 14, 14, 14,
+    /* 65 */ 14, 14, 15, 15, 13, 13, 15, 15, 13, 13,
+    /* 75 */ 7, 7, 7, 14, 14, 15, 15};
+static inline uint32_t lane_of_note(uint32_t note) {
+    return note < 35u ? 0u : note > 81u ? 13u : LANE_OF_GM[note - 35u];
+}
+static inline uint32_t lane_of_key(uint32_t k) {
+    static const int8_t W[12] = {0, -1, 1, -1, 2, -1, 3, 4, -1, 5, -1, 6};
+    int32_t i = W[k % 12u];
+    if (i < 0) i = W[(k - 1u) % 12u];
+    return (uint32_t)((int32_t)(k / 12u) * 7 + i) & 15u;
+}
+static inline uint32_t key_of_lane(uint32_t l) {
+    static const uint8_t K[7] = {0, 2, 4, 6, 7, 9, 11};
+    return (l / 7u) * 12u + K[l % 7u];
+}
+/* dstep_t accessors */
+static inline uint32_t dstep_hit(const dstep_t *s, uint32_t l) {
+    uint32_t sh = (l & 3u) << 1;
+    uint32_t on  = (s->on[l >> 3] >> (l & 7u)) & 1u;
+    uint32_t lv  = (s->lvl[l >> 2] >> sh) & 3u;
+    uint32_t rat = (s->rat[l >> 2] >> sh) & 3u;
+    if (on) return HIT_ON + rat;
+    if (lv == 0) return rat ? HIT_P75 + rat - 1u : HIT_OFF;
+    return HIT_CODD2 + (lv - 1u) * 4u + rat;
+}
+static inline void dstep_set_hit(dstep_t *s, uint32_t l, uint32_t h) {
+    uint32_t sh = (l & 3u) << 1, on_sh = l & 7u;
+    uint32_t on, lv, rat;
+    if (h == HIT_OFF) { on = 0; lv = 0; rat = 0; }
+    else if (h <= HIT_X4) {
+        on = 1; rat = h - HIT_ON;
+        lv = (s->on[l >> 3] >> on_sh) & 1u ? (s->lvl[l >> 2] >> sh) & 3u : LV_NORM;
+    } else if (h <= HIT_P25) { on = 0; lv = 0; rat = h - HIT_P75 + 1u; }
+    else { uint32_t ci = h - HIT_CODD2; on = 0; lv = ci / 4u + 1u; rat = ci % 4u; }
+    s->on[l >> 3]  = (uint8_t)((s->on[l >> 3]  & ~(1u << on_sh)) | (on << on_sh));
+    s->lvl[l >> 2] = (uint8_t)((s->lvl[l >> 2] & ~(3u << sh)) | (lv  << sh));
+    s->rat[l >> 2] = (uint8_t)((s->rat[l >> 2] & ~(3u << sh)) | (rat << sh));
+}
+static inline void dstep_set_lvl(dstep_t *s, uint32_t l, uint32_t v) {
+    uint32_t sh = (l & 3u) << 1;
+    s->lvl[l >> 2] = (uint8_t)((s->lvl[l >> 2] & ~(3u << sh)) | ((v & 3u) << sh));
+}
+static inline int     dstep_certain(const dstep_t *s, uint32_t l) { return (s->on[l >> 3] >> (l & 7u)) & 1u; }
+static inline uint32_t dstep_lvl(const dstep_t *s, uint32_t l) { return (s->lvl[l >> 2] >> ((l & 3u) << 1)) & 3u; }
+static inline uint32_t dstep_rat(const dstep_t *s, uint32_t l) { return (s->rat[l >> 2] >> ((l & 3u) << 1)) & 3u; }
+static inline int dstep_has(const dstep_t *s, uint32_t l) {
+    if (dstep_certain(s, l)) return 1;
+    uint32_t sh = (l & 3u) << 1;
+    return ((s->lvl[l >> 2] >> sh) & 3u) || ((s->rat[l >> 2] >> sh) & 3u);
+}
+static inline uint32_t dstep_mask(const dstep_t *s) { return (uint32_t)s->on[0] | (uint32_t)s->on[1] << 8; }
+static inline uint32_t dstep_full_mask(const dstep_t *s) {
+    uint32_t m = dstep_mask(s), l;
+    for (l = 0; l < DRUM_LANES; l++) if (!(m & (1u << l)) && dstep_has(s, l)) m |= 1u << l;
+    return m;
+}
+static inline void dstep_set_prb(dstep_t *s, uint32_t l, uint32_t prb) { dstep_set_hit(s, l, HIT_P75 + prb - 1u); }
+static inline void dstep_set(dstep_t *s, uint32_t l, uint32_t lvl, uint32_t rat) {
+    dstep_set_hit(s, l, HIT_ON + rat);
+    dstep_set_lvl(s, l, lvl);
+}
+static inline void dstep_set_cond(dstep_t *s, uint32_t l, uint32_t cond_hit) { dstep_set_hit(s, l, cond_hit); }
+static inline void dstep_clr(dstep_t *s, uint32_t l) { dstep_set_hit(s, l, HIT_OFF); }
 /* SHIFL 3.0: chord follow modes (P_CFOL): how sequenced and live notes snap to the active chord */
 enum {
     CF_OFF = 0,       /* no follow */
@@ -405,8 +480,9 @@ typedef struct {
     int32_t batt_raw;            /* smoothed ADC ch3 (battery divider), 0 = not read yet */
 } song_t;
 
-static track_t trk[NTRK];        /* the instrument: three parts and the drum track */
+static track_t trk[NTRK];
 static song_t song;
+static inline int is_drum(const track_t *t) { (void)t; return 0; }
 
 /* The transport clock (seq.c runs it). One unit = one sample at 1 BPM: a beat is BEAT_U units at any
  * tempo, and every division of it (1/4 .. 1/64, the triplets) is a whole number of units. The steps
@@ -440,8 +516,6 @@ static uint32_t div_samples(uint32_t div) { return div_units(div) / (uint32_t)so
 /* length of the delay's TIME (N_DLY order) in samples at the song tempo (rounded down) */
 static uint32_t dly_samples(uint32_t d) { return dly_units(d) / (uint32_t)song.g[G_BPM]; }
 #define TSEL (&trk[song.sel])    /* the selected track */
-#define TDRUM (&trk[TRK_DRUM])
-static int is_drum(const track_t *t) { return t == TDRUM; }
 /* silent: MUTE, or another track is soloed */
 static int trk_silent(const track_t *t)
 {

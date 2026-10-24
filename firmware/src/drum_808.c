@@ -241,7 +241,7 @@ static __attribute__((noinline)) void dr_bd(dr8_t *d, const int16_t *p, int32_t 
     int32_t f0, q, g, c, tune = (p[P_E1] - 64) * 3 + d->pitch, pk = 0, round = p[P_E6] > 0;
     uint32_t i;
     f0 = dr_tuned(DR_F(49.4), tune);
-    q = dr_damp(f0, DR_TAU(dr_exp(300u, p[P_E3] - 64, 24)));           /* DECY: 47 ms .. 1.8 s, 300 ms */
+    q = dr_damp(f0, dr8_tau(d, DR_TAU(dr_exp(300u, p[P_E3] - 64, 24))));  /* DECY: 47 ms .. 1.8 s, 300 ms */
     g = (int32_t)(((int64_t)DR_BD_G * pow2_q16(-tune)) >> 16);         /* the same level at any pitch */
     c = dr_lp1(dr_exp(1000u, p[P_E2] - 64, 21));                       /* TONE: 120 Hz .. 8 kHz, 1 kHz */
     for (i = 0; i < n; i++) {

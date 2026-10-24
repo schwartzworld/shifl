@@ -18,7 +18,6 @@
 #include "gfx.c"
 #include "core.h"
 #include "engines.c"
-#include "drums.c"
 #include "params.c"
 #include "voice.c"
 #include "slicer.c"          /* per-track SLICER insert, used by fx.c */
@@ -32,6 +31,20 @@
 #ifndef FELUCCA_ID
 #define FELUCCA_ID "FM-1_981"    /* package identity (build.py: the .fwsc marker string) */
 #endif
+/* FELUCCA_USBH=1: USB MIDI host (play from a bus-powered USB keyboard).
+ * Mutually exclusive with USB device mode (CDC, UAC, OTA via USB are all off).
+ * Build with FELUCCA_USBH=1 or set the env var before build.sh. */
+#ifndef FELUCCA_USBH
+#define FELUCCA_USBH 0
+#endif
+#if FELUCCA_USBH
+#undef  FELUCCA_OTA
+#define FELUCCA_OTA 0
+#undef  FELUCCA_CDC
+#define FELUCCA_CDC 0
+#undef  FELUCCA_UAC
+#define FELUCCA_UAC 0
+#endif
 #ifndef FELUCCA_CDC
 #define FELUCCA_CDC 1            /* USB CDC-ACM serial console */
 #endif
@@ -39,9 +52,13 @@
 #define FELUCCA_UAC 1            /* USB audio input: the master output, 16-bit stereo 44.1 kHz (usb.c, after Felucca 1.0) */
 #endif
 #ifndef FELUCCA_UAC_TONE
-#define FELUCCA_UAC_TONE 0       /* bench: the USB input sends test triangles instead of the music */
+#define FELUCCA_UAC_TONE 0       /* bench: the USB input sends test triangles instead of the message */
 #endif
+#if FELUCCA_USBH
+#include "usbh_midi.c"           /* USB MIDI host: keyboard in, powered over USB */
+#else
 #include "usb.c"
+#endif
 #ifndef FELUCCA_UART
 #define FELUCCA_UART 1           /* TRS MIDI IN on UART1 (3.5 mm jack) */
 #endif

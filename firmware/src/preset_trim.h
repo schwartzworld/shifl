@@ -9,7 +9,7 @@ static const int8_t PRESET_TRIM[PT_ENGINES][PT_MAX] = {
     {/* 3.0 GAME LEAD */ -4, /* 3.1 GB BASS */ 15, /* 3.2 8BIT ARP */ -5},
     {/* 4.0 GRAND PNO */ 17, /* 4.1 UP BASS */ 2, /* 4.2 VIBES */ -4, /* 4.3 HORN STAB */ -8, /* 4.4 STRING STB */ 23, /* 4.5 LOFI FLUTE */ -1, /* 4.6 SCRATCH */ -3, /* 4.7 GM KIT */ 0, /* 4.8 DUSTY PNO */ 19, /* 4.9 LOFI KEYS */ 11, /* 4.10 DEEP BASS */ 23},
     {/* 5.0 CHOIR AAH */ -26, /* 5.1 SOUL OOH */ -24, /* 5.2 TALKBOX */ -7, /* 5.3 WOW BASS */ 6},
-    {/* 6.0 FAT BASS */ 23, /* 6.1 MIN STAB */ 23, /* 6.2 MIN7 STAB */ 23, /* 6.3 RAVE STAB */ 23, /* 6.4 DUB CHORD */ 23, /* 6.5 SAW PAD */ -11, /* 6.6 SYNC LEAD */ -3, /* 6.7 HOOVER */ 5},
+    {/* 6.0 808 KIT */ 0, /* 6.1 909 KIT */ 0},
     {/* 7.0 SOUL ORGAN */ -14, /* 7.1 GOSPEL */ -10, /* 7.2 JAZZ ORGAN */ -8, /* 7.3 DIRTY B3 */ -10, /* 7.4 HOUSE ORGN */ -7},
     {/* 8.0 LOFI CLOUD */ 4, /* 8.1 VIBE HAZE */ 2, /* 8.2 FLUTE DUST */ -1},
 };

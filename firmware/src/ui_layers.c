@@ -83,8 +83,6 @@ static void pattern_length(track_t *t, int32_t d)       /* x2 (the pattern again
 static void pattern_transpose(track_t *t, int32_t d)    /* every note a semitone up / down (synth parts) */
 {
     uint32_t i, j;
-    if (is_drum(t))
-        return;
     layer_undo_mark(t);
     fm1_irq_off();
     for (i = 0; i < NSTEP; i++)
@@ -100,7 +98,7 @@ static void pattern_transpose(track_t *t, int32_t d)    /* every note a semitone
 static uint16_t step_pend_off;                         /* the step keys that clear their step when let go */
 static int step_is_on(const track_t *t, uint32_t idx)
 {
-    return is_drum(t) ? dstep_has(&t->dstep[idx], pen_lane) : step_on(&t->step[idx]);
+    return step_on(&t->step[idx]);
 }
 static void step_down(uint32_t w)
 {
@@ -118,9 +116,7 @@ static void step_down(uint32_t w)
     }
     layer_undo_mark(t);
     fm1_irq_off();
-    if (is_drum(t)) {
-        dstep_set(&t->dstep[idx], pen_lane, LV_NORM, 0);
-    } else {
+    {
         step_t *s = &t->step[idx];
         uint32_t i, n = pen_n ? pen_n : 1u;
         memset(s, 0, sizeof *s);
@@ -145,25 +141,14 @@ static void step_up(uint32_t w)
         return;
     layer_undo_mark(t);
     fm1_irq_off();
-    if (is_drum(t))
-        dstep_clr(&t->dstep[idx], pen_lane);
-    else
-        step_clear(&t->step[idx]);
-    if (!is_drum(t) || !dstep_mask(&t->dstep[idx])) {   /* an empty step keeps no lock, no nudge, no condition */
+    step_clear(&t->step[idx]);
+    {   /* an empty step keeps no lock, no nudge, no condition */
         lock_del(t, idx, P_COUNT);
         t->micro[idx] = 0;
         step_fill_set(t, idx, FC_NORM);
     }
     fm1_irq_on();
     sync_reload = 1;
-}
-/* the drum sound the SEQ layer sets (KNOB 1): heard when it changes */
-static void pen_lane_move(int32_t s)
-{
-    uint8_t l = (uint8_t)clamp(pen_lane + s, 0, DRUM_LANES - 1);
-    if (l != pen_lane)
-        audition_lane(l);
-    pen_lane = l;
 }
 /* KNOB 1..4 with step keys held: sound/note, level, ratchet, nudge (1/64 of a step, - early + late).
  * knob 4 = PRESETS: a lock of ui.lock_par on them, made at the track's value, then moved */
@@ -191,17 +176,7 @@ static void steps_held_edit(uint32_t knob, int32_t s)
                 ui_message(p_lockable(id) ? "NO LOCK LEFT" : "NOT LOCKABLE");
             continue;
         }
-        if (is_drum(t)) {
-            dstep_t *d = &t->dstep[idx];
-            uint32_t lv = dstep_lvl(d, pen_lane), rt = dstep_rat(d, pen_lane);
-            if (!dstep_has(d, pen_lane))
-                continue;
-            if (knob == 1u)
-                lv = LV_UP[clamp((int32_t)lvl_rank(lv) + s, 0, 3)];
-            else
-                rt = (uint32_t)clamp((int32_t)rt + s, 0, 3);
-            dstep_set(d, pen_lane, lv, rt);
-        } else {
+        {
             step_t *st = &t->step[idx];
             if (!step_on(st))
                 continue;
@@ -231,8 +206,7 @@ static void lock_par_step(int32_t s)
     uint32_t id = ui.lock_par % P_COUNT, guard = P_COUNT;
     do {
         id = (id + (uint32_t)P_COUNT + (uint32_t)(s > 0 ? 1 : -1)) % P_COUNT;
-    } while (guard-- && (!p_lockable(id) || lock_desc(t, id)->max <= lock_desc(t, id)->min ||
-                         (is_drum(t) && id > P_E0 && id <= P_E7)));
+    } while (guard-- && (!p_lockable(id) || lock_desc(t, id)->max <= lock_desc(t, id)->min));
     ui.lock_par = (uint8_t)id;
 }
 /* OCT- with step keys held: their nudge, locks and fill condition go */
@@ -361,29 +335,39 @@ static void layer_key(uint32_t layer, uint32_t k, uint32_t down)
         ui_say("KEY ", N_NOTE[root]);
         return;
     }
-    case LY_ROLL: {                                     /* live mode: ARP held selects scenes; otherwise: MUT / EVL */
+    case LY_ROLL: {                                     /* live mode: ARP held selects scenes; otherwise: MUT / EVL / PAT */
         if (!live_mode) {
             if (w >= 0 && w < 4) {
                 /* Row 1: MUT type 0..3 */
                 static const char *const MUT_MEL[4] = {"LEAD","BASS","KEYS","PAD"};
-                static const char *const MUT_DRM[4] = {"KICK","SN","CYM","ACC"};
                 seq_mutate_type(TSEL, (uint8_t)w);
-                ui_say("MUT", is_drum(TSEL) ? MUT_DRM[w] : MUT_MEL[w]);
-            } else if (w >= 4 && w < 16) {
-                /* Rows 2-4: EVL type+rate toggle; rate 1=4bar 2=8bar 3=16bar */
+                ui_say("MUT", MUT_MEL[w]);
+            } else if (w >= 4 && w < 12) {
+                /* Rows 2-3: EVL at 4bar and 8bar */
                 static const char *const EVL_MEL[4] = {"LEAD","BASS","KEYS","PAD"};
-                static const char *const EVL_DRM[4] = {"KICK","SN","CYM","ACC"};
                 static const char *const RATE_STR[4] = {"OFF","4","8","16"};
                 uint32_t slot   = (uint32_t)w - 4u;
                 uint32_t st     = slot % 4u;
-                uint32_t rate   = slot / 4u + 1u;   /* 1=4bar 2=8bar 3=16bar */
+                uint32_t rate   = slot / 4u + 1u;   /* 1=4bar 2=8bar */
                 int16_t  packed = TSEL->p[P_EVOLVE];
                 uint32_t cur    = ((uint32_t)(uint16_t)packed >> (st * 2u)) & 3u;
                 uint32_t newrate = (cur == rate) ? 0u : rate;
                 packed = (int16_t)(((uint16_t)packed & ~(uint16_t)(3u << (st * 2u)))
                                    | (uint16_t)(newrate << (st * 2u)));
                 TSEL->p[P_EVOLVE] = packed;
-                ui_say(is_drum(TSEL) ? EVL_DRM[st] : EVL_MEL[st], RATE_STR[newrate]);
+                ui_say(EVL_MEL[st], RATE_STR[newrate]);
+            } else if (w == 12) {
+                /* Bottom row: drum pattern browser — PREV */
+                dpat_cursor = (int32_t)(((uint32_t)dpat_cursor + DPAT_COUNT - 1u) % DPAT_COUNT);
+                ui_say("PAT", DPATS[dpat_cursor].name);
+            } else if (w == 13) {
+                /* Bottom row: NEXT */
+                dpat_cursor = (int32_t)(((uint32_t)dpat_cursor + 1u) % DPAT_COUNT);
+                ui_say("PAT", DPATS[dpat_cursor].name);
+            } else if (w == 14) {
+                /* Bottom row: LOAD into selected track */
+                drum_pat_load(TSEL);
+                ui_say("LOADED", DPATS[dpat_cursor].name);
             }
             return;
         }
@@ -532,22 +516,20 @@ static void layer_knobs(uint32_t layer)
         }
         case LY_SCALE:
             if (k == 0u) {
-                if (!is_drum(t))
-                    t->p[P_CHORD] = (int16_t)clamp(t->p[P_CHORD] + s, 0, 5);
+                t->p[P_CHORD] = (int16_t)clamp(t->p[P_CHORD] + s, 0, 5);
             } else if (k == 1u) {
                 uint32_t i;
                 int16_t v = (int16_t)clamp(trk[0].p[P_SCALE] + s, 0, (int32_t)SCALE_TOTAL - 1);
                 for (i = 0; i < NPART; i++)
                     trk[i].p[P_SCALE] = v;
             } else if (k == 2u) {
-                if (!is_drum(t))
-                    t->p[P_QUANT] = (int16_t)clamp(t->p[P_QUANT] + s, 0, 2);
-            } else if (!is_drum(t)) {
+                t->p[P_QUANT] = (int16_t)clamp(t->p[P_QUANT] + s, 0, 2);
+            } else {
                 t->p[P_TRANS] = (int16_t)clamp(t->p[P_TRANS] + s, -24, 24);
             }
             break;
         case LY_MIX: {
-            int16_t *lv = k == TRK_DRUM ? &song.g[G_DRLVL] : &trk[k].p[P_LEVEL];
+            int16_t *lv = &trk[k].p[P_LEVEL];
             *lv = (int16_t)clamp(*lv + accel(EN_K1 + k, s, 127), 0, 127);
             break;
         }
@@ -699,16 +681,11 @@ static void layer_screen_draw(void)
     }
     case LY_ERASE: {                                     /* the keys' sounds: lit = held */
         uint32_t held = fm1_in.notes;
-        int mute = is_drum(t) && er_mute;
         col = TE_RED;
         str_cpy(sub, song.playing ? "as it plays" : "every step", sizeof sub);
         for (i = 0; i < 16u; i++) {
             uint32_t k = key_of_white(i), down = (held >> k) & 1u, present = 0, j;
-            if (is_drum(t)) {
-                str_cpy(tl[i].lab, LANE_SHORT[i], 8);
-                for (j = 0; j < trk_len(t); j++)
-                    present |= dstep_has(&t->dstep[j], i);
-            } else {
+            {
                 uint32_t n = kb_map(t, k);
                 if (n == KB_SILENT) {
                     str_cpy(tl[i].lab, "-", 8);
@@ -725,66 +702,56 @@ static void layer_screen_draw(void)
             tl[i].bg = down ? TE_RED : TE_G1;
             tl[i].fg = down ? C_BLACK : present ? C_WHITE : TE_G3;
             tl[i].top = present && !down ? TE_RED : 0;
-            if (mute) {
-                uint32_t off = (drum_mute >> i) & 1u;
-                tl[i].bg = off ? TE_RED : TE_G1;
-                tl[i].fg = off ? C_WHITE : present ? C_WHITE : TE_G3;
-                tl[i].top = 0;
-                if (off)
-                    str_cpy(tl[i].lab, "off", 8);
-            }
         }
-        if (is_drum(t) && !mute && !undo.valid)
-            str_cpy(sub, "black key: mute", sizeof sub);
-        lab[0] = "shift", lab[1] = "length", lab[2] = is_drum(t) ? "" : "transp";
+        lab[0] = "shift", lab[1] = "length", lab[2] = "transp";
         str_cpy(v[0], "<  >", 8);
         fmt_int(v[1], t->p[P_SLEN]);
-        str_cpy(v[2], is_drum(t) ? "" : "-  +", 8);
-        if (!mute)
-            str_cpy(sub, undo.valid ? (undo.undone ? "oct+ redo" : "oct- undo") : sub, sizeof sub);
+        str_cpy(v[2], "-  +", 8);
+        str_cpy(sub, undo.valid ? (undo.undone ? "oct+ redo" : "oct- undo") : sub, sizeof sub);
         break;
     }
-    case LY_ROLL: {                                     /* live mode: 16 scene tiles; otherwise: MUT / EVL */
+    case LY_ROLL: {                                     /* live mode: 16 scene tiles; otherwise: MUT / EVL / PAT */
         if (!live_mode) {
-            /* row 0: MUT; rows 1-3: EVL at 4, 8, 16 bars — 4 subtypes per row */
+            /* row 0: MUT; rows 1-2: EVL at 4, 8 bars; row 3: drum pattern browser */
             static const char *const MUT_MEL[4]     = {"MUT LD","MUT BS","MUT KY","MUT PD"};
-            static const char *const MUT_DRM[4]     = {"MUT KK","MUT SN","MUT CY","MUT AC"};
-            static const char *const EVL_MEL[3][4]  = {
+            static const char *const EVL_MEL[2][4]  = {
                 {"EV LD 4","EV BS 4","EV KY 4","EV PD 4"},
                 {"EV LD 8","EV BS 8","EV KY 8","EV PD 8"},
-                {"EV LD16","EV BS16","EV KY16","EV PD16"},
             };
-            static const char *const EVL_DRM[3][4]  = {
-                {"EV KK 4","EV SN 4","EV CY 4","EV AC 4"},
-                {"EV KK 8","EV SN 8","EV CY 8","EV AC 8"},
-                {"EV KK16","EV SN16","EV CY16","EV AC16"},
-            };
-            const char *const *mut_labs  = is_drum(TSEL) ? MUT_DRM : MUT_MEL;
-            const char *const (*evl_labs)[4] = is_drum(TSEL) ? EVL_DRM : EVL_MEL;
+            const char *const *mut_labs  = MUT_MEL;
+            const char *const (*evl_labs)[4] = EVL_MEL;
             uint32_t packed = (uint32_t)(uint16_t)TSEL->p[P_EVOLVE];
             for (i = 0; i < 4u; i++) {
                 str_cpy(tl[i].lab, mut_labs[i], 8);
                 tl[i].bg = TE_MID[sel & 3u]; tl[i].fg = C_BLACK;
             }
-            for (i = 0; i < 12u; i++) {
+            for (i = 0; i < 8u; i++) {
                 uint32_t st   = i % 4u;
-                uint32_t row  = i / 4u;         /* 0=4bar 1=8bar 2=16bar */
+                uint32_t row  = i / 4u;         /* 0=4bar 1=8bar */
                 uint32_t rate = row + 1u;
                 uint32_t cur  = (packed >> (st * 2u)) & 3u;
                 str_cpy(tl[4 + i].lab, evl_labs[row][st], 8);
                 tl[4 + i].bg = (cur == rate) ? TE_MID[sel & 3u] : TE_G2;
                 tl[4 + i].fg = C_BLACK;
             }
+            /* Row 3 (tiles 12-15): drum pattern browser */
+            str_cpy(tl[12].lab, "< PRV", 8);
+            tl[12].bg = TE_G2; tl[12].fg = C_BLACK;
+            str_cpy(tl[13].lab, "NXT >", 8);
+            tl[13].bg = TE_G2; tl[13].fg = C_BLACK;
+            str_cpy(tl[14].lab, "LOAD", 8);
+            tl[14].bg = TE_MID[sel & 3u]; tl[14].fg = C_BLACK;
+            str_cpy(tl[15].lab, DPATS[dpat_cursor].name, 8);
+            tl[15].bg = TE_G1; tl[15].fg = C_WHITE;
             /* Dials show per-subtype mutation strength (KNOB 1-4) */
             static const char *const KLAB_MEL[4] = {"LD", "BS", "KY", "PD"};
-            static const char *const KLAB_DRM[4] = {"KK", "SN", "CY", "AC"};
             uint32_t ti = (uint32_t)(TSEL - trk);
             for (i = 0; i < 4u; i++) {
-                lab[i]    = is_drum(TSEL) ? KLAB_DRM[i] : KLAB_MEL[i];
+                lab[i]    = KLAB_MEL[i];
                 fmt_int(v[i], (int32_t)mut_str[ti][i] * 100 / 127);
                 ratio[i]  = (int32_t)mut_str[ti][i] * 1000 / 127;
             }
-            str_cpy(sub, "K=str 1-4:mut 5-16:evl", sizeof sub);
+            str_cpy(sub, "K=str 1-4:mut 5-12:evl 13-15:pat", sizeof sub);
             break;
         }
         col = RGB(0, 200, 240);
@@ -865,7 +832,7 @@ static void layer_screen_draw(void)
         te_lower(sub + str_len(sub), N_SCALE[clamp(trk[0].p[P_SCALE], 0, (int32_t)SCALE_TOTAL - 1)], 8);
         for (i = 0; i < 16u; i++) {
             uint32_t k = key_of_white(i), pc = (53u + k) % 12u, in = (mask >> ((pc + 12u - root) % 12u)) & 1u;
-            if (!is_drum(t) && t->p[P_CHORD]) {       /* chord mode: the chord this key plays (the i chord lit) */
+            if (t->p[P_CHORD]) {       /* chord mode: the chord this key plays (the i chord lit) */
                 uint8_t c[4];
                 uint32_t n = kb_map(t, k), m;
                 if (n != KB_SILENT && (m = chord_notes(t, n, c)) != 0u) {
@@ -889,8 +856,6 @@ static void layer_screen_draw(void)
         te_lower(v[1], N_SCALE[clamp(trk[0].p[P_SCALE], 0, (int32_t)SCALE_TOTAL - 1)], 8);
         te_lower(v[2], N_QUANT[clamp(t->p[P_QUANT], 0, 2)], 8);
         fmt_int(v[3], t->p[P_TRANS]);
-        if (is_drum(t))
-            v[0][0] = v[2][0] = v[3][0] = 0;
         ratio[0] = t->p[P_CHORD] * 200;
         ratio[1] = trk[0].p[P_SCALE] * 1000 / ((int32_t)SCALE_TOTAL - 1);
         ratio[2] = t->p[P_QUANT] * 500;

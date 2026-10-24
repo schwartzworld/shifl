@@ -55,12 +55,6 @@ static int play_led(void)
 static uint32_t keys_sounding(const track_t *t)
 {
     uint32_t i, m = 0;
-    if (is_drum(t)) {
-        for (i = 0; i < DRUM_LANES; i++)
-            if (pad_lit[i])
-                m |= 1u << key_of_white(i);
-        return m;
-    }
     for (i = 0; i < NVOICE; i++) {
         const voice_t *v = &t->v[i];
         if (v->active && v->gate && v->stage <= 2) {
@@ -88,17 +82,10 @@ static uint32_t scale_keys(uint32_t root_only)   /* SCL: the keys in the scale (
     return m;
 }
 
-static uint32_t erase_lanes(const track_t *t)   /* EDIT erase, drum track: the sounds the pattern holds */
+static uint32_t erase_lanes(const track_t *t)
 {
-    uint32_t i, m = 0;
-    if (is_drum(t))
-        for (i = 0; i < trk_len(t); i++) {
-            uint32_t l, d = dstep_full_mask(&t->dstep[i]);
-            for (l = 0; d; l++, d >>= 1)
-                if (d & 1u)
-                    m |= 1u << key_of_white(l);
-        }
-    return m;
+    (void)t;
+    return 0u;
 }
 
 static uint32_t keys_lit(void)
@@ -121,7 +108,7 @@ static uint32_t keys_lit(void)
             uint32_t idx = ui.step_page * 16u + i, on;
             if (idx >= len)
                 continue;
-            on = is_drum(t) ? dstep_has(&t->dstep[idx], pen_lane) : step_on(&t->step[idx]);
+            on = step_on(&t->step[idx]);
             if (song.playing && idx == t->seq_idx)
                 on = !on || blink;
             if (on)
@@ -158,23 +145,8 @@ static uint32_t keys_lit(void)
             base |= 1u << key_of_white((uint32_t)(uint8_t)live_mode_scene);
         return base;
     }
-    if (kb_grid) {                                 /* the DRUMS grid page: the sound's steps of this page */
-        uint32_t len = trk_len(TDRUM), b0 = drum_cursor / 16u * 16u;
-        for (i = 0; i < 16u; i++) {
-            uint32_t idx = b0 + i, on;
-            if (idx >= len)
-                continue;
-            on = drum_lane < DRUM_LANES ? dstep_has(&TDRUM->dstep[idx], drum_lane)
-                                        : (fseq_at_step(&dext, idx) != 0);
-            if (song.playing && idx == TDRUM->seq_idx)
-                on = !on || blink;
-            if (on)
-                m |= 1u << key_of_white(i);
-        }
-        return m | fm1_in.notes;
-    }
     m = fm1_in.notes;
-    if (is_drum(t) || lights_notes)                /* the drum track: each hit lights its key; NOTES: the synths too */
+    if (lights_notes)
         m |= keys_sounding(t);
     return m;
 }
@@ -200,11 +172,9 @@ static uint32_t keys_notes_dim(void)
     }
 }
 
-/* the keys' landmarks, dim: the first key of each row of the 4 x 4 grid on screen (white keys
- * 1, 5, 9, 13) while a layer is held, and on the drum track (its 16 sounds, 4 x 4 as on KIT) */
 static uint32_t keys_guide(void)
 {
-    if (ui.layer == LY_PLAY && !is_drum(TSEL) && !live_select)
+    if (ui.layer == LY_PLAY && !live_select)
         return 0u;
     return 1u << key_of_white(0) | 1u << key_of_white(4) | 1u << key_of_white(8) | 1u << key_of_white(12);
 }
@@ -241,13 +211,8 @@ static void ui_leds(void)
                                      (live_mode && live_select && ((fm1_ms / 300u) & 1u)));   /* live select: blinks */
     if (live_mode)
         led_put(nl, panel.btn[LAYER_BTN[LY_ROLL]], 1);  /* ARP lit while live mode active */
-    if (is_drum(TSEL)) {                           /* the drum track: OCT- / OCT+ lit while ghost / hard */
-        led_put(nl, panel.btn[B_OCTDN], (fm1_in.buttons & dyn_bit[0]) != 0u);
-        led_put(nl, panel.btn[B_OCTUP], (fm1_in.buttons & dyn_bit[1]) != 0u);
-    } else {
-        led_put(nl, panel.btn[B_OCTDN], song.octave < 0);
-        led_put(nl, panel.btn[B_OCTUP], song.octave > 0);
-    }
+    led_put(nl, panel.btn[B_OCTDN], song.octave < 0);
+    led_put(nl, panel.btn[B_OCTUP], song.octave > 0);
     keys = keys_lit();
     guide = (keys_guide() | keys_notes_dim()) & ~keys;
     back = lights_keys_mask() & ~keys & ~guide;
@@ -290,7 +255,7 @@ static void tracks_edit(uint32_t slot, int32_t steps)
 {
     int16_t *vp;
     const param_desc_t *d = home_param(slot, &vp);
-    if (slot == 0 && !is_drum(TSEL) && TSEL->p[P_MUTE]) {
+    if (slot == 0 && TSEL->p[P_MUTE]) {
         TSEL->p[P_MUTE] = 0;
         return;
     }
@@ -301,8 +266,6 @@ static void step_edit(uint32_t slot, int32_t steps)
 {
     step_t *st = &TSEL->step[ui.cursor];
     uint32_t i;
-    if (is_drum(TSEL))
-        return;                                           /* (the drum track: its grid) */
     switch (slot) {
     case 0:                                               /* STEP: the cursor */
         cursor_set(ui.cursor + steps);
@@ -353,7 +316,6 @@ static void project_new(void)
         }
         fm1_irq_on();
     }
-    TDRUM->p[P_E0] = DRUM_DEFAULT_KIT;
     for (i = 0; i < G_COUNT; i++)
         if (i != G_SLOT && i != G_DRCH && i != G_SYNC && i != G_MIDI && i != G_ROUTE)
             song.g[i] = GP[i].def;
@@ -375,8 +337,6 @@ static void edit_param(uint32_t slot, int32_t steps)
     const param_desc_t *d;
     uint32_t id = pg->id[slot];
     int32_t v;
-    if (is_drum(TSEL) && !page_for_drum(pg))
-        return;                                           /* "DRUM TRACK": nothing to edit here */
     if (pg->scope == SC_STEP) {
         step_edit(slot, steps);
         return;
@@ -386,11 +346,11 @@ static void edit_param(uint32_t slot, int32_t steps)
         return;
     }
     if (pg->graph == GR_BROWSE) {                         /* KNOB 1: one preset, KNOB 2: the next / previous engine */
-        if (slot == 0u && !is_drum(TSEL)) {
+        if (slot == 0u) {
             uint32_t total, cur = preset_pos(&total);
             if (total)
                 preset_go((uint32_t)(((int32_t)cur + steps % (int32_t)total + (int32_t)total) % (int32_t)total));
-        } else if (slot == 1u && !is_drum(TSEL)) {
+        } else if (slot == 1u) {
             select_engine((TSEL->eng_req + (steps > 0 ? 1u : NENGINES - 1u)) % NENGINES);
         }
         return;
@@ -488,7 +448,7 @@ static void seq_entry(uint32_t pressed)
     track_t *t = TSEL;
     step_t *st = &t->step[ui.cursor];
     uint32_t k;
-    if (is_drum(t) || song.rec || rec_wait || ft_on)
+    if (song.rec || rec_wait || ft_on)
         return;
     for (k = 0; k < 27u; k++) {
         uint32_t note;
@@ -545,16 +505,7 @@ static void layer_tap(uint32_t layer)
         break;
     case LY_ERASE:
     case LY_STEP:
-        if (on_drum_page()) {                             /* DRUMS: GRID / KIT / FM */
-            drum_page = (uint8_t)((drum_page + 1u) % 3u);
-            ui.force = 1;
-            break;
-        }
-        if (!ui.home && cur_page()->scope == SC_TRK && is_drum(TSEL)) {
-            studio_open(SC_DRUM);
-            break;
-        }
-        if (layer == LY_ERASE && song.seq_mode && cur_page()->scope == SC_STEP && !is_drum(TSEL)) {
+        if (layer == LY_ERASE && song.seq_mode && cur_page()->scope == SC_STEP) {
             undo_mark(TSEL, (undo_sess += 4u) | 3u);      /* STEP page: EDIT clears the step */
             step_clear(&TSEL->step[ui.cursor]);
             cursor_set(ui.cursor + 1);
@@ -590,8 +541,6 @@ static void layer_tap(uint32_t layer)
         if (on_song_page())
             arrangement_save();
         else if (!ui.home && cur_page()->scope == SC_TRK)
-            studio_open(SC_SONG);
-        else if (on_drum_page())
             studio_open(SC_SONG);
         else
             open_family(FAM_SAVE);
@@ -989,8 +938,6 @@ static void ui_input(void)
         case B_OCTDN:
         case B_OCTUP: {
             uint32_t both = (1u << panel.btn[B_OCTDN]) | (1u << panel.btn[B_OCTUP]);
-            if (is_drum(TSEL))
-                break;                                  /* the drum track: ghost / hard while held (seq.c) */
             if ((fm1_in.buttons & both) == both)
                 song.octave = 0;
             else
@@ -1015,9 +962,7 @@ static void ui_input(void)
          * page and TRACKS only (the drum track: its kits); elsewhere a stray turn would throw away the sound
          * being edited. Every detent counts */
         uint32_t total, cur = preset_pos(&total);
-        if (is_drum(TSEL))
-            TDRUM->p[P_E0] = (int16_t)clamp(TDRUM->p[P_E0] + s, 0, DRUM_KITS - 1);
-        else if (total)
+        if (total)
             preset_go((uint32_t)(((int32_t)cur + s % (int32_t)total + (int32_t)total) % (int32_t)total));
     }
     if ((s = panel_enc(EN_ALGO)) != 0 && !ft_on)     /* ALGORITHM: the selected track, on every page (not in a take) */
@@ -1041,7 +986,7 @@ static void ui_input(void)
             int16_t *vp;
             const param_desc_t *d = home_param(k, &vp);
             *vp = (int16_t)clamp(*vp + accel(EN_K1 + k, s, d->max - d->min), d->min, d->max);
-            if (!is_drum(TSEL) && p_lockable(ENGINES[TSEL->eng_req % NENGINES]->knob[k & 3u]))
+            if (p_lockable(ENGINES[TSEL->eng_req % NENGINES]->knob[k & 3u]))
                 ui.lock_par = ENGINES[TSEL->eng_req % NENGINES]->knob[k & 3u];
         } else {
             edit_param(k, s);

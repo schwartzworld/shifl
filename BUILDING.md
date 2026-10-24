@@ -61,6 +61,28 @@ Build options (environment, `0` or `1`; defaults in `firmware/src/felucca.c`):
 | `FELUCCA_CDC` | 1 | USB serial console |
 | `FELUCCA_UAC` | 1 | USB audio input: the master output, 44.1 kHz stereo (after Felucca 1.0) |
 | `FELUCCA_UART` | 1 | TRS MIDI IN (the 3.5 mm jack) |
+| `FELUCCA_USBH` | 0 | USB MIDI host: play from a bus-powered USB keyboard (see below) |
+
+### USB MIDI host build (`FELUCCA_USBH=1`)
+
+```sh
+FELUCCA_USBH=1 bash build.sh
+```
+
+The FM-1 becomes a USB host: it powers the keyboard over VBUS and feeds its notes
+into the same MIDI queue as the TRS jack. Because the hardware has one USB port,
+`FELUCCA_USBH=1` forces `FELUCCA_OTA`, `FELUCCA_CDC`, and `FELUCCA_UAC` all to
+`0` — computer connectivity (serial console, audio capture, in-app SysEx OTA) is
+not available in this build. TRS MIDI IN still works normally.
+
+**Updating firmware from a USBH build** — the UBOOT update loader lives at a
+fixed address in flash and is independent of the main firmware. To enter it while
+the FM-1 is running:
+
+1. Hold **OCT−** and **OCT+** together for 5 seconds (works during normal
+   operation; does **not** work while a pattern/song is playing).
+2. The screen shows **UBOOT** and the device re-enumerates as a USB device.
+3. Flash normally via the web installer or `tools/fm1_install.py`.
 
 ## Samples
 

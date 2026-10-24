@@ -130,51 +130,10 @@ static uint32_t ed_step_sig(const track_t *t, uint32_t i)   /* all 10 bytes (a d
             h = (h ^ (uint32_t)(t->lock[k].param | (uint16_t)t->lock[k].val << 8)) * 16777619u;
     return h;
 }
-/* the drum track's step as a v1..v4 step (old editors): its first 4 lanes as GM notes, ACC when one is hard */
-static void ed_dstep_old(const dstep_t *d, uint32_t *n, uint8_t *notes, uint32_t *time, uint32_t *flags, uint32_t *vel)
-{
-    uint32_t l, k = 0, hard = 0;
-    for (l = 0; l < DRUM_LANES && k < 4u; l++)
-        if (dstep_has(d, l)) {
-            notes[k++] = LANE_NOTE[l];
-            hard |= dstep_lvl(d, l) == LV_HARD;
-        }
-    *n = k;
-    while (k < 4u)
-        notes[k++] = 0;
-    *time = *n ? ST_NOTE : ST_REST;
-    *flags = hard ? SF_ACCENT : 0u;
-    *vel = *n ? 100u : 0u;
-}
-/* a v1..v4 step written into the drum track: its notes onto their lanes */
-static void ed_dstep_from_old(dstep_t *d, const uint8_t *a)
-{
-    uint32_t i, n = a[0] > 4u ? 4u : a[0];
-    memset(d, 0, sizeof *d);
-    if (a[5] != ST_NOTE)
-        return;
-    for (i = 0; i < n; i++)
-        dstep_set(d, lane_of_note(a[1 + i] & 0x7Fu), (a[6] & SF_ACCENT) ? LV_HARD : LV_NORM, 0);
-}
 /* a step's bytes, as STEP_GET sends them (v5: + level, ratchet) */
 static void ed_step_out(const track_t *t, uint32_t i)
 {
     uint32_t k;
-    if (is_drum(t)) {
-        uint32_t n, time, flags, vel;
-        uint8_t nt[4];
-        ed_dstep_old(&t->dstep[i], &n, nt, &time, &flags, &vel);
-        ed_b(n);
-        for (k = 0; k < 4u; k++)
-            ed_b(nt[k]);
-        ed_b(time);
-        ed_b(flags);
-        ed_b(vel);
-        ed_b(0);                                         /* v5: lvl, hi, rat (DRUM_STEP has the lanes' own) */
-        ed_b(0);
-        ed_b(0);
-        return;
-    }
     {
         const step_t *st = &t->step[i];
         ed_b(st->n);
@@ -192,10 +151,6 @@ static void ed_step_out(const track_t *t, uint32_t i)
 static void ed_step_in(track_t *t, uint32_t i, const uint8_t *a, uint32_t na)
 {
     uint32_t k;
-    if (is_drum(t)) {
-        ed_dstep_from_old(&t->dstep[i], a);
-        return;
-    }
     {
         step_t *st = &t->step[i];
         st->n = (uint8_t)(a[0] > 4u ? 4u : a[0]);
@@ -313,7 +268,6 @@ static void ed_sync(void)                                /* main loop */
  * (t->engine follows in the audio ISR, after a short fade) */
 static const param_desc_t *ed_tdesc(const track_t *t, uint32_t id)   /* the static ones: an engine's */
 {                                                                     /* desc hook is the device display only */
-    if(is_drum(t) && id==P_E0) return &DRUM_KIT_DESC;
     if (id >= P_E0 && id <= P_E7)
         return &ENGINES[t->eng_req % NENGINES]->edit[id - P_E0];
     return &TP[id];
@@ -759,7 +713,7 @@ static void ed_handle(const uint8_t *f, uint32_t n)   /* f: the bytes between F0
         for (i = 0; i < NTRK; i++) {
             ed_b(ed_eng(&trk[i]));
             ed_b(trk[i].preset);
-            ed_v(i == TRK_DRUM ? song.g[G_DRLVL] : trk[i].p[P_LEVEL]);
+            ed_v(trk[i].p[P_LEVEL]);
             ed_b(trk[i].p[P_MUTE] != 0);
             ed_b((song.rec >> i) & 1u);
         }
@@ -771,16 +725,12 @@ static void ed_handle(const uint8_t *f, uint32_t n)   /* f: the bytes between F0
         if (na < 1u || a[0] >= NTRK)
             return;
         t = &trk[a[0]];
-        lv = a[0] == TRK_DRUM ? &song.g[G_DRLVL] : &t->p[P_LEVEL];
+        lv = &t->p[P_LEVEL];
         if (na >= 4u) {
             *lv = (int16_t)clamp(ed_rv(a + 1), 0, 127);
             t->p[P_MUTE] = (int16_t)(a[3] ? 1 : 0);
-            if (a[0] == TRK_DRUM)                          /* the editor's own change: no push */
-                ed_w.v[P_COUNT + G_DRLVL] = *lv;
-            else
-                ed_known(a[0], P_LEVEL);
-            if (a[0] != TRK_DRUM)
-                ed_known(a[0], P_MUTE);
+            ed_known(a[0], P_LEVEL);
+            ed_known(a[0], P_MUTE);
             ui.force = 1;
         }
         ed_b(a[0]);
@@ -812,40 +762,8 @@ static void ed_handle(const uint8_t *f, uint32_t n)   /* f: the bytes between F0
         ed_b(a[1]);
         ed_step_out(&trk[a[0]], a[1]);
         break;
-    case ED_DRUM_STEP: {                                   /* index [, on 16 bits, lvl 32 bits, rat 32 bits as 7-bit groups]
-                                                            * -> index, on (3), lvl (5), rat (5): the drum track's 16 lanes */
-        dstep_t *d;
-        uint32_t on, lv, rt;
-        if (na < 1u || a[0] >= NSTEP)
-            return;
-        d = &TDRUM->dstep[a[0]];
-        if (na >= 14u) {
-            on = (uint32_t)a[1] | (uint32_t)a[2] << 7 | (uint32_t)(a[3] & 3u) << 14;
-            lv = (uint32_t)a[4] | (uint32_t)a[5] << 7 | (uint32_t)a[6] << 14 | (uint32_t)a[7] << 21 | (uint32_t)(a[8] & 15u) << 28;
-            rt = (uint32_t)a[9] | (uint32_t)a[10] << 7 | (uint32_t)a[11] << 14 | (uint32_t)a[12] << 21 | (uint32_t)(a[13] & 15u) << 28;
-            fm1_irq_off();
-            memset(d, 0, sizeof *d);
-            for (i = 0; i < DRUM_LANES; i++)
-                if ((on >> i) & 1u)
-                    dstep_set(d, i, (lv >> (2u * i)) & 3u, (rt >> (2u * i)) & 3u);
-            fm1_irq_on();
-            ui.force = 1;
-            if (song.sel == TRK_DRUM)
-                ed_w.st[a[0]] = ed_step_sig(TDRUM, a[0]);
-        }
-        on = dstep_full_mask(d);
-        lv = (uint32_t)d->lvl[0] | (uint32_t)d->lvl[1] << 8 | (uint32_t)d->lvl[2] << 16 | (uint32_t)d->lvl[3] << 24;
-        rt = (uint32_t)d->rat[0] | (uint32_t)d->rat[1] << 8 | (uint32_t)d->rat[2] << 16 | (uint32_t)d->rat[3] << 24;
-        ed_b(a[0]);
-        ed_b(on);
-        ed_b(on >> 7);
-        ed_b(on >> 14);
-        for (i = 0; i < 5u; i++)
-            ed_b(lv >> (7u * i));
-        for (i = 0; i < 5u; i++)
-            ed_b(rt >> (7u * i));
+    case ED_DRUM_STEP:
         break;
-    }
     case ED_TRACK_PARAM: {                                 /* track, id [, v14] -> track, id, v14 */
         track_t *t;
         if (na < 2u || a[0] >= NTRK || a[1] >= P_COUNT)
