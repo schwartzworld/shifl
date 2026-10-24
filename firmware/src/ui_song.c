@@ -66,10 +66,14 @@ static void song_clone_fragment(void)
         arrangement.entry[i] = arrangement.entry[i - 1u];
         arrangement.patch[i] = arrangement.patch[i - 1u];
         memcpy(arr_song_vol[i], arr_song_vol[i - 1u], ARR_TRACKS);
+        memcpy(arr_song_slicer[i], arr_song_slicer[i - 1u], ARR_TRACKS);
+        arr_song_chord[i] = arr_song_chord[i - 1u];
     }
     arrangement.entry[song_cursor + 1u] = arrangement.entry[song_cursor];
     arrangement.patch[song_cursor + 1u] = arrangement.patch[song_cursor];
     memcpy(arr_song_vol[song_cursor + 1u], arr_song_vol[song_cursor], ARR_TRACKS);
+    memcpy(arr_song_slicer[song_cursor + 1u], arr_song_slicer[song_cursor], ARR_TRACKS);
+    arr_song_chord[song_cursor + 1u] = arr_song_chord[song_cursor];
     arrangement.count++;
     song_cursor++;
     ui_message("CLONED");
