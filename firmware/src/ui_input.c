@@ -209,8 +209,8 @@ static void ui_leds(void)
     led_put(nl, panel.btn[B_REC], song.rec != 0u || ft_on || (rec_wait && ((fm1_ms / 125u) & 1u)) ||
                                      (ui.hold_kind == 1u && ((fm1_ms / 60u) & 1u)) ||
                                      (live_mode && live_select && ((fm1_ms / 300u) & 1u)));   /* live select: blinks */
-    if (live_mode)
-        led_put(nl, panel.btn[LAYER_BTN[LY_ROLL]], 1);  /* ARP lit while live mode active */
+    if (TSEL->p[P_AMODE] && TSEL->p[P_AENA])
+        led_put(nl, panel.btn[LAYER_BTN[LY_ROLL]], 1);  /* ARP lit when arp is enabled on the track */
     led_put(nl, panel.btn[B_OCTDN], song.octave < 0);
     led_put(nl, panel.btn[B_OCTUP], song.octave > 0);
     keys = keys_lit();
@@ -383,6 +383,35 @@ static void edit_param(uint32_t slot, int32_t steps)
         ui.lock_par = (uint8_t)id;                        /* the SEQ layer's lock parameter: the last one touched */
     if (!v)
         return;
+    /* track-scoped dice actions: same two-detent confirm as SC_GLOBAL actions */
+    if (id == P_DICE || id == P_ADICE || id == P_ABOUNCE) {
+        *vp = 0;
+        if (ui.arm != (uint8_t)id) {
+            ui.arm = (uint8_t)id;
+            ui.arm_t = 90;
+            ui_say("AGAIN: ", d->label);
+            return;
+        }
+        ui.arm = 0;
+        if (id == P_ABOUNCE) {
+            fm1_irq_off();
+            arp_bounce(TSEL);
+            fm1_irq_on();
+            ui_message("ARP BOUNCED");
+        } else if (id == P_DICE && TSEL->p[P_AMODE]) {
+            arp_rng = (uint8_t)(rng() & 0xFFu);
+            ui_message("ARP DICE");
+        } else if (id == P_DICE) {
+            fm1_irq_off();
+            seq_generate(TSEL);
+            fm1_irq_on();
+            ui_message("DICE ROLLED");
+        } else {
+            arp_rng = (uint8_t)(rng() & 0xFFu);
+            ui_message("ARP DICE");
+        }
+        return;
+    }
     if (pg->scope == SC_GLOBAL && (id == G_LOAD || id == G_SAVE || id == G_CLRSEQ || id == G_INITSND || id == G_NEWPRJ) &&
         ui.arm != id) {                                   /* one detent arms, a second one within ~1.5 s acts */
         *vp = 0;
@@ -518,17 +547,8 @@ static void layer_tap(uint32_t layer)
         if (on_song_page()) {
             if (song_delete_armed) song_delete_armed = 0;
             else song_clone_fragment();
-        }
-        else if (live_mode) {
-            live_mode = 0;
-            live_select = 0;
-            live_mode_req = -1;
-            ui_message("LOOP MODE");
         } else {
-            live_mode = 1;
-            arrangement_enabled = 0;
-            live_select = 0;
-            ui_message("LIVE MODE");
+            open_family(FAM_ARP);
         }
         break;
     case LY_SCALE:

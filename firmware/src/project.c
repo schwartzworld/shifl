@@ -17,7 +17,11 @@
  *
  * Built on the host too (tests/project_test.c, -DPROJ_HOST): the part above the #ifndef
  * PROJ_HOST needs core.h, params.c (TP), drums.c (the lanes), the engines and trk_def_engine (ui.c). */
-#define PROJ_MAGIC 0x46554E38u                 /* "FUN8": chord follow per track (SHIFL 3.0) */
+#define PROJ_MAGIC 0x46554E42u                 /* "FUNB": arp bounce param added */
+#define PROJ_MAGIC_VA 0x46554E41u              /* "FUNA": LFO2 params added; read only */
+#define PROJ_NP_VA 94u                         /* P_COUNT of FUNA (before P_ABOUNCE was added) */
+#define PROJ_MAGIC_V9 0x46554E39u              /* "FUN9": spice & dice params added (SHIFL 3.0); read only */
+#define PROJ_MAGIC_V8 0x46554E38u              /* "FUN8": chord follow per track (SHIFL 3.0); read only */
 #define PROJ_MAGIC_V7 0x46554E37u              /* "FUN7": chord sequencer (SHIFL 3.0); read only */
 #define PROJ_MAGIC_V6 0x46554E36u              /* "FUN6": fill-row sequenceable triggers (SHIFL 2.6); read only */
 #define PROJ_MAGIC_V5 0x46554E35u              /* "FUN5": conditional hits; read only */
@@ -107,7 +111,54 @@ typedef struct {                               /* format 7 (FUN7, SHIFL 3.0): ch
     uint8_t clen, cseq_div, rsv_chord[2];
     uint32_t sum;
 } project_v7_t;
-typedef struct {                               /* format 8 (FUN8, SHIFL 3.0): chord follow per track */
+#define PROJ_NP_V8 80u                         /* P_COUNT of FUN8 (before P_DICE, P_ADICE were added) */
+#define PROJ_NP_V9 82u                         /* P_COUNT of FUN9 (before LFO2 params were added) */
+typedef struct {                               /* one track of FUN8; read only */
+    int16_t p[PROJ_NP_V8];
+    uint8_t engine, preset;
+    union { step_t step[NSTEP]; dstep_t dstep[NSTEP]; };
+} proj_trk_v8_t;
+typedef struct {                               /* format 8 (FUN8, SHIFL 3.0): chord follow; read only */
+    uint32_t magic, size;
+    int16_t g[G_COUNT];
+    uint8_t sel, rsv[3];
+    proj_trk_v8_t t[NTRK];
+    fill_seq_t fseq[FILL_SEQ_MAX];
+    chord_step_t cstep[NCHORD_STEP];
+    uint8_t clen, cseq_div, rsv_chord[2];
+    uint32_t sum;
+} project_v8_t;
+typedef struct {                               /* one track of FUN9; read only */
+    int16_t p[PROJ_NP_V9];
+    uint8_t engine, preset;
+    union { step_t step[NSTEP]; dstep_t dstep[NSTEP]; };
+} proj_trk_v9_t;
+typedef struct {                               /* format 9 (FUN9, SHIFL 3.0): spice & dice; read only */
+    uint32_t magic, size;
+    int16_t g[G_COUNT];
+    uint8_t sel, rsv[3];
+    proj_trk_v9_t t[NTRK];
+    fill_seq_t fseq[FILL_SEQ_MAX];
+    chord_step_t cstep[NCHORD_STEP];
+    uint8_t clen, cseq_div, rsv_chord[2];
+    uint32_t sum;
+} project_v9_t;
+typedef struct {                               /* one track of FUNA; read only */
+    int16_t p[PROJ_NP_VA];
+    uint8_t engine, preset;
+    union { step_t step[NSTEP]; dstep_t dstep[NSTEP]; };
+} proj_trk_va_t;
+typedef struct {                               /* format A (FUNA): LFO2; read only */
+    uint32_t magic, size;
+    int16_t g[G_COUNT];
+    uint8_t sel, rsv[3];
+    proj_trk_va_t t[NTRK];
+    fill_seq_t fseq[FILL_SEQ_MAX];
+    chord_step_t cstep[NCHORD_STEP];
+    uint8_t clen, cseq_div, rsv_chord[2];
+    uint32_t sum;
+} project_va_t;
+typedef struct {                               /* format B (FUNB): arp bounce param; the current format */
     uint32_t magic, size;
     int16_t g[G_COUNT];
     uint8_t sel, rsv[3];                       /* the selected track */
@@ -490,6 +541,104 @@ static int proj_from_v7(project_t *q, const project_v7_t *v, int n)
     return 1;
 }
 
+/* FUN8 (SHIFL 3.0, P_COUNT=80) -> FUN9 (adds P_DICE, P_ADICE before P_E0) */
+static int proj_from_v8(project_t *q, const project_v8_t *v, int n)
+{
+    uint32_t i, k;
+    if (n != (int)sizeof *v || v->magic != PROJ_MAGIC_V8 ||
+        v->size != sizeof *v || v->sum != proj_hash(v, sizeof *v - 4u))
+        return 0;
+    memset(q, 0, sizeof *q);
+    q->magic = PROJ_MAGIC;
+    q->size = sizeof *q;
+    memcpy(q->g, v->g, sizeof q->g);
+    q->sel = v->sel;
+    for (i = 0; i < NTRK; i++) {
+        const proj_trk_v8_t *s = &v->t[i];
+        proj_trk_t *d = &q->t[i];
+        for (k = 0; k < P_DICE; k++)              /* params 0..P_DICE-1: same positions */
+            d->p[k] = s->p[k];
+        d->p[P_DICE]  = 0;                        /* new action params: always 0 */
+        d->p[P_ADICE] = 0;
+        for (k = 0; k < 16u; k++)                 /* P_E0..P_E15: were at 64..79, now at 66..81 */
+            d->p[P_E0 + k] = s->p[PROJ_NP_V8 - 16u + k];
+        d->engine = s->engine;
+        d->preset = s->preset;
+        memcpy(d->step, s->step, sizeof(step_t) * NSTEP);
+    }
+    memcpy(q->fseq, v->fseq, sizeof q->fseq);
+    memcpy(q->cstep, v->cstep, sizeof q->cstep);
+    q->clen = v->clen;
+    q->cseq_div = v->cseq_div;
+    q->sum = proj_sum(q);
+    return 1;
+}
+
+/* FUN9 (SHIFL 3.0, P_COUNT=82) -> FUNA (adds LFO2 params P_L2RATE..P_L2D_SPC before P_E0) */
+static int proj_from_v9(project_t *q, const project_v9_t *v, int n)
+{
+    uint32_t i, k;
+    if (n != (int)sizeof *v || v->magic != PROJ_MAGIC_V9 ||
+        v->size != sizeof *v || v->sum != proj_hash(v, sizeof *v - 4u))
+        return 0;
+    memset(q, 0, sizeof *q);
+    q->magic = PROJ_MAGIC;
+    q->size = sizeof *q;
+    memcpy(q->g, v->g, sizeof q->g);
+    q->sel = v->sel;
+    for (i = 0; i < NTRK; i++) {
+        const proj_trk_v9_t *s = &v->t[i];
+        proj_trk_t *d = &q->t[i];
+        for (k = 0; k < P_L2RATE; k++)            /* params 0..P_ADICE: same positions */
+            d->p[k] = s->p[k];
+        for (k = P_L2RATE; k < (uint32_t)P_E0; k++)   /* new LFO2 + P_AENA params: default 0 */
+            d->p[k] = 0;
+        d->p[P_AENA] = s->p[P_AMODE] ? 1 : 0;        /* derive from old mode (arp was on iff mode != OFF) */
+        for (k = 0; k < 16u; k++)                 /* P_E0..P_E15: were at 66..81, now at P_E0..P_E0+15 */
+            d->p[P_E0 + k] = s->p[PROJ_NP_V9 - 16u + k];
+        d->engine = s->engine;
+        d->preset = s->preset;
+        memcpy(d->step, s->step, sizeof(step_t) * NSTEP);
+    }
+    memcpy(q->fseq, v->fseq, sizeof q->fseq);
+    memcpy(q->cstep, v->cstep, sizeof q->cstep);
+    q->clen = v->clen;
+    q->cseq_div = v->cseq_div;
+    q->sum = proj_sum(q);
+    return 1;
+}
+
+static int proj_from_va(project_t *q, const project_va_t *v, int n)
+{
+    uint32_t i, k;
+    if (n != (int)sizeof *v || v->magic != PROJ_MAGIC_VA ||
+        v->size != sizeof *v || v->sum != proj_hash(v, sizeof *v - 4u))
+        return 0;
+    memset(q, 0, sizeof *q);
+    q->magic = PROJ_MAGIC;
+    q->size = sizeof *q;
+    memcpy(q->g, v->g, sizeof q->g);
+    q->sel = v->sel;
+    for (i = 0; i < NTRK; i++) {
+        const proj_trk_va_t *s = &v->t[i];
+        proj_trk_t *d = &q->t[i];
+        for (k = 0; k <= (uint32_t)P_AENA; k++)           /* params 0..P_AENA: same positions */
+            d->p[k] = s->p[k];
+        d->p[P_ABOUNCE] = 0;                               /* new param: default "--" */
+        for (k = 0; k < 16u; k++)                         /* P_E0..P_E15: shifted by one */
+            d->p[P_E0 + k] = s->p[PROJ_NP_VA - 16u + k];
+        d->engine = s->engine;
+        d->preset = s->preset;
+        memcpy(d->step, s->step, sizeof(step_t) * NSTEP);
+    }
+    memcpy(q->fseq, v->fseq, sizeof q->fseq);
+    memcpy(q->cstep, v->cstep, sizeof q->cstep);
+    q->clen = v->clen;
+    q->cseq_div = v->cseq_div;
+    q->sum = proj_sum(q);
+    return 1;
+}
+
 /* n bytes of a stored project (any format) -> slot q as format 5; 0 = not a project */
 static int proj_import(project_t *q, const void *b, int n)
 {
@@ -497,7 +646,10 @@ static int proj_import(project_t *q, const void *b, int n)
         memcpy(q, b, sizeof *q);
         return 1;
     }
-    return proj_from_v7(q, (const project_v7_t *)b, n) ||
+    return proj_from_va(q, (const project_va_t *)b, n) ||
+           proj_from_v9(q, (const project_v9_t *)b, n) ||
+           proj_from_v8(q, (const project_v8_t *)b, n) ||
+           proj_from_v7(q, (const project_v7_t *)b, n) ||
            proj_from_v6(q, (const project_v6_t *)b, n) ||
            proj_from_v5(q, (const project_v5_t *)b, n) ||
            proj_from_v5old(q, (const project_v5old_t *)b, n) ||

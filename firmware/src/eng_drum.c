@@ -154,7 +154,9 @@ static void drum_note_on(track_t *t, voice_t *v)
 {
     uint32_t pi  = drum_pi(t);
     uint32_t ni  = drum_ni(v->note);
-    uint32_t sk  = drum_sk(v->note);
+    uint32_t sk  = t->p[P_GLMODE]
+                   ? rng() % DRUM_NSUBKIT
+                   : (uint32_t)clamp((int32_t)drum_sk(v->note) + (int32_t)t->p[P_GLIDE], 0, DRUM_NSUBKIT - 1);
     uint32_t kit = (uint32_t)clamp((int32_t)t->p[P_E0], 0, 2);
     uint32_t s1  = DS_SLOT1[ni], s2 = DS_SLOT2[ni], s3 = DS_SLOT3[ni];
     uint32_t i1  = DS_808[s1];
@@ -264,7 +266,7 @@ static const engine_t ENG_DRUM = {
     .presets  = DRUM_PRESETS,
     .npresets = sizeof(DRUM_PRESETS) / sizeof(DRUM_PRESETS[0]),
     .color    = 0xF800,
-    .knob     = {1, 2, 3, 4},
+    .knob     = {P_LEVEL, P_DLY, P_SPICE, P_DICE},
     .poly     = 0,
     .oneshot  = 1,
     .ownenv   = 1,

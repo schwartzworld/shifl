@@ -54,6 +54,9 @@ static uint32_t scale_mask(const track_t *t)
     return SCALE_MASK[clamp(t->p[P_SCALE], 0, (int32_t)SCALE_LEGACY - 1)];
 }
 
+static uint8_t arp_rng;    /* LCG state for arp RND mode */
+static void arp_note_stop(track_t *t);   /* forward: called from seq_stop, defined with arp_tick */
+
 /* ---------------------------------------------------------- layers --- */
 enum { LY_PLAY, LY_FX, LY_ERASE, LY_ROLL, LY_STEP, LY_SCALE, LY_MIX, LY_SONG, LY_COUNT };
 static uint32_t ly_bit[LY_COUNT];        /* the button (fm1_in.buttons bit) of each layer: the UI sets them */
@@ -1800,7 +1803,7 @@ static void chord_revoice(uint32_t sel)
 
 static void key_down(uint32_t k)
 {
-    uint32_t layer = layer_now(), sel = song.sel % NTRK, i, mc;
+    uint32_t layer = layer_now(), sel = song.sel % NTRK, i, j, mc;
     track_t *t = &trk[sel];
     kb_kind[k] = KS_NONE;
     kb_trk[k] = (uint8_t)sel;
@@ -1891,6 +1894,22 @@ static void key_down(uint32_t k)
             kb_nt[k][0] = (uint8_t)cfol_apply(t, n);   /* chord follow on live notes (CF_OFF: unchanged) */
             kb_n[k] = 1;
         }
+        /* arp mode: feed notes into arp pool, don't trigger voices */
+        if (t->p[P_AMODE] && t->p[P_AENA]) {
+            if (!t->arp_phys) {                 /* first key of a new chord */
+                if (t->p[P_AHOLD]) t->nheld = 0;   /* latch: clear old chord */
+                t->arp_idx = 0;
+                t->arp_new = 0;
+            }
+            t->arp_phys++;
+            for (i = 0; i < kb_n[k]; i++) {
+                uint32_t nt = kb_nt[k][i];
+                for (j = 0; j < (uint32_t)t->nheld && t->held[j] != nt; j++);
+                if (j == (uint32_t)t->nheld && t->nheld < 16u)
+                    t->held[t->nheld++] = (uint8_t)nt;
+            }
+            return;
+        }
         mc = trk_midi_ch(sel);
         for (i = 0; i < kb_n[k]; i++) {
             in_chord = kb_n[k] > 1u ? kb_nt[k] : 0;
@@ -1910,7 +1929,7 @@ static void key_down(uint32_t k)
 
 static void key_up(uint32_t k)
 {
-    uint32_t i, mc, kind = kb_kind[k];
+    uint32_t i, j, mc, kind = kb_kind[k];
     track_t *t = &trk[kb_trk[k] % NTRK];
     kb_kind[k] = KS_NONE;
     switch (kind) {
@@ -1931,6 +1950,23 @@ static void key_up(uint32_t k)
             er_notes[(kb_nt[k][i] >> 5) & 3u] &= ~(1u << (kb_nt[k][i] & 31u));
         return;
     case KS_NOTE:
+        /* arp mode: remove from held pool on key release */
+        if (t->p[P_AMODE] && t->p[P_AENA]) {
+            if (t->arp_phys) t->arp_phys--;
+            if (!t->p[P_AHOLD]) {
+                for (i = 0; i < kb_n[k]; i++) {
+                    uint32_t nt = kb_nt[k][i];
+                    uint32_t m  = (uint32_t)t->nheld;
+                    for (j = 0; j < m && t->held[j] != nt; j++);
+                    if (j < m) {
+                        m--;
+                        for (; j < m; j++) t->held[j] = t->held[j+1u];
+                        t->nheld = (uint8_t)m;
+                    }
+                }
+            }
+            return;
+        }
         mc = trk_midi_ch(kb_trk[k] % NTRK);
         for (i = 0; i < kb_n[k]; i++) {
             input_off(t, kb_nt[k][i]);
@@ -2120,6 +2156,7 @@ static void seq_reset_tracks(uint32_t pos)
         t->rskip_abs = SEQ_NONE;
         t->rh_n = 0;
         t->pass = 0;
+        t->arp_abs = SEQ_NONE;   /* arp: fire first step on the new play grid */
     }
     clk_beat = 0;
     clk_pos = pos;
@@ -2204,6 +2241,7 @@ static void seq_stop(void)
         seq_release(&trk[i]);
         locks_restore(&trk[i]);
         trk[i].rh_n = 0;                           /* a recorded note held over the stop: as far as it got */
+        arp_note_stop(&trk[i]);                    /* arp: release sounding note on stop */
     }
     seq_out_all_off();
 #if FELUCCA_ARRANGER
@@ -2254,6 +2292,8 @@ static uint32_t seq_note_trans(const track_t *t, uint32_t n) { return cfol_apply
 static void seq_step(track_t *t, const step_t *s, uint32_t slen, uint32_t skip)
 {
     uint32_t i, j, gate = slen * (uint32_t)t->p[P_SGATE] / 128u;
+    uint32_t spice = (uint32_t)clamp((int32_t)t->p[P_SPICE] + t->lfo2_spc, 0, 127);
+    uint32_t spice_rnd = spice ? (t->gen_seed * 1664525u + (uint32_t)(uint16_t)t->seq_idx * 22695477u + 1013904223u) : 0u;
     uint32_t slide_in = t->seq_hold && t->seq_n;
     uint32_t next_tie = t->step[(t->seq_idx + 1u) % trk_len(t)].time == ST_TIE;
     uint32_t step_time = s->time, do_accent, do_slide;
@@ -2284,6 +2324,19 @@ static void seq_step(track_t *t, const step_t *s, uint32_t slen, uint32_t skip)
         seq_release(t);
         return;
     }
+    /* spice: gate variation and random rest, deterministic per (gen_seed, seq_idx) */
+    if (spice) {
+        int32_t gv = ((int32_t)((spice_rnd >> 16) & 0xFFu) - 128) * (int32_t)spice / 96;
+        int32_t ng = (int32_t)gate + gv * (int32_t)gate / 256;
+        gate = (uint32_t)(ng > 1 ? ng : 1);
+        if (spice >= 64u) {
+            uint32_t rnd2 = spice_rnd * 1664525u + 1013904223u;
+            if ((rnd2 & 0xFFu) < ((spice - 64u) * 2u)) {
+                seq_release(t);
+                return;
+            }
+        }
+    }
     if (s->rat) {                                   /* ratchets: each hit its share of the step */
         uint32_t hits = 1u + ((s->rat >> 0) & 3u);
         for (i = 1; i < s->n; i++)
@@ -2297,6 +2350,13 @@ static void seq_step(track_t *t, const step_t *s, uint32_t slen, uint32_t skip)
     for (i = 0; i < s->n; i++)
         if (!((skip >> i) & 1u)) {
             uint32_t tn = seq_note_trans(t, s->note[i]);
+            if (spice >= 24u) {
+                uint32_t ro = t->gen_seed * 1664525u + ((uint32_t)(uint16_t)t->seq_idx * 4u + i) * 22695477u + 0xDEADBEEFu;
+                if ((ro & 0xFFu) < ((spice - 24u) * 2u)) {
+                    int32_t n2 = (int32_t)tn + (((ro >> 8) & 1u) ? 12 : -12);
+                    if (n2 >= 0 && n2 <= 127) tn = (uint32_t)n2;
+                }
+            }
             uint32_t sv = step_vel(s, i, do_accent);
             trk_note_on(t, tn, sv);
             if (!slide_in || !(mo_set[trk_index(t) % NTRK][tn >> 5] & (1u << (tn & 31u))))
@@ -2494,6 +2554,278 @@ static int32_t micro_units(const track_t *t, uint32_t abs, uint32_t slen)
 {
     int32_t m = t->micro[abs % trk_len(t) % NSTEP];
     return (int32_t)(slen / 64u) * m;                /* |m| <= 32: fits */
+}
+
+/* ---------------------------------------------------------- arpeggiator --- */
+
+/* Snapshot one full arp cycle into t->step[], then switch to sequencer playback.
+ * Mirrors the note-selection logic of arp_tick exactly so the captured pattern is
+ * representative of what the arp would play from its current position. */
+static void arp_bounce(track_t *t)
+{
+    uint32_t mode, bn, slen, octaves, cycle, i, j, oct, step;
+    uint8_t base[16], seq[64];
+    uint8_t rng = arp_rng;   /* snapshot current arp RNG so result matches live playback */
+
+    mode = (uint32_t)(uint16_t)t->p[P_AMODE];
+    if (!mode || !t->nheld)
+        return;
+
+    /* build sorted note list (or press-order for ORD), same as arp_tick */
+    bn = t->nheld < 16u ? t->nheld : 16u;
+    for (i = 0; i < bn; i++)
+        base[i] = t->held[i];
+    if (mode != 5u) {
+        for (i = 1; i < bn; i++) {
+            uint8_t tmp = base[i];
+            for (j = i; j > 0 && base[j-1] > tmp; j--)
+                base[j] = base[j-1];
+            base[j] = tmp;
+        }
+        if (mode == 2u) {
+            for (i = 0; i < bn / 2u; i++) {
+                uint8_t tmp = base[i]; base[i] = base[bn-1u-i]; base[bn-1u-i] = tmp;
+            }
+        }
+    }
+
+    octaves = (uint32_t)(t->p[P_AOCT] < 1 ? 1 : t->p[P_AOCT] > 4 ? 4 : t->p[P_AOCT]);
+    slen = 0;
+    for (oct = 0; oct < octaves && slen < 64u; oct++)
+        for (i = 0; i < bn && slen < 64u; i++) {
+            uint32_t n2 = (uint32_t)base[i] + oct * 12u;
+            if (n2 <= 127u) seq[slen++] = (uint8_t)n2;
+        }
+    if (!slen) return;
+
+    /* UPDN bounces: 2*slen-2 steps (up to top, skip endpoints on return) */
+    cycle = (mode == 3u && slen > 1u) ? 2u * slen - 2u : slen;
+    if (cycle > (uint32_t)NSTEP) cycle = (uint32_t)NSTEP;
+
+    /* clear the whole step array, then fill cycle steps */
+    for (step = 0; step < (uint32_t)NSTEP; step++) {
+        step_t *s = &t->step[step];
+        s->n = 0; s->time = ST_REST; s->flags = 0; s->vel = 100u; s->lvl = 0; s->rat = 0;
+    }
+
+    {
+        uint32_t arp_idx = 0, arp_new = 0;
+        uint32_t spice = (uint32_t)clamp(t->p[P_SPICE], 0, 127);
+
+        for (step = 0; step < cycle; step++) {
+            uint32_t idx, note;
+            step_t *s = &t->step[step];
+
+            /* pick index then advance, same order as arp_tick */
+            if (mode == 4u) {                               /* RND */
+                rng = (uint8_t)(rng * 167u + 1u);
+                idx = (uint32_t)rng % slen;
+            } else if (mode == 3u) {                        /* UPDN */
+                idx = arp_idx;
+                if (!arp_new) {
+                    if (arp_idx + 1u < slen) arp_idx++;
+                    else { arp_new = 1; arp_idx = slen > 1u ? slen - 2u : 0u; }
+                } else {
+                    if (arp_idx > 0u) arp_idx--;
+                    else { arp_new = 0; arp_idx = slen > 1u ? 1u : 0u; }
+                }
+            } else {                                        /* UP / DN / ORD */
+                idx = arp_idx;
+                arp_idx = (arp_idx + 1u) % slen;
+            }
+
+            note = seq[idx % slen];
+
+            /* spice: same deterministic hash as arp_tick; rest leaves step as ST_REST */
+            if (spice) {
+                uint32_t rnd;
+                rng = (uint8_t)(rng * 167u + 1u);
+                rnd = (uint32_t)rng * 1664525u + step * 22695477u + 1013904223u;
+                if (spice >= 64u) {
+                    rnd = rnd * 1664525u + 1013904223u;
+                    if ((rnd & 0xFFu) < ((spice - 64u) * 2u))
+                        continue;   /* spice rest: step stays ST_REST */
+                }
+                if (spice >= 24u) {
+                    rnd = rnd * 1664525u + 1013904223u;
+                    if ((rnd & 0xFFu) < ((spice - 24u) * 2u)) {
+                        int32_t n = (int32_t)note + (((rnd >> 8) & 1u) ? 12 : -12);
+                        if (n >= 0 && n <= 127) note = (uint32_t)n;
+                    }
+                }
+            }
+
+            s->note[0] = (uint8_t)note;
+            s->n = 1;
+            s->time = ST_NOTE;
+        }
+    }
+
+    /* set sequencer parameters to match the captured arp */
+    t->p[P_SLEN]  = (int16_t)cycle;
+    t->p[P_SDIV]  = t->p[P_ARATE];   /* N_DIV 0..5 maps directly to N_SDIV 0..5 */
+    t->p[P_SGATE] = t->p[P_AGATE];
+
+    /* disable arp; seq_abs = SEQ_NONE causes seq_tick to start from step 0 next tick */
+    t->p[P_AENA] = 0;
+    t->seq_abs = SEQ_NONE;
+    t->seq_idx = 0;
+}
+
+/* Clock-locked arpeggiator per track: fires the held notes in sequence at P_ARATE divisions.
+ * Called from events_block instead of seq_tick when P_AMODE != OFF. */
+static void arp_note_stop(track_t *t)
+{
+    if (t->arp_note) {
+        trk_note_off(t, t->arp_note);
+        seq_out_off(t, t->arp_note);
+        t->arp_note = 0;
+        t->arp_off = 0;
+    }
+}
+
+static void arp_tick(track_t *t, uint32_t adv)
+{
+    uint32_t mode, div, abs, into, alen, sw, idx, note, octaves, bn, slen, oct, i, j;
+    uint8_t base[16], seq[64];
+
+    /* gate-off countdown (runs always to release a note left from a previous block) */
+    if (t->arp_off) {
+        if (t->arp_off <= adv) {
+            arp_note_stop(t);
+        } else {
+            t->arp_off -= adv;
+            return;
+        }
+    }
+
+    mode = (uint32_t)(uint16_t)t->p[P_AMODE];
+    if (!mode || !t->nheld)
+        return;
+
+    if (!song.playing)
+        return;
+
+    div = (uint32_t)(uint16_t)t->p[P_ARATE] % NDIV_SHORT;
+    sw  = t->p[P_ASWING] ? swing_units((int32_t)t->p[P_ASWING], div_units(div)) : 0u;
+    abs = grid_at(div, sw, &into, &alen);
+
+    if (t->arp_den != (uint8_t)div) {   /* rate changed: lock to the new grid */
+        t->arp_den = (uint8_t)div;
+        t->arp_abs = abs;
+        return;
+    }
+    if (abs == t->arp_abs)
+        return;
+    if ((uint32_t)(abs - t->arp_abs) > 4u)
+        t->arp_abs = abs - 1u;
+    t->arp_abs = abs;
+
+    /* probability: skip step if (rng & 0x7F) >= P_APROB */
+    if (t->p[P_APROB] < 127) {
+        arp_rng = (uint8_t)(arp_rng * 167u + 1u);
+        if ((uint32_t)(arp_rng & 0x7Fu) >= (uint32_t)(uint16_t)t->p[P_APROB])
+            return;
+    }
+
+    /* build sorted note list (or press-order for ORD mode) */
+    bn = (uint32_t)(t->nheld < 16u ? t->nheld : 16u);
+    for (i = 0; i < bn; i++)
+        base[i] = t->held[i];
+
+    if (mode != 5u) {   /* not ORD: insertion-sort ascending */
+        for (i = 1; i < bn; i++) {
+            uint8_t tmp = base[i];
+            for (j = i; j > 0 && base[j-1] > tmp; j--)
+                base[j] = base[j-1];
+            base[j] = tmp;
+        }
+        if (mode == 2u) {   /* DN: reverse */
+            for (i = 0; i < bn / 2u; i++) {
+                uint8_t tmp = base[i];
+                base[i] = base[bn-1u-i];
+                base[bn-1u-i] = tmp;
+            }
+        }
+    }
+
+    /* expand across octaves */
+    octaves = (uint32_t)(t->p[P_AOCT] < 1 ? 1 : t->p[P_AOCT] > 4 ? 4 : t->p[P_AOCT]);
+    slen = 0;
+    for (oct = 0; oct < octaves && slen < 64u; oct++)
+        for (i = 0; i < bn && slen < 64u; i++) {
+            uint32_t n2 = (uint32_t)base[i] + oct * 12u;
+            if (n2 <= 127u) seq[slen++] = (uint8_t)n2;
+        }
+    if (!slen) return;
+
+    if (t->arp_idx >= slen) t->arp_idx = 0;
+
+    /* pick note at current index, then advance */
+    if (mode == 4u) {   /* RND */
+        arp_rng = (uint8_t)(arp_rng * 167u + 1u);
+        idx = (uint32_t)arp_rng % slen;
+        t->arp_idx = idx;
+    } else if (mode == 3u) {   /* UPDN: arp_new=0 ascending, arp_new=1 descending */
+        idx = t->arp_idx;
+        if (!t->arp_new) {
+            if (t->arp_idx + 1u < slen) {
+                t->arp_idx++;
+            } else {
+                t->arp_new = 1;
+                t->arp_idx = slen > 1u ? slen - 2u : 0u;
+            }
+        } else {
+            if (t->arp_idx > 0u) {
+                t->arp_idx--;
+            } else {
+                t->arp_new = 0;
+                t->arp_idx = slen > 1u ? 1u : 0u;
+            }
+        }
+    } else {   /* UP / DN / ORD: advance linearly */
+        idx = t->arp_idx;
+        t->arp_idx = (t->arp_idx + 1u) % slen;
+    }
+
+    note = seq[idx % slen];
+
+    /* gate */
+    {
+        uint32_t gate = (uint32_t)(uint16_t)t->p[P_AGATE];
+        if (gate > 127u) gate = 127u;
+        t->arp_off = alen * gate / 127u;
+        if (!t->arp_off) t->arp_off = 1u;
+    }
+
+    /* spice: deterministic per (arp_rng, arp_abs) — gate variation, random rest, random octave */
+    {
+        uint32_t spice = (uint32_t)clamp((int32_t)t->p[P_SPICE] + t->lfo2_spc, 0, 127);
+        if (spice) {
+            uint32_t rnd = (uint32_t)arp_rng * 1664525u + t->arp_abs * 22695477u + 1013904223u;
+            int32_t gv   = ((int32_t)((rnd >> 16) & 0xFFu) - 128) * (int32_t)spice / 96;
+            int32_t ng   = (int32_t)t->arp_off + gv * (int32_t)t->arp_off / 256;
+            t->arp_off   = (uint32_t)(ng > 1 ? ng : 1);
+            if (spice >= 64u) {
+                rnd = rnd * 1664525u + 1013904223u;
+                if ((rnd & 0xFFu) < ((spice - 64u) * 2u)) {
+                    t->arp_off = 0;
+                    return;           /* spice rest */
+                }
+            }
+            if (spice >= 24u) {
+                rnd = rnd * 1664525u + 1013904223u;
+                if ((rnd & 0xFFu) < ((spice - 24u) * 2u)) {
+                    int32_t n = (int32_t)note + (((rnd >> 8) & 1u) ? 12 : -12);
+                    if (n >= 0 && n <= 127) note = (uint32_t)n;
+                }
+            }
+        }
+    }
+
+    trk_note_on(t, note, 100u);
+    seq_out_on(t, note, 100u);
+    t->arp_note = (uint8_t)note;
 }
 
 /* The steps fire in order, one a block at most, each at its nudged time (micro: 1/64 of a step early
@@ -2813,6 +3145,8 @@ static void events_block(uint32_t n)
         if ((pr >> i) & 1u) {
             trk_all_off(t);
             t->nheld = 0;
+            t->arp_phys = 0;
+            arp_note_stop(t);
         }
         if (i < NPART)
             engine_block(t);                          /* engine switch: fade, then switch (voice.c) */
@@ -2837,10 +3171,38 @@ static void events_block(uint32_t n)
         if (song.g[G_ROUTE] && st == 0x90u && d2)
             continue;                                 /* GLO > SYSTEM > IN = CLOCK: no notes */
         t = midi_route(ch, d1, st == 0x90u && d2);
-        if (st == 0x90u && d2)
-            input_on(t, d1, d2);
-        else
-            input_off(t, d1);
+        if (st == 0x90u && d2) {
+            if (t->p[P_AMODE] && t->p[P_AENA]) {          /* arp active: MIDI note goes to arp pool */
+                uint32_t nt = d1 & 0x7Fu, jm;
+                if (!t->arp_phys) {
+                    if (t->p[P_AHOLD]) t->nheld = 0;
+                    t->arp_idx = 0;
+                    t->arp_new = 0;
+                }
+                t->arp_phys++;
+                for (jm = 0; jm < (uint32_t)t->nheld && t->held[jm] != nt; jm++);
+                if (jm == (uint32_t)t->nheld && t->nheld < 16u)
+                    t->held[t->nheld++] = (uint8_t)nt;
+            } else {
+                input_on(t, d1, d2);
+            }
+        } else {
+            if (t->p[P_AMODE] && t->p[P_AENA]) {          /* arp active: MIDI note-off removes from arp pool */
+                uint32_t nt = d1 & 0x7Fu;
+                if (t->arp_phys) t->arp_phys--;
+                if (!t->p[P_AHOLD]) {
+                    uint32_t jm, m = (uint32_t)t->nheld;
+                    for (jm = 0; jm < m && t->held[jm] != nt; jm++);
+                    if (jm < m) {
+                        m--;
+                        for (; jm < m; jm++) t->held[jm] = t->held[jm+1u];
+                        t->nheld = (uint8_t)m;
+                    }
+                }
+            } else {
+                input_off(t, d1);
+            }
+        }
     }
     if (song.playing) {
         uint32_t bar = clk_beat / 4u;
@@ -2856,8 +3218,12 @@ static void events_block(uint32_t n)
     }
     fill_now = (uint8_t)(fill_held || fill_bar_on);
     cseq_tick();
-    for (i = 0; i < NTRK; i++)
-        seq_tick(&trk[i], adv);
+    for (i = 0; i < NTRK; i++) {
+        if (trk[i].p[P_AMODE] && trk[i].p[P_AENA])
+            arp_tick(&trk[i], adv);
+        else
+            seq_tick(&trk[i], adv);
+    }
     click_tick();
     if (song.playing) {
         song.tick++;

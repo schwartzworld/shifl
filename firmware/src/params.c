@@ -102,6 +102,21 @@ static const param_desc_t TP[P_COUNT] = {
     [P_FREL] = PD("REL", F_TIME, 0, 127, 60),
     [P_EVOLVE] = PE("EVL", N_EVOLVE, 0),
     [P_CFOL]   = PE("FLW", N_CFOL, 0),    /* chord follow mode (CF_OFF..CF_ROO5) */
+    [P_DICE]   = PE("DICE", N_GO, 0),
+    [P_ADICE]  = PE("DICE", N_GO, 0),
+    [P_L2RATE] = PD("RATE", F_LFOHZ, 0, 127, 60),
+    [P_L2WAVE] = PE("WAVE", N_LWAVE, 0),
+    [P_L2PHASE] = PD("PHS", F_INT, 0, 127, 0),
+    [P_L2FADE] = PD("FADE", F_TIME, 0, 127, 0),
+    [P_L2D_PAN] = PD("PAN", F_BIPCT, -64, 63, 0),
+    [P_L2D_DLY] = PD("DLY", F_BIPCT, -64, 63, 0),
+    [P_L2D_REV] = PD("REV", F_BIPCT, -64, 63, 0),
+    [P_L2D_CHO] = PD("CHO", F_BIPCT, -64, 63, 0),
+    [P_L2D_DST] = PD("DST", F_BIPCT, -64, 63, 0),
+    [P_L2D_FLT] = PD("FLT", F_BIPCT, -64, 63, 0),
+    [P_L2D_SPC] = PD("SPC", F_BIPCT, -64, 63, 0),
+    [P_AENA]    = PE("ARP",  N_ONOFF, 0),
+    [P_ABOUNCE] = PE("BNCE", N_GO, 0),
 };
 /* a preset's extra parameters (preset_t.x) into p, each clamped to its range */
 static void preset_extras(int16_t *p, const preset_t *pr)
@@ -154,6 +169,10 @@ static const param_desc_t GP[G_COUNT] = {
     [G_NEWPRJ] = PE("NEW", N_GO, 0),
 };
 
+/* drum-track reinterpretation of P_GLIDE/P_GLMODE: sub-kit offset and random mode */
+static const param_desc_t drum_koct_pd = {"KOCT", F_INT, -3, 3, 0, 0, 0};
+static const param_desc_t drum_krnd_pd = {"KRND", F_ENUM, 0, 1, 0, N_ONOFF, 0};
+
 static const param_desc_t *track_desc(const track_t *t, uint32_t id)
 {
     if (id >= P_E0 && id <= P_E7) {                   /* the engine asked for (t->engine follows after a fade) */
@@ -161,6 +180,8 @@ static const param_desc_t *track_desc(const track_t *t, uint32_t id)
         const param_desc_t *d = e->desc ? e->desc(t, id - P_E0) : 0;   /* a mode-dependent label / names */
         return d ? d : &e->edit[id - P_E0];
     }
+    if (is_drum(t) && id == P_GLIDE)  return &drum_koct_pd;
+    if (is_drum(t) && id == P_GLMODE) return &drum_krnd_pd;
     return &TP[id];
 }
 
@@ -303,7 +324,10 @@ static const page_t PAGES[] = {
     {"FENV", FAM_ENV, SC_TRACK, GR_ADSR, {P_FATK, P_FDEC, P_FSUS, P_FREL}},
     {"LFO", FAM_LFO, SC_TRACK, GR_LFO, {P_LRATE, P_LWAVE, P_LPHASE, P_LFADE}},
     {"LFO DEST", FAM_LFO, SC_TRACK, GR_NONE, {P_LD_PIT, P_LD_FLT, P_LD_SHP, P_LD_AMP}},
-    {"LFO K", FAM_LFO, SC_TRACK, GR_LDHOME, {P_LD_K1, P_LD_K2, P_LD_K3, P_LD_K4}},
+    {"LFO K",    FAM_LFO, SC_TRACK, GR_LDHOME, {P_LD_K1,    P_LD_K2,    P_LD_K3,    P_LD_K4}},
+    {"LFO2",     FAM_LFO, SC_TRACK, GR_LFO,    {P_L2RATE,  P_L2WAVE,   P_L2PHASE,  P_L2FADE}},
+    {"LFO2 DST", FAM_LFO, SC_TRACK, GR_NONE,   {P_L2D_PAN, P_L2D_DLY,  P_L2D_REV,  P_L2D_CHO}},
+    {"LFO2 FX",  FAM_LFO, SC_TRACK, GR_NONE,   {P_L2D_DST, P_L2D_FLT,  P_L2D_SPC,  0xFF}},
     {"FX", FAM_FX, SC_TRACK, GR_FX, {P_DIST, P_CHOR, P_DLY, P_REV}},
     {"SLICER", FAM_FX, SC_TRACK, GR_SLCR, {P_SLCR, P_SLPAT, P_SLRATE, P_SLDEPTH}},   /* drum track too */
     {"DLY", FAM_FX, SC_GLOBAL, GR_NONE, {G_DTIME, G_DFDBK, G_DCOLOR, G_DMIX}},
@@ -325,8 +349,12 @@ static const page_t PAGES[] = {
     {"USER", FAM_SAVE, SC_GLOBAL, GR_USER, {0xFF, 0xFF, 0xFF, 0xFF}},       /* user presets: SLOT LOAD ERASE SAVE */
     {"PROJECT", FAM_SAVE, SC_GLOBAL, GR_SLOTS, {G_SLOT, 0xFF, G_LOAD, G_SAVE}},
     {"TOOLS", FAM_SAVE, SC_GLOBAL, GR_NONE, {G_CLRSEQ, G_INITSND, 0xFF, G_NEWPRJ}},
+    {"ARP", FAM_ARP, SC_TRACK, GR_NONE, {P_AENA, P_AMODE, P_ARATE, P_AOCT}},
+    {"ARP 2", FAM_ARP, SC_TRACK, GR_NONE, {P_AGATE, P_ASWING, P_APROB, P_AHOLD}},
+    {"ARP 3", FAM_ARP, SC_TRACK, GR_NONE, {P_AORDER, P_SPICE, P_ADICE, P_ABOUNCE}},
     {"STEP", FAM_SEQ, SC_STEP, GR_ROLL, {0, 1, 2, 3}},
     {"PATTERN", FAM_SEQ, SC_TRACK, GR_STEPS, {P_SLEN, P_SDIV, P_SSWING, P_SGATE}},
+    {"PATTERN 2", FAM_SEQ, SC_TRACK, GR_STEPS, {P_SPICE, P_DICE, 0xFF, 0xFF}},
     {"SONG", FAM_SEQ, SC_SONG, GR_NONE, {0xFF, 0xFF, 0xFF, 0xFF}},
     {"TRACKS", FAM_TRK, SC_TRK, GR_TRK, {0, 1, 2, 3}},   /* REC button; TRACK LEVEL LEN PAN */
     {"DRUMS", FAM_TRK, SC_DRUM, GR_NONE, {0xFF,0xFF,0xFF,0xFF}},
@@ -340,6 +368,8 @@ static int page_for_drum(const page_t *pg)
 {
     if (pg->scope == SC_GLOBAL)
         return pg->graph != GR_BROWSE && pg->graph != GR_USER;
+    if (pg->id[0] == P_VOICE)   /* VOICE page: shows KOCT/KRND on drum tracks */
+        return 1;
     return pg->scope != SC_ENGINE && (pg->scope != SC_TRACK || pg->fam == FAM_SEQ || pg->graph == GR_SLCR);
 }
 

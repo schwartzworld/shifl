@@ -42,6 +42,30 @@ static void track_lfo_tick(track_t *t)
     }
 }
 
+static int32_t lfo2_wave(track_t *t, uint32_t ph)
+{
+    switch (t->p[P_L2WAVE]) {
+    case 1: return osc_tri(ph);
+    case 2: return (int32_t)(ph >> 16) - 32768;
+    case 3: return ph < 0x80000000u ? 32767 : -32767;
+    case 4: return (int32_t)(t->lfo2_rnd >> 16) - 32768;
+    default: return osc_sine(ph);
+    }
+}
+
+static void track_lfo2_tick(track_t *t)
+{
+    uint32_t old = t->lfo2_ph;
+    t->lfo2_ph += LFO_INC[t->p[P_L2RATE] & 127];
+    if (t->lfo2_ph < old)
+        t->lfo2_rnd = rng();
+    t->lfo2_val = lfo2_wave(t, t->lfo2_ph);
+    if (t->lfo2_fade < 32767) {
+        int32_t step = (int32_t)(ENV_LIN[t->p[P_L2FADE] & 127] >> 9);
+        t->lfo2_fade = t->p[P_L2FADE] ? clamp(t->lfo2_fade + (step ? step : 1), 0, 32767) : 32767;
+    }
+}
+
 /* voices the engine may use (POLY and UNISON): its cap, else all of them */
 static uint32_t trk_nvoice(const track_t *t)
 {
@@ -374,6 +398,8 @@ static void trk_note_on(track_t *t, uint32_t note, uint32_t vel)
     if (!any) {                                        /* fresh phrase: LFO retrigger and fade */
         t->lfo_ph = (uint32_t)t->p[P_LPHASE] << 25;
         t->lfo_fade = 0;
+        t->lfo2_ph = (uint32_t)t->p[P_L2PHASE] << 25;
+        t->lfo2_fade = 0;
     }
     if (mode == V_POLY) {
         voice_t *v = voice_alloc(t, note);
@@ -632,6 +658,17 @@ static uint32_t track_render(track_t *t, int32_t *out, uint32_t n)
             t->p[P_E0 + i] = t->pe_old[i];
         }
     track_lfo_tick(t);
+    track_lfo2_tick(t);
+    {   /* LFO2 -> mix-stage params: written to overlay fields, consumed by fx.c mix_part */
+        int32_t lfo2 = mulq15(t->lfo2_val, t->lfo2_fade);
+        t->lfo2_pan = p[P_L2D_PAN] ? (int16_t)clamp((lfo2 * p[P_L2D_PAN]) >> 15, -64, 63) : 0;
+        t->lfo2_dly = p[P_L2D_DLY] ? (int16_t)clamp((lfo2 * p[P_L2D_DLY]) >> 14, -127, 127) : 0;
+        t->lfo2_rev = p[P_L2D_REV] ? (int16_t)clamp((lfo2 * p[P_L2D_REV]) >> 14, -127, 127) : 0;
+        t->lfo2_cho = p[P_L2D_CHO] ? (int16_t)clamp((lfo2 * p[P_L2D_CHO]) >> 14, -127, 127) : 0;
+        t->lfo2_dst = p[P_L2D_DST] ? (int16_t)clamp((lfo2 * p[P_L2D_DST]) >> 14, -127, 127) : 0;
+        t->lfo2_flt = p[P_L2D_FLT] ? (int16_t)clamp((lfo2 * p[P_L2D_FLT]) >> 15, -64, 63) : 0;
+        t->lfo2_spc = p[P_L2D_SPC] ? (int16_t)clamp((lfo2 * p[P_L2D_SPC]) >> 14, -127, 127) : 0;
+    }
     if (e->block)                                       /* the engine's per-part work (DRAWBAR: bars, rotor) */
         e->block(t);
     for (i = 0; i < NVOICE; i++) {

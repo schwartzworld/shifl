@@ -75,6 +75,12 @@ enum {                          /* per-track parameters */
     P_LD_K1, P_LD_K2, P_LD_K3, P_LD_K4,       /* LFO depth for home knobs 1-4 (engine-specific) */
     P_EVOLVE,                                  /* auto-mutate every N loops: 0=off 1=4 2=8 3=16 */
     P_CFOL,                                   /* SHIFL 3.0: chord follow mode (CF_*) for the chord sequencer */
+    P_DICE, P_ADICE,                          /* SHIFL 3.0: dice re-roll actions (N_GO two-step confirm) */
+    P_L2RATE, P_L2WAVE, P_L2PHASE, P_L2FADE,          /* LFO 2: shape */
+    P_L2D_PAN, P_L2D_DLY, P_L2D_REV, P_L2D_CHO,      /* LFO 2: destinations — pan, FX sends */
+    P_L2D_DST, P_L2D_FLT, P_L2D_SPC,                 /* LFO 2: destinations — dist, DJ filter, spice */
+    P_AENA,                                           /* arp enable: ON/OFF independent of mode */
+    P_ABOUNCE,                                        /* arp-to-sequence bounce (N_GO two-step confirm) */
     P_E0, P_E1, P_E2, P_E3, P_E4, P_E5, P_E6, P_E7,
     P_E8, P_E9, P_E10, P_E11, P_E12, P_E13, P_E14, P_E15,
     P_COUNT
@@ -396,6 +402,13 @@ typedef struct track {
     int32_t lfo_val;             /* Q15 */
     int32_t lfo_fade;            /* Q15 ramp after note-on */
     uint32_t lfo_rnd;
+    /* LFO 2 */
+    uint32_t lfo2_ph;
+    int32_t lfo2_val;            /* Q15 */
+    int32_t lfo2_fade;           /* Q15 ramp after note-on */
+    uint32_t lfo2_rnd;
+    int16_t lfo2_pan, lfo2_dly, lfo2_rev, lfo2_cho; /* per-block LFO2 contributions read by fx.c / seq.c */
+    int16_t lfo2_dst, lfo2_flt, lfo2_spc;
     /* keyboard / arp input: held notes in press order */
     uint8_t held[16];
     uint8_t nheld;

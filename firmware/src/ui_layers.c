@@ -4,7 +4,7 @@
  * let go without touching anything) the button opens its pages as before.
  *   FX    punch-in effects (punch.c)       knobs: FILTER  DUST  DUCK
  *   EDIT  erase that sound / note (seq.c)  knobs: SHIFT  LENGTH x2 / half  TRANSPOSE   OCT- undo  OCT+ redo
- *   ARP   (removed)
+ *   ARP   tap: opens ARP pages; held+key: MUT/EVL/PAT (live mode: scene selection)
  *   SEQ   steps 1..16 of the page          knobs: SOUND / NOTE  DIV  SWING  LENGTH;  a step key held:
  *         (black keys 1..4: pages)                SOUND / NOTE  LEVEL  RATCHET
  *   SCL   any key: the key of the song     knobs: CHORD  SCALE  KEYS  TRANSPOSE

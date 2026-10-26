@@ -31,7 +31,8 @@ typedef struct {
     up_rec_t r[UP_PER_BANK];
 } up_bank_t;
 _Static_assert(sizeof(up_rec_t) == 208, "user preset record layout");
-_Static_assert(P_COUNT <= UP_PMAX && P_COUNT < 128, "user preset record: P_COUNT");
+/* P_COUNT may exceed UP_PMAX: params beyond UP_PMAX (action params like P_DICE/P_ADICE) are not stored */
+_Static_assert(P_DICE <= UP_PMAX && P_COUNT < 128, "user preset record: P_COUNT");
 static up_bank_t up_bank[UP_SLOTS / UP_PER_BANK];
 
 static up_rec_t *up_rec(uint32_t k) { return &up_bank[k / UP_PER_BANK].r[k % UP_PER_BANK]; }
@@ -143,11 +144,13 @@ static int up_parse(const uint8_t *a, uint32_t na, up_rec_t *r, uint32_t *slot)
     r->used = UP_USED;
     r->ver = UP_VER;
     r->engine = a[1];
-    r->np = P_COUNT;
+    r->np = P_COUNT < UP_PMAX ? P_COUNT : UP_PMAX;   /* cap: action params beyond UP_PMAX not stored */
     for (i = 0; i < n; i++)
         r->name[i] = (char)a[2 + i];
-    for (i = 0; i < P_COUNT; i++, k += 2u)
-        r->p[i] = (int16_t)((int32_t)((a[k] & 127u) | (a[k + 1] & 127u) << 7) - 8192);
+    for (i = 0; i < P_COUNT; i++, k += 2u) {          /* advance k for all params; only write within bounds */
+        if (i < UP_PMAX)
+            r->p[i] = (int16_t)((int32_t)((a[k] & 127u) | (a[k + 1] & 127u) << 7) - 8192);
+    }
     for (i = 0; i < 16u; i++, k += 2u) {
         r->note[i] = a[k];
         r->flags[i] = a[k + 1];
