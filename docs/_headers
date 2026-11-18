@@ -1,0 +1,2 @@
+/firmware/*
+  Access-Control-Allow-Origin: *
