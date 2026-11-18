@@ -29,7 +29,7 @@
 #define FELUCCA_OTA_DRYRUN 0     /* 1 = stage, ask "success", then undo: no record, no reset */
 #endif
 #ifndef FELUCCA_ID
-#define FELUCCA_ID "FM-1_981"    /* package identity (build.py: the .fwsc marker string) */
+#define FELUCCA_ID "FM-1_24601"  /* package identity (build.py: the .fwsc marker string) */
 #endif
 /* FELUCCA_USBH=1: USB MIDI host (play from a bus-powered USB keyboard).
  * Mutually exclusive with USB device mode (CDC, UAC, OTA via USB are all off).
