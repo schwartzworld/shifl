@@ -4,7 +4,7 @@
   "kinds": ["groove"],
   "play": "https://shifl.netlify.app/webapp/emulator/",
   "editor": "https://shifl.netlify.app/webapp/editor/",
-  "image": "/assets/logo/shifl-icon.png",
+  "image": "assets/logo/shifl-icon.png",
   "color": "#FC8BDA",
   "sounds": "none"
 }
