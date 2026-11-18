@@ -1,0 +1,73 @@
+<!doctype html>
+<!-- SPDX-License-Identifier: GPL-3.0-only
+     Copyright (C) 2026 Ian Schwartz -->
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>SHIFL — Try in browser</title>
+<style>
+  :root { --bg: #291720; --fg: #f2f2f2; --dim: #a090a0; --tile: #3a1f2e; --line: #4a2a3a;
+          --pink: #D90368; --orange: #FB8B24; --purple: #820263; --teal: #04A777; }
+  :root[data-theme="light"] { --bg: #f9f0f5; --fg: #1a0a14; --dim: #7a5070; --tile: #eedde8; --line: #d9b8cc; }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--fg);
+         font: 15px/1.6 "Helvetica Neue", -apple-system, BlinkMacSystemFont, Arial, sans-serif; }
+  .top { display: flex; align-items: center; justify-content: space-between; gap: 12px;
+         padding: 16px 20px; border-bottom: 1px solid var(--line); }
+  .logo svg, .logo img, .logo image { display: block; height: 28px; width: auto; }
+  .logo b { font-size: 18px; font-weight: 700; letter-spacing: .04em; }
+  nav { display: flex; gap: 16px; font-size: 13px; }
+  nav a { color: var(--dim); text-decoration: none; }
+  nav a:hover { color: var(--fg); }
+  nav a.here { color: var(--pink); }
+  .strip { display: flex; height: 3px; }
+  .strip i { flex: 1; }
+  .strip i:nth-child(1) { background: var(--pink); }
+  .strip i:nth-child(2) { background: var(--orange); }
+  .strip i:nth-child(3) { background: var(--teal); }
+  .strip i:nth-child(4) { background: var(--purple); }
+  .intro { max-width: 600px; margin: 24px auto 16px; padding: 0 20px; }
+  .intro h1 { font-size: 13px; font-weight: 500; letter-spacing: .12em; text-transform: uppercase;
+              color: var(--dim); margin: 0 0 6px; }
+  .intro p { font-size: 15px; color: var(--dim); margin: 0; }
+  .intro a { color: var(--pink); }
+  .emu-wrap { width: 100%; max-width: 1100px; margin: 0 auto; padding: 0 0 32px; }
+  iframe#emu { display: block; width: 100%; border: none;
+               height: calc(100vh - 180px); min-height: 500px; }
+  #loading { text-align: center; padding: 60px 20px; color: var(--dim); font-size: 14px; }
+</style>
+</head>
+<body>
+<div class="top">
+  <a class="logo" href="../../"><!--LOGO--></a>
+  <nav>
+    <a href="../installer/">Install</a>
+    <a href="../editor/">Editor</a>
+    <a class="here" href="../emulator/">Try online</a>
+  </nav>
+</div>
+<div class="strip"><i></i><i></i><i></i><i></i></div>
+<div class="intro">
+  <h1>Try SHIFL in your browser</h1>
+  <p>Running SHIFL <span id="ver"></span> in the
+     <a href="https://github.com/joakimeriksson/fm1-emu" target="_blank" rel="noopener">FM-1 emulator</a>.
+     This always loads the latest build.</p>
+</div>
+<div class="emu-wrap">
+  <div id="loading">Loading emulator…</div>
+  <iframe id="emu" allow="autoplay; midi" title="SHIFL FM-1 emulator" hidden></iframe>
+</div>
+<script>
+const meta = /*META*/;
+document.getElementById("ver").textContent = meta.version;
+const fwUrl = new URL(meta.pkg, location.href).href;
+const emu = document.getElementById("emu");
+emu.src = "https://joakimeriksson.github.io/fm1-emu/?embed=1&package=" + encodeURIComponent(fwUrl);
+emu.addEventListener("load", () => {
+  document.getElementById("loading").remove();
+  emu.hidden = false;
+});
+</script>
+</body>
+</html>

@@ -1,0 +1,10 @@
+{
+  "what": "A sloop clone with advanced sequencing features",
+  "author": "Char Baba",
+  "kinds": ["groove"],
+  "play": "https://shifl.netlify.app/webapp/emulator/",
+  "editor": "https://shifl.netlify.app/webapp/editor/",
+  "image": "/assets/logo/shifl-icon.png",
+  "color": "#D90368",
+  "sounds": "none"
+}

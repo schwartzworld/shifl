@@ -1,0 +1,65 @@
+<!doctype html>
+<!-- SPDX-License-Identifier: GPL-3.0-only
+     Copyright (C) 2026 Ian Schwartz -->
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>SHIFL</title>
+<style>
+  :root { --bg: #291720; --fg: #f2f2f2; --dim: #a090a0; --tile: #3a1f2e; --line: #4a2a3a;
+          --pink: #D90368; --orange: #FB8B24; --purple: #820263; --teal: #04A777; --yellow: #ffc618; }
+  :root[data-theme="light"] { --bg: #f9f0f5; --fg: #1a0a14; --dim: #7a5070; --tile: #eedde8; --line: #d9b8cc; }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--fg);
+         font: 15px/1.6 "Helvetica Neue", -apple-system, BlinkMacSystemFont, Arial, sans-serif; }
+  main { max-width: 560px; margin: 0 auto; padding: 32px 16px 48px; }
+  .logo svg, .logo img, .logo image { display: block; width: 420px; height: auto; }
+  .strip { display: flex; height: 5px; margin: 20px 0 32px; border-radius: 3px; overflow: hidden; }
+  .strip i { flex: 1; }
+  .strip i:nth-child(1) { background: var(--pink); }
+  .strip i:nth-child(2) { background: var(--orange); }
+  .strip i:nth-child(3) { background: var(--teal); }
+  .strip i:nth-child(4) { background: var(--purple); }
+  h1 { font-size: 13px; font-weight: 500; letter-spacing: .12em; text-transform: uppercase;
+       color: var(--dim); margin: 0 0 8px; }
+  .lead { font-size: 19px; line-height: 1.4; margin: 0 0 32px; }
+  .cards { display: flex; flex-direction: column; gap: 10px; }
+  .card { display: block; text-decoration: none; color: var(--fg);
+          background: var(--tile); border-top: 3px solid var(--c);
+          border-radius: 0 0 4px 4px; padding: 16px 18px 18px; }
+  .card:hover { background: color-mix(in srgb, var(--c) 12%, var(--tile)); }
+  .card b { display: block; font-size: 17px; font-weight: 700; color: var(--c); margin-bottom: 2px; }
+  .card span { font-size: 13px; color: var(--dim); }
+  .ver { font-size: 12px; color: var(--dim); margin-top: 40px; }
+  @media (max-width: 420px) { .logo svg, .logo img, .logo image { width: 280px; } }
+</style>
+</head>
+<body>
+<main>
+  <div class="logo"><!--LOGO--></div>
+  <div class="strip"><i></i><i></i><i></i><i></i></div>
+  <h1>Custom firmware for the M-VAVE FM-1</h1>
+  <p class="lead">Six tracks, six synth engines, a drum machine, chord sequencer, song mode and generative patterns — running on a pocket synth.</p>
+  <div class="cards">
+    <a class="card" href="webapp/installer/" style="--c: var(--pink)">
+      <b>Install</b>
+      <span>Flash SHIFL to your FM-1 over USB</span>
+    </a>
+    <a class="card" href="webapp/emulator/" style="--c: var(--teal)">
+      <b>Try in browser</b>
+      <span>Run the latest build in the FM-1 emulator — no hardware needed</span>
+    </a>
+    <a class="card" href="webapp/editor/" style="--c: var(--orange)">
+      <b>Editor</b>
+      <span>Visual patch editor for SHIFL's synth engines</span>
+    </a>
+  </div>
+  <p class="ver" id="ver"></p>
+</main>
+<script>
+const meta = /*META*/;
+document.getElementById("ver").textContent = "SHIFL " + meta.version + " · " + meta.product;
+</script>
+</body>
+</html>

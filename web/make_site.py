@@ -56,8 +56,8 @@ def main(pkg, version, out):
     html = html.replace("/*LIB*/", lib).replace("/*META*/", meta)
     logo = HERE.parent / "assets" / "logo" / "shifl-logo.svg"     # the SHIFL logo, inline
     html = html.replace("<!--LOGO-->", logo.read_text(encoding="utf-8") if logo.exists() else "<b>SHIFL</b>")
-    inst, ed, fw = out / "webapp" / "installer", out / "webapp" / "editor", out / "firmware"
-    for d in (inst, ed, fw):
+    inst, ed, emu, fw = out / "webapp" / "installer", out / "webapp" / "editor", out / "webapp" / "emulator", out / "firmware"
+    for d in (inst, ed, emu, fw):
         d.mkdir(parents=True, exist_ok=True)
     guide = HERE.parent / "output/pdf/Studio-0.3-guide-rapide-FR.pdf"
     guide_link = ""
@@ -78,11 +78,19 @@ def main(pkg, version, out):
     for f in ("fukiai.ttf", "FUKIAI-LICENSE.txt"):
         if (HERE / f).exists():
             shutil.copy(HERE / f, ed / f)
-    (out / "index.html").write_text(
-        '<!doctype html><meta charset="utf-8"><title>SHIFL</title>'
-        '<meta http-equiv="refresh" content="0; url=webapp/installer/">'
-        '<a href="webapp/installer/">SHIFL installer</a>\n', encoding="utf-8")
-    print(f"site: {out}: webapp/installer ({len(html)} B), webapp/editor, firmware/{name} ({len(raw)} B, {product})")
+    emu_html = (HERE / "emulator.html").read_text(encoding="utf-8")
+    if emu_html.count("/*META*/") != 1:
+        raise SystemExit("emulator.html must contain /*META*/ once; update make_site.py")
+    emu_html = emu_html.replace("/*META*/", meta)
+    emu_html = emu_html.replace("<!--LOGO-->", logo.read_text(encoding="utf-8") if logo.exists() else "<b>SHIFL</b>")
+    (emu / "index.html").write_text(emu_html, encoding="utf-8")
+    landing_html = (HERE / "landing.html").read_text(encoding="utf-8")
+    if landing_html.count("/*META*/") != 1:
+        raise SystemExit("landing.html must contain /*META*/ once; update make_site.py")
+    landing_html = landing_html.replace("/*META*/", meta)
+    landing_html = landing_html.replace("<!--LOGO-->", logo.read_text(encoding="utf-8") if logo.exists() else "<b>SHIFL</b>")
+    (out / "index.html").write_text(landing_html, encoding="utf-8")
+    print(f"site: {out}: webapp/installer ({len(html)} B), webapp/editor, webapp/emulator ({len(emu_html)} B), firmware/{name} ({len(raw)} B, {product})")
 
 
 if __name__ == "__main__":
